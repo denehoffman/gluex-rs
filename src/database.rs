@@ -31,6 +31,12 @@ impl Database {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, CCDBError> {
         let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
+        conn.execute(
+            "CREATE TEMP TABLE IF NOT EXISTS ccdb_rs_query_constant_ids (
+                id INTEGER PRIMARY KEY
+             )",
+            [],
+        )?;
         let db = Database {
             connection: Arc::new(conn),
             directory_meta: Arc::new(DashMap::new()),
@@ -527,12 +533,6 @@ impl TypeTableHandle {
             assignments.values().map(|a| a.constant_set_id).collect();
         constant_set_ids.sort_unstable();
         constant_set_ids.dedup(); // PERF: is this slower than sorting a hashset?
-        self.db.connection.execute(
-            "CREATE TEMP TABLE IF NOT EXISTS ccdb_rs_query_constant_ids (
-                id INTEGER PRIMARY KEY
-             )", // TODO: check if we want WITHOUT ROWID
-            [],
-        )?;
         self.db
             .connection
             .execute("DELETE FROM ccdb_rs_query_constant_ids", [])?;
