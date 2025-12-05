@@ -148,6 +148,7 @@ pub struct Data {
     nrows: usize,
     ncolumns: usize,
     column_names: Vec<String>,
+    column_indices: HashMap<String, usize>,
     column_types: Vec<ColumnType>,
     columns: Vec<Column>,
 }
@@ -158,14 +159,8 @@ impl Data {
         columns: &[ColumnMeta],
         nrows: usize,
     ) -> Result<Self, CCDBDataError> {
-        let raw_cells: Vec<&str> = vault.split('|').collect();
         let ncols = columns.len();
-        if raw_cells.len() != nrows * ncols {
-            return Err(CCDBDataError::ColumnCountMismatch {
-                expected: nrows * ncols,
-                found: raw_cells.len(),
-            });
-        }
+        let expected_cells = nrows * ncols;
 
         let mut cols_sorted = columns.to_vec();
         cols_sorted.sort_unstable_by_key(|c| c.order);
@@ -183,6 +178,11 @@ impl Data {
             .collect();
 
         let column_types: Vec<ColumnType> = cols_sorted.iter().map(|c| c.column_type).collect();
+        let column_indices: HashMap<String, usize> = column_names
+            .iter()
+            .enumerate()
+            .map(|(idx, name)| (name.clone(), idx))
+            .collect();
 
         let mut column_vecs: Vec<Column> = column_types
             .iter()
@@ -196,68 +196,84 @@ impl Data {
                 ColumnType::Bool => Column::Bool(Vec::with_capacity(nrows)),
             })
             .collect();
-        for row in 0..nrows {
-            for col in 0..ncols {
-                let idx = row * ncols + col;
-                let raw = raw_cells[idx];
-                let column_type = column_types[col];
-
-                match (&mut column_vecs[col], column_type) {
-                    (Column::Int(vec), ColumnType::Int) => {
-                        vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
-                            column: col,
-                            row,
-                            column_type,
-                            text: raw.to_string(),
-                        })?)
-                    }
-                    (Column::UInt(vec), ColumnType::UInt) => {
-                        vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
-                            column: col,
-                            row,
-                            column_type,
-                            text: raw.to_string(),
-                        })?)
-                    }
-                    (Column::Long(vec), ColumnType::Long) => {
-                        vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
-                            column: col,
-                            row,
-                            column_type,
-                            text: raw.to_string(),
-                        })?)
-                    }
-                    (Column::ULong(vec), ColumnType::ULong) => {
-                        vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
-                            column: col,
-                            row,
-                            column_type,
-                            text: raw.to_string(),
-                        })?)
-                    }
-                    (Column::Double(vec), ColumnType::Double) => {
-                        vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
-                            column: col,
-                            row,
-                            column_type,
-                            text: raw.to_string(),
-                        })?)
-                    }
-                    (Column::String(vec), ColumnType::String) => {
-                        let decoded = raw.replace("&delimeter", "|");
-                        vec.push(decoded);
-                    }
-                    (Column::Bool(vec), ColumnType::Bool) => {
-                        vec.push(parse_bool(raw));
-                    }
-                    _ => unreachable!("column type mismatch"),
+        let mut raw_iter = vault.split('|');
+        for idx in 0..expected_cells {
+            let raw = match raw_iter.next() {
+                Some(raw) => raw,
+                None => {
+                    return Err(CCDBDataError::ColumnCountMismatch {
+                        expected: expected_cells,
+                        found: idx,
+                    })
                 }
+            };
+            let row = idx / ncols;
+            let col = idx % ncols;
+            let column_type = column_types[col];
+
+            match (&mut column_vecs[col], column_type) {
+                (Column::Int(vec), ColumnType::Int) => {
+                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                        column: col,
+                        row,
+                        column_type,
+                        text: raw.to_string(),
+                    })?)
+                }
+                (Column::UInt(vec), ColumnType::UInt) => {
+                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                        column: col,
+                        row,
+                        column_type,
+                        text: raw.to_string(),
+                    })?)
+                }
+                (Column::Long(vec), ColumnType::Long) => {
+                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                        column: col,
+                        row,
+                        column_type,
+                        text: raw.to_string(),
+                    })?)
+                }
+                (Column::ULong(vec), ColumnType::ULong) => {
+                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                        column: col,
+                        row,
+                        column_type,
+                        text: raw.to_string(),
+                    })?)
+                }
+                (Column::Double(vec), ColumnType::Double) => {
+                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                        column: col,
+                        row,
+                        column_type,
+                        text: raw.to_string(),
+                    })?)
+                }
+                (Column::String(vec), ColumnType::String) => {
+                    let decoded = raw.replace("&delimeter", "|");
+                    vec.push(decoded);
+                }
+                (Column::Bool(vec), ColumnType::Bool) => {
+                    vec.push(parse_bool(raw));
+                }
+                _ => unreachable!("column type mismatch"),
             }
+        }
+        if let Some(_) = raw_iter.next() {
+            let found = expected_cells + 1 + raw_iter.count();
+            return Err(CCDBDataError::ColumnCountMismatch {
+                expected: expected_cells,
+                found,
+            });
         }
         Ok(Data {
             nrows,
             ncolumns: ncols,
             column_names,
+            column_indices,
             column_types,
             columns: column_vecs,
         })
@@ -282,10 +298,9 @@ impl Data {
     }
 
     pub fn column_by_name(&self, name: &str) -> Option<&Column> {
-        self.column_names
-            .iter()
-            .position(|n| n == name)
-            .and_then(|idx| self.columns.get(idx))
+        self.column_indices
+            .get(name)
+            .and_then(|idx| self.columns.get(*idx))
     }
 
     pub fn value(&self, row: usize, column: usize) -> Option<Value<'_>> {
@@ -294,26 +309,48 @@ impl Data {
         }
         Some(self.columns[column].row(row))
     }
-    pub fn get_int(&self, name: &str, row: usize) -> Option<i32> {
+    pub fn get_named_int(&self, name: &str, row: usize) -> Option<i32> {
         self.column_by_name(name)?.row(row).as_int()
     }
-    pub fn get_uint(&self, name: &str, row: usize) -> Option<u32> {
+    pub fn get_named_uint(&self, name: &str, row: usize) -> Option<u32> {
         self.column_by_name(name)?.row(row).as_uint()
     }
-    pub fn get_long(&self, name: &str, row: usize) -> Option<i64> {
+    pub fn get_named_long(&self, name: &str, row: usize) -> Option<i64> {
         self.column_by_name(name)?.row(row).as_long()
     }
-    pub fn get_ulong(&self, name: &str, row: usize) -> Option<u64> {
+    pub fn get_named_ulong(&self, name: &str, row: usize) -> Option<u64> {
         self.column_by_name(name)?.row(row).as_ulong()
     }
-    pub fn get_double(&self, name: &str, row: usize) -> Option<f64> {
+    pub fn get_named_double(&self, name: &str, row: usize) -> Option<f64> {
         self.column_by_name(name)?.row(row).as_double()
     }
-    pub fn get_string(&self, name: &str, row: usize) -> Option<&str> {
+    pub fn get_named_string(&self, name: &str, row: usize) -> Option<&str> {
         self.column_by_name(name)?.row(row).as_str()
     }
-    pub fn get_bool(&self, name: &str, row: usize) -> Option<bool> {
+    pub fn get_named_bool(&self, name: &str, row: usize) -> Option<bool> {
         self.column_by_name(name)?.row(row).as_bool()
+    }
+
+    pub fn get_int(&self, column: usize, row: usize) -> Option<i32> {
+        self.value(row, column)?.as_int()
+    }
+    pub fn get_uint(&self, column: usize, row: usize) -> Option<u32> {
+        self.value(row, column)?.as_uint()
+    }
+    pub fn get_long(&self, column: usize, row: usize) -> Option<i64> {
+        self.value(row, column)?.as_long()
+    }
+    pub fn get_ulong(&self, column: usize, row: usize) -> Option<u64> {
+        self.value(row, column)?.as_ulong()
+    }
+    pub fn get_double(&self, column: usize, row: usize) -> Option<f64> {
+        self.value(row, column)?.as_double()
+    }
+    pub fn get_string(&self, column: usize, row: usize) -> Option<&str> {
+        self.value(row, column)?.as_str()
+    }
+    pub fn get_bool(&self, column: usize, row: usize) -> Option<bool> {
+        self.value(row, column)?.as_bool()
     }
 
     pub fn row(&self, row: usize) -> Result<RowView<'_>, CCDBDataError> {
