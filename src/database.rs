@@ -21,6 +21,8 @@ use crate::{
 #[derive(Clone)]
 pub struct Database {
     connection: Arc<Connection>,
+    variation_cache: Arc<DashMap<String, VariationMeta>>, // keyed by name
+    variation_chain_cache: Arc<DashMap<Id, Vec<VariationMeta>>>, // keyed by variation id
     directory_meta: Arc<DashMap<Id, DirectoryMeta>>,
     directory_by_path: Arc<DashMap<String, Id>>,
     table_meta: Arc<DashMap<Id, TypeTableMeta>>,
@@ -31,6 +33,7 @@ impl Database {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, CCDBError> {
         let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
+        conn.pragma_update(None, "temp_store", "MEMORY")?;
         conn.execute(
             "CREATE TEMP TABLE IF NOT EXISTS ccdb_rs_query_constant_ids (
                 id INTEGER PRIMARY KEY
@@ -39,6 +42,8 @@ impl Database {
         )?;
         let db = Database {
             connection: Arc::new(conn),
+            variation_cache: Arc::new(DashMap::new()),
+            variation_chain_cache: Arc::new(DashMap::new()),
             directory_meta: Arc::new(DashMap::new()),
             directory_by_path: Arc::new(DashMap::new()),
             table_meta: Arc::new(DashMap::new()),
@@ -183,7 +188,10 @@ impl Database {
         dir.table(table_name)
     }
     pub fn variation(&self, name: &str) -> Result<VariationMeta, CCDBError> {
-        let mut stmt = self.connection.prepare(
+        if let Some(v) = self.variation_cache.get(name) {
+            return Ok(v.clone());
+        }
+        let mut stmt = self.connection.prepare_cached(
             "SELECT id, created, modified, name, description, authorId, comment,
                     parentId, isLocked, lockTime, lockedByUserId,
                     goBackBehavior, goBackTime, isDeprecated, deprecatedByUserId
@@ -192,7 +200,7 @@ impl Database {
         )?;
         let mut rows = stmt.query([name])?;
         if let Some(r) = rows.next()? {
-            Ok(VariationMeta {
+            let var = VariationMeta {
                 id: r.get(0)?,
                 created: r.get(1)?,
                 modified: r.get(2)?,
@@ -208,18 +216,23 @@ impl Database {
                 go_back_time: r.get(12).unwrap_or_default(),
                 is_deprecated: r.get(13).unwrap_or_default(),
                 deprecated_by_user_id: r.get(14).unwrap_or_default(),
-            })
+            };
+            self.variation_cache.insert(name.to_string(), var.clone());
+            Ok(var)
         } else {
             Err(CCDBError::VariationNotFoundError(name.to_string()))
         }
     }
     pub fn variation_chain(&self, start: &VariationMeta) -> Result<Vec<VariationMeta>, CCDBError> {
+        if let Some(cached) = self.variation_chain_cache.get(&start.id) {
+            return Ok(cached.clone());
+        }
         let mut chain = Vec::new();
         let mut current = start.clone();
 
         chain.push(current.clone());
 
-        let mut stmt = self.connection.prepare(
+        let mut stmt = self.connection.prepare_cached(
             "SELECT id, created, modified, name, description, authorId, comment,
                     parentId, isLocked, lockTime, lockedByUserId,
                     goBackBehavior, goBackTime, isDeprecated, deprecatedByUserId
@@ -253,6 +266,7 @@ impl Database {
             }
         }
 
+        self.variation_chain_cache.insert(start.id, chain.clone());
         Ok(chain)
     }
     pub fn request(&self, request_string: &str) -> Result<HashMap<RunNumber, Data>, CCDBError> {
@@ -388,7 +402,7 @@ impl TypeTableHandle {
         }
     }
     pub fn columns(&self) -> Result<Vec<ColumnMeta>, CCDBError> {
-        let mut stmt = self.db.connection.prepare(
+        let mut stmt = self.db.connection.prepare_cached(
             "SELECT id, created, modified, name, typeId, columnType, `order`, comment
              FROM columns
              WHERE typeId = ?
@@ -463,7 +477,7 @@ impl TypeTableHandle {
         min_run: RunNumber,
         max_run: RunNumber,
     ) -> Result<HashMap<RunNumber, AssignmentMeta>, CCDBError> {
-        let mut stmt = self.db.connection.prepare(
+        let mut stmt = self.db.connection.prepare_cached(
             "SELECT
                  a.id, a.created, a.modified,
                  a.variationId, a.runRangeId, a.eventRangeId,
@@ -540,14 +554,14 @@ impl TypeTableHandle {
             let tx = self.db.connection.unchecked_transaction()?;
             {
                 let mut insert =
-                    tx.prepare("INSERT INTO ccdb_rs_query_constant_ids(id) VALUES(?)")?;
+                    tx.prepare_cached("INSERT INTO ccdb_rs_query_constant_ids(id) VALUES(?)")?;
                 for id in &constant_set_ids {
                     insert.execute([*id])?;
                 }
             }
             tx.commit()?;
         }
-        let mut stmt = self.db.connection.prepare(
+        let mut stmt = self.db.connection.prepare_cached(
             "SELECT cs.id, cs.created, cs.modified, cs.vault, cs.constantTypeId
              FROM constantSets cs
              JOIN ccdb_rs_query_constant_ids tmp ON cs.id = tmp.id",

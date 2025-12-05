@@ -307,7 +307,15 @@ impl Data {
         if row >= self.nrows || column >= self.ncolumns {
             return None;
         }
-        Some(self.columns[column].row(row))
+        match self.columns.get(column)? {
+            Column::Int(v) => Some(Value::Int(&v[row])),
+            Column::UInt(v) => Some(Value::UInt(&v[row])),
+            Column::Long(v) => Some(Value::Long(&v[row])),
+            Column::ULong(v) => Some(Value::ULong(&v[row])),
+            Column::Double(v) => Some(Value::Double(&v[row])),
+            Column::Bool(v) => Some(Value::Bool(&v[row])),
+            Column::String(v) => Some(Value::String(&v[row])),
+        }
     }
     pub fn get_named_int(&self, name: &str, row: usize) -> Option<i32> {
         self.column_by_name(name)?.row(row).as_int()
