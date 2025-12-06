@@ -1,4 +1,5 @@
 use crate::models::{ColumnMeta, ColumnType};
+use itertools::izip;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -108,32 +109,77 @@ impl<'a> Value<'a> {
 }
 
 pub struct RowView<'a> {
-    pub values: HashMap<&'a str, Value<'a>>,
+    row: usize,
+    columns: &'a [Column],
+    column_names: &'a [String],
+    column_indices: &'a HashMap<String, usize>,
 }
 impl<'a> RowView<'a> {
-    pub fn get(&self, name: &str) -> Option<Value<'a>> {
-        self.values.get(name).copied()
+    pub fn value(&self, column: usize) -> Option<Value<'a>> {
+        self.columns.get(column).map(|col| col.row(self.row))
     }
-    pub fn get_int(&self, name: &str) -> Option<i32> {
-        self.get(name)?.as_int()
+
+    pub fn named_value(&self, name: &str) -> Option<Value<'a>> {
+        self.column_indices
+            .get(name)
+            .and_then(|&idx| self.value(idx))
     }
-    pub fn get_uint(&self, name: &str) -> Option<u32> {
-        self.get(name)?.as_uint()
+
+    pub fn int(&self, column: usize) -> Option<i32> {
+        self.value(column)?.as_int()
     }
-    pub fn get_long(&self, name: &str) -> Option<i64> {
-        self.get(name)?.as_long()
+    pub fn uint(&self, column: usize) -> Option<u32> {
+        self.value(column)?.as_uint()
     }
-    pub fn get_ulong(&self, name: &str) -> Option<u64> {
-        self.get(name)?.as_ulong()
+    pub fn long(&self, column: usize) -> Option<i64> {
+        self.value(column)?.as_long()
     }
-    pub fn get_double(&self, name: &str) -> Option<f64> {
-        self.get(name)?.as_double()
+    pub fn ulong(&self, column: usize) -> Option<u64> {
+        self.value(column)?.as_ulong()
     }
-    pub fn get_string(&self, name: &str) -> Option<&'a str> {
-        self.get(name)?.as_str()
+    pub fn double(&self, column: usize) -> Option<f64> {
+        self.value(column)?.as_double()
     }
-    pub fn get_bool(&self, name: &str) -> Option<bool> {
-        self.get(name)?.as_bool()
+    pub fn string(&self, column: usize) -> Option<&'a str> {
+        self.value(column)?.as_str()
+    }
+    pub fn bool(&self, column: usize) -> Option<bool> {
+        self.value(column)?.as_bool()
+    }
+
+    pub fn named_int(&self, name: &str) -> Option<i32> {
+        self.named_value(name)?.as_int()
+    }
+    pub fn named_uint(&self, name: &str) -> Option<u32> {
+        self.named_value(name)?.as_uint()
+    }
+    pub fn named_long(&self, name: &str) -> Option<i64> {
+        self.named_value(name)?.as_long()
+    }
+    pub fn named_ulong(&self, name: &str) -> Option<u64> {
+        self.named_value(name)?.as_ulong()
+    }
+    pub fn named_double(&self, name: &str) -> Option<f64> {
+        self.named_value(name)?.as_double()
+    }
+    pub fn named_string(&self, name: &str) -> Option<&'a str> {
+        self.named_value(name)?.as_str()
+    }
+    pub fn named_bool(&self, name: &str) -> Option<bool> {
+        self.named_value(name)?.as_bool()
+    }
+
+    pub fn iter_columns(&self) -> impl Iterator<Item = (&'a str, Value<'a>)> + '_ {
+        izip!(self.column_names.iter(), self.columns.iter())
+            .map(move |(name, col)| (name.as_str(), col.row(self.row)))
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.column_indices.contains_key(name)
+    }
+
+    pub fn n_columns(&self) -> usize {
+        self.columns.len()
     }
 }
 
@@ -145,8 +191,8 @@ pub struct ColumnDef {
 }
 
 pub struct Data {
-    nrows: usize,
-    ncolumns: usize,
+    n_rows: usize,
+    n_columns: usize,
     column_names: Vec<String>,
     column_indices: HashMap<String, usize>,
     column_types: Vec<ColumnType>,
@@ -157,10 +203,10 @@ impl Data {
     pub fn from_vault(
         vault: &str,
         columns: &[ColumnMeta],
-        nrows: usize,
+        n_rows: usize,
     ) -> Result<Self, CCDBDataError> {
-        let ncols = columns.len();
-        let expected_cells = nrows * ncols;
+        let n_columns = columns.len();
+        let expected_cells = n_rows * n_columns;
 
         let mut cols_sorted = columns.to_vec();
         cols_sorted.sort_unstable_by_key(|c| c.order);
@@ -187,13 +233,13 @@ impl Data {
         let mut column_vecs: Vec<Column> = column_types
             .iter()
             .map(|t| match t {
-                ColumnType::Int => Column::Int(Vec::with_capacity(nrows)),
-                ColumnType::UInt => Column::UInt(Vec::with_capacity(nrows)),
-                ColumnType::Long => Column::Long(Vec::with_capacity(nrows)),
-                ColumnType::ULong => Column::ULong(Vec::with_capacity(nrows)),
-                ColumnType::Double => Column::Double(Vec::with_capacity(nrows)),
-                ColumnType::String => Column::String(Vec::with_capacity(nrows)),
-                ColumnType::Bool => Column::Bool(Vec::with_capacity(nrows)),
+                ColumnType::Int => Column::Int(Vec::with_capacity(n_rows)),
+                ColumnType::UInt => Column::UInt(Vec::with_capacity(n_rows)),
+                ColumnType::Long => Column::Long(Vec::with_capacity(n_rows)),
+                ColumnType::ULong => Column::ULong(Vec::with_capacity(n_rows)),
+                ColumnType::Double => Column::Double(Vec::with_capacity(n_rows)),
+                ColumnType::String => Column::String(Vec::with_capacity(n_rows)),
+                ColumnType::Bool => Column::Bool(Vec::with_capacity(n_rows)),
             })
             .collect();
         let mut raw_iter = vault.split('|');
@@ -207,8 +253,8 @@ impl Data {
                     })
                 }
             };
-            let row = idx / ncols;
-            let col = idx % ncols;
+            let row = idx / n_columns;
+            let col = idx % n_columns;
             let column_type = column_types[col];
 
             match (&mut column_vecs[col], column_type) {
@@ -270,8 +316,8 @@ impl Data {
             });
         }
         Ok(Data {
-            nrows,
-            ncolumns: ncols,
+            n_rows,
+            n_columns,
             column_names,
             column_indices,
             column_types,
@@ -279,11 +325,11 @@ impl Data {
         })
     }
 
-    pub fn nrows(&self) -> usize {
-        self.nrows
+    pub fn n_rows(&self) -> usize {
+        self.n_rows
     }
-    pub fn ncolumns(&self) -> usize {
-        self.ncolumns
+    pub fn n_columns(&self) -> usize {
+        self.n_columns
     }
     pub fn column_names(&self) -> &[String] {
         &self.column_names
@@ -293,18 +339,18 @@ impl Data {
         &self.column_types
     }
 
-    pub fn column_by_index(&self, idx: usize) -> Option<&Column> {
+    pub fn column(&self, idx: usize) -> Option<&Column> {
         self.columns.get(idx)
     }
 
-    pub fn column_by_name(&self, name: &str) -> Option<&Column> {
+    pub fn named_column(&self, name: &str) -> Option<&Column> {
         self.column_indices
             .get(name)
             .and_then(|idx| self.columns.get(*idx))
     }
 
     pub fn value(&self, row: usize, column: usize) -> Option<Value<'_>> {
-        if row >= self.nrows || column >= self.ncolumns {
+        if row >= self.n_rows || column >= self.n_columns {
             return None;
         }
         match self.columns.get(column)? {
@@ -317,65 +363,80 @@ impl Data {
             Column::String(v) => Some(Value::String(&v[row])),
         }
     }
-    pub fn get_named_int(&self, name: &str, row: usize) -> Option<i32> {
-        self.column_by_name(name)?.row(row).as_int()
+    pub fn named_int(&self, name: &str, row: usize) -> Option<i32> {
+        self.named_column(name)?.row(row).as_int()
     }
-    pub fn get_named_uint(&self, name: &str, row: usize) -> Option<u32> {
-        self.column_by_name(name)?.row(row).as_uint()
+    pub fn named_uint(&self, name: &str, row: usize) -> Option<u32> {
+        self.named_column(name)?.row(row).as_uint()
     }
-    pub fn get_named_long(&self, name: &str, row: usize) -> Option<i64> {
-        self.column_by_name(name)?.row(row).as_long()
+    pub fn named_long(&self, name: &str, row: usize) -> Option<i64> {
+        self.named_column(name)?.row(row).as_long()
     }
-    pub fn get_named_ulong(&self, name: &str, row: usize) -> Option<u64> {
-        self.column_by_name(name)?.row(row).as_ulong()
+    pub fn named_ulong(&self, name: &str, row: usize) -> Option<u64> {
+        self.named_column(name)?.row(row).as_ulong()
     }
-    pub fn get_named_double(&self, name: &str, row: usize) -> Option<f64> {
-        self.column_by_name(name)?.row(row).as_double()
+    pub fn named_double(&self, name: &str, row: usize) -> Option<f64> {
+        self.named_column(name)?.row(row).as_double()
     }
-    pub fn get_named_string(&self, name: &str, row: usize) -> Option<&str> {
-        self.column_by_name(name)?.row(row).as_str()
+    pub fn named_string(&self, name: &str, row: usize) -> Option<&str> {
+        self.named_column(name)?.row(row).as_str()
     }
-    pub fn get_named_bool(&self, name: &str, row: usize) -> Option<bool> {
-        self.column_by_name(name)?.row(row).as_bool()
+    pub fn named_bool(&self, name: &str, row: usize) -> Option<bool> {
+        self.named_column(name)?.row(row).as_bool()
     }
 
-    pub fn get_int(&self, column: usize, row: usize) -> Option<i32> {
+    pub fn int(&self, column: usize, row: usize) -> Option<i32> {
         self.value(row, column)?.as_int()
     }
-    pub fn get_uint(&self, column: usize, row: usize) -> Option<u32> {
+    pub fn uint(&self, column: usize, row: usize) -> Option<u32> {
         self.value(row, column)?.as_uint()
     }
-    pub fn get_long(&self, column: usize, row: usize) -> Option<i64> {
+    pub fn long(&self, column: usize, row: usize) -> Option<i64> {
         self.value(row, column)?.as_long()
     }
-    pub fn get_ulong(&self, column: usize, row: usize) -> Option<u64> {
+    pub fn ulong(&self, column: usize, row: usize) -> Option<u64> {
         self.value(row, column)?.as_ulong()
     }
-    pub fn get_double(&self, column: usize, row: usize) -> Option<f64> {
+    pub fn double(&self, column: usize, row: usize) -> Option<f64> {
         self.value(row, column)?.as_double()
     }
-    pub fn get_string(&self, column: usize, row: usize) -> Option<&str> {
+    pub fn string(&self, column: usize, row: usize) -> Option<&str> {
         self.value(row, column)?.as_str()
     }
-    pub fn get_bool(&self, column: usize, row: usize) -> Option<bool> {
+    pub fn bool(&self, column: usize, row: usize) -> Option<bool> {
         self.value(row, column)?.as_bool()
     }
 
     pub fn row(&self, row: usize) -> Result<RowView<'_>, CCDBDataError> {
-        if row >= self.nrows {
+        if row >= self.n_rows {
             return Err(CCDBDataError::RowOutOfBounds {
                 requested: row,
-                nrows: self.nrows,
+                n_rows: self.n_rows,
             });
         }
         Ok(RowView {
-            values: self
-                .column_names
-                .iter()
-                .zip(self.columns.iter())
-                .map(|(name, col)| (name.as_str(), col.row(row)))
-                .collect(),
+            row,
+            columns: &self.columns,
+            column_names: &self.column_names,
+            column_indices: &self.column_indices,
         })
+    }
+
+    pub fn iter_rows(&self) -> impl Iterator<Item = RowView<'_>> {
+        (0..self.n_rows).map(move |row| RowView {
+            row,
+            columns: &self.columns,
+            column_names: &self.column_names,
+            column_indices: &self.column_indices,
+        })
+    }
+
+    pub fn iter_columns(&self) -> impl Iterator<Item = (&String, &Column)> {
+        izip!(self.column_names.iter(), self.columns.iter())
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.column_indices.contains_key(name)
     }
 }
 
@@ -400,6 +461,6 @@ pub enum CCDBDataError {
         column_type: ColumnType,
         text: String,
     },
-    #[error("row index {requested} out of bounds (nrows={nrows})")]
-    RowOutOfBounds { requested: usize, nrows: usize },
+    #[error("row index {requested} out of bounds (n_rows={n_rows})")]
+    RowOutOfBounds { requested: usize, n_rows: usize },
 }

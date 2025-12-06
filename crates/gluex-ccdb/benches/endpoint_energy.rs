@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use ccdb_rs::{context::Context, database::Database};
 use criterion::{criterion_group, criterion_main, Criterion};
+use gluex_ccdb::{context::Context, database::Database};
 
 fn bench_fetch_endpoint_energy_range(c: &mut Criterion) {
     let db_path = std::env::var("CCDB_BENCH_DB").unwrap_or_else(|_| "ccdb.sqlite".to_string());

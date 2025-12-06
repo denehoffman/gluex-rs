@@ -572,11 +572,11 @@ impl TypeTableHandle {
             })?
             .collect::<Result<HashMap<Id, ConstantSetMeta>, _>>()?;
         let columns = self.columns()?;
-        let nrows = self.meta.n_rows as usize;
+        let n_rows = self.meta.n_rows as usize;
         assignments
             .iter()
             .filter_map(|(run, meta)| Some((run, cs_map.get(&meta.constant_set_id)?)))
-            .map(|(run, cs_meta)| Ok((*run, Data::from_vault(&cs_meta.vault, &columns, nrows)?)))
+            .map(|(run, cs_meta)| Ok((*run, Data::from_vault(&cs_meta.vault, &columns, n_rows)?)))
             .collect::<Result<HashMap<RunNumber, Data>, CCDBError>>()
     }
 }
