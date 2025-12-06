@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use jiff::Timestamp;
+use chrono::{DateTime, Utc};
 
 use crate::{
     context::{parse_timestamp, ParseTimestampError},
@@ -52,198 +52,438 @@ impl Display for ColumnType {
 
 #[derive(Debug, Clone, Default)]
 pub struct ColumnMeta {
-    pub id: Id,
-    pub created: String,
-    pub modified: String,
-    pub name: String,
-    pub type_id: Id,
-    pub column_type: ColumnType,
-    pub order: i64,
-    pub comment: String,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) modified: String,
+    pub(crate) name: String,
+    pub(crate) type_id: Id,
+    pub(crate) column_type: ColumnType,
+    pub(crate) order: i64,
+    pub(crate) comment: String,
 }
 impl ColumnMeta {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn modified(&self) -> &str {
+        &self.modified
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn type_id(&self) -> Id {
+        self.type_id
+    }
+    pub fn column_type(&self) -> ColumnType {
+        self.column_type
+    }
+    pub fn order(&self) -> i64 {
+        self.order
+    }
+    pub fn comment(&self) -> &str {
+        &self.comment
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
-    pub fn modified(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.modified)
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct DirectoryMeta {
-    pub id: Id,
-    pub created: String,
-    pub modified: String,
-    pub name: String,
-    pub parent_id: Id,
-    pub author_id: Id,
-    pub comment: String,
-    pub is_deprecated: bool,
-    pub deprecated_by_user_id: Id,
-    pub is_locked: bool,
-    pub locked_by_user_id: Id,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) modified: String,
+    pub(crate) name: String,
+    pub(crate) parent_id: Id,
+    pub(crate) author_id: Id,
+    pub(crate) comment: String,
+    pub(crate) is_deprecated: bool,
+    pub(crate) deprecated_by_user_id: Id,
+    pub(crate) is_locked: bool,
+    pub(crate) locked_by_user_id: Id,
 }
 impl DirectoryMeta {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn modified(&self) -> &str {
+        &self.modified
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn parent_id(&self) -> Id {
+        self.parent_id
+    }
+    pub fn author_id(&self) -> Id {
+        self.author_id
+    }
+    pub fn comment(&self) -> &str {
+        &self.comment
+    }
+    pub fn is_deprecated(&self) -> bool {
+        self.is_deprecated
+    }
+    pub fn deprecated_by_user_id(&self) -> Id {
+        self.deprecated_by_user_id
+    }
+    pub fn is_locked(&self) -> bool {
+        self.is_locked
+    }
+    pub fn locked_by_user_id(&self) -> Id {
+        self.locked_by_user_id
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
-    pub fn modified(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.modified)
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct TypeTableMeta {
-    pub id: Id,
-    pub created: String,
-    pub modified: String,
-    pub directory_id: Id,
-    pub name: String,
-    pub n_rows: i64,
-    pub n_columns: i64,
-    pub n_assignments: i64,
-    pub author_id: Id,
-    pub comment: String,
-    pub is_deprecated: bool,
-    pub deprecated_by_user_id: Id,
-    pub is_locked: bool,
-    pub locked_by_user_id: Id,
-    pub lock_time: String,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) modified: String,
+    pub(crate) directory_id: Id,
+    pub(crate) name: String,
+    pub(crate) n_rows: i64,
+    pub(crate) n_columns: i64,
+    pub(crate) n_assignments: i64,
+    pub(crate) author_id: Id,
+    pub(crate) comment: String,
+    pub(crate) is_deprecated: bool,
+    pub(crate) deprecated_by_user_id: Id,
+    pub(crate) is_locked: bool,
+    pub(crate) locked_by_user_id: Id,
+    pub(crate) lock_time: String,
 }
 
 impl TypeTableMeta {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn modified(&self) -> &str {
+        &self.modified
+    }
+    pub fn directory_id(&self) -> Id {
+        self.directory_id
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn n_rows(&self) -> i64 {
+        self.n_rows
+    }
+    pub fn n_columns(&self) -> i64 {
+        self.n_columns
+    }
+    pub fn n_assignments(&self) -> i64 {
+        self.n_assignments
+    }
+    pub fn author_id(&self) -> Id {
+        self.author_id
+    }
+    pub fn comment(&self) -> &str {
+        &self.comment
+    }
+    pub fn is_deprecated(&self) -> bool {
+        self.is_deprecated
+    }
+    pub fn deprecated_by_user_id(&self) -> Id {
+        self.deprecated_by_user_id
+    }
+    pub fn is_locked(&self) -> bool {
+        self.is_locked
+    }
+    pub fn locked_by_user_id(&self) -> Id {
+        self.locked_by_user_id
+    }
+    pub fn lock_time(&self) -> &str {
+        &self.lock_time
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
-    pub fn modified(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.modified)
     }
-    pub fn lock_time(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn lock_time_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.lock_time)
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ConstantSetMeta {
-    pub id: Id,
-    pub created: String,
-    pub modified: String,
-    pub vault: String,
-    pub constant_type_id: Id,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) modified: String,
+    pub(crate) vault: String,
+    pub(crate) constant_type_id: Id,
 }
 
 impl ConstantSetMeta {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn modified(&self) -> &str {
+        &self.modified
+    }
+    pub fn vault(&self) -> &str {
+        &self.vault
+    }
+    pub fn constant_type_id(&self) -> Id {
+        self.constant_type_id
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
-    pub fn modified(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.modified)
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct AssignmentMeta {
-    pub id: Id,
-    pub created: String,
-    pub modified: String,
-    pub variation_id: Id,
-    pub run_range_id: Id,
-    pub event_range_id: Id,
-    pub author_id: Id,
-    pub comment: String,
-    pub constant_set_id: Id,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) modified: String,
+    pub(crate) variation_id: Id,
+    pub(crate) run_range_id: Id,
+    pub(crate) event_range_id: Id,
+    pub(crate) author_id: Id,
+    pub(crate) comment: String,
+    pub(crate) constant_set_id: Id,
 }
 impl AssignmentMeta {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn modified(&self) -> &str {
+        &self.modified
+    }
+    pub fn variation_id(&self) -> Id {
+        self.variation_id
+    }
+    pub fn run_range_id(&self) -> Id {
+        self.run_range_id
+    }
+    pub fn event_range_id(&self) -> Id {
+        self.event_range_id
+    }
+    pub fn author_id(&self) -> Id {
+        self.author_id
+    }
+    pub fn comment(&self) -> &str {
+        &self.comment
+    }
+    pub fn constant_set_id(&self) -> Id {
+        self.constant_set_id
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
-    pub fn modified(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.modified)
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct AssignmentMetaLite {
-    pub id: Id,
-    pub created: String,
-    pub constant_set_id: Id,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) constant_set_id: Id,
 }
 impl AssignmentMetaLite {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn constant_set_id(&self) -> Id {
+        self.constant_set_id
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct VariationMeta {
-    pub id: Id,
-    pub created: String,
-    pub modified: String,
-    pub name: String,
-    pub description: String,
-    pub author_id: Id,
-    pub comment: String,
-    pub parent_id: Id,
-    pub is_locked: bool,
-    pub lock_time: String,
-    pub locked_by_user_id: Id,
-    pub go_back_behavior: i64,
-    pub go_back_time: String,
-    pub is_deprecated: bool,
-    pub deprecated_by_user_id: Id,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) modified: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) author_id: Id,
+    pub(crate) comment: String,
+    pub(crate) parent_id: Id,
+    pub(crate) is_locked: bool,
+    pub(crate) lock_time: String,
+    pub(crate) locked_by_user_id: Id,
+    pub(crate) go_back_behavior: i64,
+    pub(crate) go_back_time: String,
+    pub(crate) is_deprecated: bool,
+    pub(crate) deprecated_by_user_id: Id,
 }
 impl VariationMeta {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn modified(&self) -> &str {
+        &self.modified
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+    pub fn author_id(&self) -> Id {
+        self.author_id
+    }
+    pub fn comment(&self) -> &str {
+        &self.comment
+    }
+    pub fn parent_id(&self) -> Id {
+        self.parent_id
+    }
+    pub fn is_locked(&self) -> bool {
+        self.is_locked
+    }
+    pub fn lock_time(&self) -> &str {
+        &self.lock_time
+    }
+    pub fn locked_by_user_id(&self) -> Id {
+        self.locked_by_user_id
+    }
+    pub fn go_back_behavior(&self) -> i64 {
+        self.go_back_behavior
+    }
+    pub fn go_back_time(&self) -> &str {
+        &self.go_back_time
+    }
+    pub fn is_deprecated(&self) -> bool {
+        self.is_deprecated
+    }
+    pub fn deprecated_by_user_id(&self) -> Id {
+        self.deprecated_by_user_id
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
-    pub fn modified(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.modified)
     }
-    pub fn lock_time(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn lock_time_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.lock_time)
     }
-    pub fn go_back_time(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn go_back_time_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.go_back_time)
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct RunRangeMeta {
-    pub id: Id,
-    pub created: String,
-    pub modified: String,
-    pub name: String,
-    pub run_min: i64,
-    pub run_max: i64,
-    pub comment: String,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) modified: String,
+    pub(crate) name: String,
+    pub(crate) run_min: i64,
+    pub(crate) run_max: i64,
+    pub(crate) comment: String,
 }
 
 impl RunRangeMeta {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn modified(&self) -> &str {
+        &self.modified
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn run_min(&self) -> i64 {
+        self.run_min
+    }
+    pub fn run_max(&self) -> i64 {
+        self.run_max
+    }
+    pub fn comment(&self) -> &str {
+        &self.comment
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
-    pub fn modified(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.modified)
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct EventRangeMeta {
-    pub id: Id,
-    pub created: String,
-    pub modified: String,
-    pub run_number: i64,
-    pub event_min: i64,
-    pub event_max: i64,
-    pub comment: String,
+    pub(crate) id: Id,
+    pub(crate) created: String,
+    pub(crate) modified: String,
+    pub(crate) run_number: i64,
+    pub(crate) event_min: i64,
+    pub(crate) event_max: i64,
+    pub(crate) comment: String,
 }
 
 impl EventRangeMeta {
-    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+    pub fn created(&self) -> &str {
+        &self.created
+    }
+    pub fn modified(&self) -> &str {
+        &self.modified
+    }
+    pub fn run_number(&self) -> i64 {
+        self.run_number
+    }
+    pub fn event_min(&self) -> i64 {
+        self.event_min
+    }
+    pub fn event_max(&self) -> i64 {
+        self.event_max
+    }
+    pub fn comment(&self) -> &str {
+        &self.comment
+    }
+    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
-    pub fn modified(&self) -> Result<Timestamp, ParseTimestampError> {
+    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.modified)
     }
 }

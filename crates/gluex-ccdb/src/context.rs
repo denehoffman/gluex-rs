@@ -1,6 +1,6 @@
 use std::{ops::Bound, str::FromStr};
 
-use jiff::{civil::Date, tz::TimeZone, Timestamp};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use thiserror::Error;
 
 use crate::RunNumber;
@@ -59,14 +59,14 @@ const MAX_RUN_NUMBER: RunNumber = 2_147_483_647;
 pub struct Context {
     pub runs: Vec<RunNumber>,
     pub variation: String,
-    pub timestamp: Timestamp,
+    pub timestamp: DateTime<Utc>,
 }
 impl Default for Context {
     fn default() -> Self {
         Self {
             runs: vec![DEFAULT_RUN_NUMBER],
             variation: DEFAULT_VARIATION.to_string(),
-            timestamp: Timestamp::now(),
+            timestamp: Utc::now(),
         }
     }
 }
@@ -74,7 +74,7 @@ impl Context {
     pub fn new(
         runs: Option<Vec<RunNumber>>,
         variation: Option<String>,
-        timestamp: Option<Timestamp>,
+        timestamp: Option<DateTime<Utc>>,
     ) -> Self {
         let mut context = Self::default();
         if let Some(runs) = runs {
@@ -123,7 +123,7 @@ impl Context {
         self.variation = variation.to_string();
         self
     }
-    pub fn with_timestamp(mut self, timestamp: Timestamp) -> Self {
+    pub fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
         self.timestamp = timestamp;
         self
     }
@@ -133,39 +133,44 @@ impl Context {
 pub enum ParseTimestampError {
     #[error("timestamp \"{0}\" has no digits")]
     NoDigits(String),
-    #[error("{0}")]
-    JiffError(#[from] jiff::Error),
+    #[error("invalid timestamp: {0}")]
+    ChronoError(String),
 }
 
-pub fn parse_timestamp(input: &str) -> Result<Timestamp, ParseTimestampError> {
-    let digits: Vec<i16> = input
+pub fn parse_timestamp(input: &str) -> Result<DateTime<Utc>, ParseTimestampError> {
+    let digits: Vec<i32> = input
         .split(|c: char| !c.is_ascii_digit())
         .filter(|s| !s.is_empty())
-        .filter_map(|s| s.parse::<i16>().ok())
+        .filter_map(|s| s.parse::<i32>().ok())
         .collect();
     if digits.is_empty() {
         return Err(ParseTimestampError::NoDigits(input.to_string()));
     }
     let year = digits[0];
-    let month = digits.get(1).copied().map(|d| d as i8);
-    let day = digits.get(2).copied().map(|d| d as i8);
-    let hour = digits.get(3).copied().map(|d| d as i8);
-    let minute = digits.get(4).copied().map(|d| d as i8);
-    let second = digits.get(5).copied().map(|d| d as i8);
+    let month = digits.get(1).copied().unwrap_or(12) as u32;
+    let day = digits.get(2).copied().unwrap_or_else(|| {
+        let start = NaiveDate::from_ymd_opt(year, month, 1)
+            .unwrap_or_else(|| NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
+        let next_month = if month == 12 {
+            NaiveDate::from_ymd_opt(year + 1, 1, 1)
+        } else {
+            NaiveDate::from_ymd_opt(year, month + 1, 1)
+        }
+        .unwrap_or(start);
+        next_month.pred_opt().unwrap_or(start).day() as i32
+    }) as u32;
+    let hour = digits.get(3).copied().unwrap_or(23) as u32;
+    let minute = digits.get(4).copied().unwrap_or(59) as u32;
+    let second = digits.get(5).copied().unwrap_or(59) as u32;
 
-    Ok(match (month, day) {
-        (None, _) => Date::new(year, 1, 1)?.last_of_year(),
-        (Some(m), None) => Date::new(year, m, 1)?.last_of_month(),
-        (Some(m), Some(d)) => Date::new(year, m, d)?,
-    }
-    .at(
-        hour.unwrap_or(23),
-        minute.unwrap_or(59),
-        second.unwrap_or(59),
-        999_999_999,
-    )
-    .to_zoned(TimeZone::UTC)?
-    .timestamp())
+    let date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
+        ParseTimestampError::ChronoError(format!("invalid date: {year}-{month}-{day}"))
+    })?;
+    let time = NaiveTime::from_hms_opt(hour, minute, second).ok_or_else(|| {
+        ParseTimestampError::ChronoError(format!("invalid time: {hour}:{minute}:{second}"))
+    })?;
+    let naive = NaiveDateTime::new(date, time);
+    Ok(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
 }
 
 #[derive(Error, Debug)]
@@ -194,7 +199,7 @@ impl FromStr for Request {
         let path = NamePath::from_str(path_str)?;
         let mut run: Option<RunNumber> = None;
         let mut variation: Option<String> = None;
-        let mut timestamp: Option<Timestamp> = None;
+        let mut timestamp: Option<DateTime<Utc>> = None;
         if let Some(rest) = rest {
             let mut parts: Vec<&str> = rest.splitn(3, ':').collect();
             while parts.len() < 3 {

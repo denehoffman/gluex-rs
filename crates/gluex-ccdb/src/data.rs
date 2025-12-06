@@ -38,6 +38,49 @@ impl Column {
             Self::String(v) => Value::String(&v[row]),
         }
     }
+
+    pub fn int(&self) -> Option<Vec<i32>> {
+        match self {
+            Self::Int(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+    pub fn uint(&self) -> Option<Vec<u32>> {
+        match self {
+            Self::UInt(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+    pub fn long(&self) -> Option<Vec<i64>> {
+        match self {
+            Self::Long(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+    pub fn ulong(&self) -> Option<Vec<u64>> {
+        match self {
+            Self::ULong(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+    pub fn double(&self) -> Option<Vec<f64>> {
+        match self {
+            Self::Double(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+    pub fn bool(&self) -> Option<Vec<bool>> {
+        match self {
+            Self::Bool(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+    pub fn string(&self) -> Option<Vec<String>> {
+        match self {
+            Self::String(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -358,7 +401,18 @@ impl Data {
             .and_then(|idx| self.columns.get(*idx))
     }
 
-    pub fn value(&self, row: usize, column: usize) -> Option<Value<'_>> {
+    pub fn column_clone(&self, idx: usize) -> Option<Column> {
+        self.columns.get(idx).cloned()
+    }
+
+    pub fn named_column_clone(&self, name: &str) -> Option<Column> {
+        self.column_indices
+            .get(name)
+            .and_then(|idx| self.columns.get(*idx))
+            .cloned()
+    }
+
+    pub fn value(&self, column: usize, row: usize) -> Option<Value<'_>> {
         if row >= self.n_rows || column >= self.n_columns {
             return None;
         }
@@ -443,7 +497,11 @@ impl Data {
     }
 
     pub fn iter_columns(&self) -> impl Iterator<Item = (&String, &ColumnType, &Column)> {
-        izip!(self.column_names.iter(), self.column_types.iter(), self.columns.iter())
+        izip!(
+            self.column_names.iter(),
+            self.column_types.iter(),
+            self.columns.iter()
+        )
     }
 
     pub fn contains(&self, name: &str) -> bool {

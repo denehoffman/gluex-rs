@@ -1,11 +1,11 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::Path,
     sync::Arc,
 };
 
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use jiff::Timestamp;
 use rusqlite::{Connection, OpenFlags};
 
 use crate::{
@@ -18,9 +18,37 @@ use crate::{
     CCDBError, CCDBResult, Id, RunNumber,
 };
 
+fn normalize_path(base: &str, path: &str) -> String {
+    let mut segments: Vec<String> = Vec::new();
+    let mut push_parts = |value: &str| {
+        for part in value.split('/') {
+            if part.is_empty() || part == "." {
+                continue;
+            }
+            if part == ".." {
+                segments.pop();
+            } else {
+                segments.push(part.to_string());
+            }
+        }
+    };
+    if path.starts_with('/') {
+        push_parts(path);
+    } else {
+        push_parts(base);
+        push_parts(path);
+    }
+    if segments.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", segments.join("/"))
+    }
+}
+
 #[derive(Clone)]
-pub struct Database {
+pub struct CCDB {
     connection: Arc<Connection>,
+    connection_path: String,
     variation_cache: Arc<DashMap<String, VariationMeta>>,
     variation_chain_cache: Arc<DashMap<Id, Vec<VariationMeta>>>,
     directory_meta: Arc<DashMap<Id, DirectoryMeta>>,
@@ -29,9 +57,10 @@ pub struct Database {
     table_by_dir_name: Arc<DashMap<(Id, String), Id>>,
 }
 
-impl Database {
+impl CCDB {
     pub fn open(path: impl AsRef<Path>) -> CCDBResult<Self> {
-        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let path_str = path.as_ref().to_string_lossy().to_string();
+        let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
         conn.pragma_update(None, "temp_store", "MEMORY")?;
         conn.execute(
@@ -40,7 +69,7 @@ impl Database {
              )",
             [],
         )?;
-        let db = Database {
+        let db = CCDB {
             connection: Arc::new(conn),
             variation_cache: Arc::new(DashMap::new()),
             variation_chain_cache: Arc::new(DashMap::new()),
@@ -48,6 +77,7 @@ impl Database {
             directory_by_path: Arc::new(DashMap::new()),
             table_meta: Arc::new(DashMap::new()),
             table_by_dir_name: Arc::new(DashMap::new()),
+            connection_path: path_str,
         };
         db.load_directories()?;
         db.load_tables()?;
@@ -55,6 +85,9 @@ impl Database {
     }
     pub fn connection(&self) -> &Connection {
         &self.connection
+    }
+    pub fn connection_path(&self) -> &str {
+        &self.connection_path
     }
     fn load_directories(&self) -> CCDBResult<()> {
         let mut stmt = self.connection.prepare(
@@ -155,11 +188,7 @@ impl Database {
         if path == "/" || path.is_empty() {
             return Ok(self.root());
         }
-        let norm = if path.starts_with('/') {
-            path.to_string()
-        } else {
-            format!("/{}", path)
-        };
+        let norm = normalize_path("/", path);
         let id = self
             .directory_by_path
             .get(&norm)
@@ -175,12 +204,8 @@ impl Database {
     }
 
     pub fn table(&self, path: &str) -> CCDBResult<TypeTableHandle> {
-        let norm = if path.starts_with('/') {
-            path.to_string()
-        } else {
-            format!("/{}", path)
-        };
-        let (dir_path, table_name) = match path.rsplit_once('/') {
+        let norm = normalize_path("/", path);
+        let (dir_path, table_name) = match norm.rsplit_once('/') {
             Some((parent, name)) if !name.is_empty() => (parent, name),
             _ => return Err(CCDBError::InvalidPathError(norm)),
         };
@@ -269,20 +294,28 @@ impl Database {
         self.variation_chain_cache.insert(start.id, chain.clone());
         Ok(chain)
     }
-    pub fn request(&self, request_string: &str) -> CCDBResult<HashMap<RunNumber, Data>> {
+    pub fn request(&self, request_string: &str) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let request: Request = request_string.parse()?;
         let table = self.table(request.path.full_path())?;
         table.fetch(&request.context)
+    }
+
+    pub fn fetch(&self, path: &str, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
+        let table = self.table(path)?;
+        table.fetch(ctx)
     }
 }
 
 #[derive(Clone)]
 pub struct DirectoryHandle {
-    db: Database,
-    pub meta: DirectoryMeta,
+    db: CCDB,
+    pub(crate) meta: DirectoryMeta,
 }
 
 impl DirectoryHandle {
+    pub fn meta(&self) -> &DirectoryMeta {
+        &self.meta
+    }
     pub fn full_path(&self) -> String {
         if self.meta.id == 0 {
             "/".to_string()
@@ -315,7 +348,7 @@ impl DirectoryHandle {
             })
         }
     }
-    pub fn subdirs(&self) -> CCDBResult<Vec<DirectoryHandle>> {
+    pub fn dirs(&self) -> CCDBResult<Vec<DirectoryHandle>> {
         Ok(self
             .db
             .directory_meta
@@ -327,20 +360,9 @@ impl DirectoryHandle {
             })
             .collect())
     }
-    pub fn subdir(&self, name: &str) -> CCDBResult<DirectoryHandle> {
-        for meta in self.db.directory_meta.iter() {
-            if meta.parent_id == self.meta.id && meta.name == name {
-                return Ok(DirectoryHandle {
-                    db: self.db.clone(),
-                    meta: meta.value().clone(),
-                });
-            }
-        }
-        Err(CCDBError::DirectoryNotFoundError(format!(
-            "{}/{}",
-            self.full_path(),
-            name
-        )))
+    pub fn dir(&self, path: &str) -> CCDBResult<DirectoryHandle> {
+        let target = normalize_path(&self.full_path(), path);
+        self.db.dir(&target)
     }
     pub fn tables(&self) -> CCDBResult<Vec<TypeTableHandle>> {
         Ok(self
@@ -374,10 +396,13 @@ impl DirectoryHandle {
 
 #[derive(Clone)]
 pub struct TypeTableHandle {
-    db: Database,
-    pub meta: TypeTableMeta,
+    db: CCDB,
+    pub(crate) meta: TypeTableMeta,
 }
 impl TypeTableHandle {
+    pub fn meta(&self) -> &TypeTableMeta {
+        &self.meta
+    }
     pub fn name(&self) -> &str {
         &self.meta.name
     }
@@ -425,7 +450,7 @@ impl TypeTableHandle {
             .collect::<Result<Vec<ColumnMeta>, _>>()?;
         Ok(columns)
     }
-    pub fn fetch(&self, ctx: &Context) -> CCDBResult<HashMap<RunNumber, Data>> {
+    pub fn fetch(&self, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let runs: Vec<RunNumber> = if ctx.runs.is_empty() {
             vec![0]
         } else {
@@ -433,7 +458,7 @@ impl TypeTableHandle {
         };
         let assignments = self.resolve_assignments(&runs, &ctx.variation, ctx.timestamp)?;
         if assignments.is_empty() {
-            return Ok(HashMap::new());
+            return Ok(BTreeMap::new());
         }
         Ok(self.load_vaults(&assignments)?)
     }
@@ -441,16 +466,16 @@ impl TypeTableHandle {
         &self,
         runs: &[RunNumber],
         variation: &str,
-        timestamp: Timestamp,
-    ) -> CCDBResult<HashMap<RunNumber, AssignmentMetaLite>> {
+        timestamp: DateTime<Utc>,
+    ) -> CCDBResult<BTreeMap<RunNumber, AssignmentMetaLite>> {
         if runs.is_empty() {
-            return Ok(HashMap::new());
+            return Ok(BTreeMap::new());
         }
         let min_run = *runs.iter().min().expect("this is a bug, please report it!");
         let max_run = *runs.iter().max().expect("this is a bug, please report it!");
         let start_var_meta = self.db.variation(variation)?; // TODO: hierarchy lookup
         let var_chain = self.db.variation_chain(&start_var_meta)?;
-        let mut final_assignments: HashMap<RunNumber, AssignmentMetaLite> = HashMap::new();
+        let mut final_assignments: BTreeMap<RunNumber, AssignmentMetaLite> = BTreeMap::new();
         let mut unresolved: HashSet<RunNumber> = runs.iter().copied().collect();
         for var_meta in var_chain {
             if unresolved.is_empty() {
@@ -474,10 +499,10 @@ impl TypeTableHandle {
         &self,
         runs: &HashSet<RunNumber>,
         var_meta: &VariationMeta,
-        timestamp: Timestamp,
+        timestamp: DateTime<Utc>,
         min_run: RunNumber,
         max_run: RunNumber,
-    ) -> CCDBResult<HashMap<RunNumber, AssignmentMetaLite>> {
+    ) -> CCDBResult<BTreeMap<RunNumber, AssignmentMetaLite>> {
         let mut stmt = self.db.connection.prepare_cached(
             "SELECT
                  a.id, a.created, a.constantSetId,
@@ -495,7 +520,7 @@ impl TypeTableHandle {
             .query_map(
                 (
                     self.meta.id,
-                    timestamp.as_second(),
+                    timestamp.timestamp(),
                     var_meta.id,
                     min_run as i64,
                     max_run as i64,
@@ -512,14 +537,14 @@ impl TypeTableHandle {
                 },
             )?
             .collect::<Result<Vec<(AssignmentMetaLite, i64, i64)>, _>>()?;
-        let mut best: HashMap<RunNumber, AssignmentMetaLite> = HashMap::new();
-        let mut best_created: HashMap<RunNumber, Timestamp> = HashMap::new(); // timestamp map
+        let mut best: BTreeMap<RunNumber, AssignmentMetaLite> = BTreeMap::new();
+        let mut best_created: HashMap<RunNumber, DateTime<Utc>> = HashMap::new(); // timestamp map
         for &run in runs {
             let run_i64 = run as i64;
             for (meta, rmin, rmax) in &valid_assignments {
                 if run_i64 >= *rmin && run_i64 <= *rmax {
                     let cur_best = best_created.get(&run);
-                    let created = meta.created()?;
+                    let created = meta.created_ts()?;
                     if cur_best.map(|t| created > *t).unwrap_or(true) {
                         best.insert(run, meta.clone());
                         best_created.insert(run, created);
@@ -531,13 +556,12 @@ impl TypeTableHandle {
     }
     fn load_vaults(
         &self,
-        assignments: &HashMap<RunNumber, AssignmentMetaLite>,
-    ) -> CCDBResult<HashMap<RunNumber, Data>> {
+        assignments: &BTreeMap<RunNumber, AssignmentMetaLite>,
+    ) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         if assignments.is_empty() {
-            return Ok(HashMap::new());
+            return Ok(BTreeMap::new());
         }
-        let mut constant_set_ids: Vec<Id> =
-            assignments.values().map(|a| a.constant_set_id).collect();
+        let mut constant_set_ids: Vec<Id> = assignments.values().map(|a| a.constant_set_id).collect();
         constant_set_ids.sort_unstable();
         constant_set_ids.dedup(); // PERF: is this slower than sorting a hashset?
         self.db
@@ -577,6 +601,6 @@ impl TypeTableHandle {
             .iter()
             .filter_map(|(run, meta)| Some((run, cs_map.get(&meta.constant_set_id)?)))
             .map(|(run, cs_meta)| Ok((*run, Data::from_vault(&cs_meta.vault, &columns, n_rows)?)))
-            .collect::<CCDBResult<HashMap<RunNumber, Data>>>()
+            .collect::<CCDBResult<BTreeMap<RunNumber, Data>>>()
     }
 }

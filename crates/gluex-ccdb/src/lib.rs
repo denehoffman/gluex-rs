@@ -4,6 +4,8 @@ pub mod context;
 pub mod data;
 pub mod database;
 pub mod models;
+#[cfg(feature = "python")]
+pub mod python;
 
 pub type Id = i64;
 pub type RunNumber = u32;
@@ -30,5 +32,7 @@ pub enum CCDBError {
 }
 
 pub mod prelude {
-    pub use crate::{context::Context, database::Database, CCDBError, CCDBResult, Id, RunNumber};
+    pub use crate::{context::Context, database::CCDB, CCDBError, CCDBResult, Id, RunNumber};
 }
+#[cfg(feature = "python")]
+pub use python::*;

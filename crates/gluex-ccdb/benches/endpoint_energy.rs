@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use gluex_ccdb::{context::Context, database::Database};
+use gluex_ccdb::{context::Context, database::CCDB};
 
 fn bench_fetch_endpoint_energy_range(c: &mut Criterion) {
     let db_path = std::env::var("CCDB_BENCH_DB").unwrap_or_else(|_| "ccdb.sqlite".to_string());
-    let db = Database::open(&db_path).expect("failed to open database");
+    let db = CCDB::open(&db_path).expect("failed to open database");
     let table = db
         .table("PHOTON_BEAM/endpoint_energy")
         .expect("failed to open endpoint_energy table");
@@ -25,7 +25,7 @@ fn bench_fetch_endpoint_energy_range(c: &mut Criterion) {
 
 fn bench_fetch_endpoint_energy_single_run(c: &mut Criterion) {
     let db_path = std::env::var("CCDB_BENCH_DB").unwrap_or_else(|_| "ccdb.sqlite".to_string());
-    let db = Database::open(&db_path).expect("failed to open database");
+    let db = CCDB::open(&db_path).expect("failed to open database");
     let table = db
         .table("PHOTON_BEAM/endpoint_energy")
         .expect("failed to open endpoint_energy table");

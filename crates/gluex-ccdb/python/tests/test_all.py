@@ -1,6 +1,6 @@
-import pytest
-import ccdb_rs
+import gluex_ccdb
 
 
-def test_sum_as_string():
-    assert ccdb_rs.sum_as_string(1, 1) == "2"
+def test_imports():
+    # Basic smoke test to ensure module is loadable
+    assert hasattr(gluex_ccdb, "CCDB")  # noqa: S101

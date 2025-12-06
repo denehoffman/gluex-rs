@@ -12,12 +12,16 @@ rust-version.workspace = true
 name = "gluex_ccdb"
 crate-type = ["rlib", "cdylib"]
 
+[features]
+default = []
+python = ["pyo3/extension-module", "pyo3", "pyo3/chrono"]
+
 [dependencies]
+chrono.workspace = true
 dashmap.workspace = true
 itertools.workspace = true
-jiff.workspace = true
 parking_lot.workspace = true
-pyo3.workspace = true
+pyo3 = { workspace = true, optional = true }
 rusqlite.workspace = true
 thiserror.workspace = true
 
