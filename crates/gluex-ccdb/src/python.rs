@@ -383,7 +383,7 @@ impl PyData {
         row: usize,
     ) -> PyResult<Py<PyAny>> {
         let col_idx = parse_column_index(&self.inner, column)?;
-        match self.inner.value(row, col_idx) {
+        match self.inner.value(col_idx, row) {
             Some(v) => value_to_py(py, v),
             None => Ok(py.None()),
         }
@@ -452,7 +452,7 @@ impl PyRowView {
     ///     Cell value converted to a Python scalar or `None` if missing.
     pub fn value(&self, py: Python<'_>, column: Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let idx = parse_column_index(&self.data, column)?;
-        match self.data.value(self.row, idx) {
+        match self.data.value(idx, self.row) {
             Some(v) => value_to_py(py, v),
             None => Ok(py.None()),
         }
