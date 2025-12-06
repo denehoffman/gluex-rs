@@ -544,7 +544,7 @@ impl TypeTableHandle {
             for (meta, rmin, rmax) in &valid_assignments {
                 if run_i64 >= *rmin && run_i64 <= *rmax {
                     let cur_best = best_created.get(&run);
-                    let created = meta.created_ts()?;
+                    let created = meta.created()?;
                     if cur_best.map(|t| created > *t).unwrap_or(true) {
                         best.insert(run, meta.clone());
                         best_created.insert(run, created);

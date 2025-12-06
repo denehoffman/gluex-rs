@@ -191,6 +191,10 @@ impl PyTypeTableMeta {
     fn n_columns(&self) -> i64 {
         self.inner.n_columns()
     }
+    #[getter]
+    fn comment(&self) -> &str {
+        self.inner.comment()
+    }
 
     fn __repr__(&self) -> String {
         format!(

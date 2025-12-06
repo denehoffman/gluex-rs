@@ -2,10 +2,7 @@ use std::fmt::Display;
 
 use chrono::{DateTime, Utc};
 
-use crate::{
-    context::{parse_timestamp, ParseTimestampError},
-    Id,
-};
+use crate::{context::parse_timestamp, CCDBResult, Id};
 
 #[derive(Debug, Copy, Clone, Default)]
 pub enum ColumnType {
@@ -65,12 +62,6 @@ impl ColumnMeta {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
-    pub fn modified(&self) -> &str {
-        &self.modified
-    }
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -86,11 +77,11 @@ impl ColumnMeta {
     pub fn comment(&self) -> &str {
         &self.comment
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
-    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.modified)
+    pub fn modified(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.modified)?)
     }
 }
 
@@ -111,12 +102,6 @@ pub struct DirectoryMeta {
 impl DirectoryMeta {
     pub fn id(&self) -> Id {
         self.id
-    }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
-    pub fn modified(&self) -> &str {
-        &self.modified
     }
     pub fn name(&self) -> &str {
         &self.name
@@ -142,11 +127,11 @@ impl DirectoryMeta {
     pub fn locked_by_user_id(&self) -> Id {
         self.locked_by_user_id
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
-    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.modified)
+    pub fn modified(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.modified)?)
     }
 }
 
@@ -172,12 +157,6 @@ pub struct TypeTableMeta {
 impl TypeTableMeta {
     pub fn id(&self) -> Id {
         self.id
-    }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
-    pub fn modified(&self) -> &str {
-        &self.modified
     }
     pub fn directory_id(&self) -> Id {
         self.directory_id
@@ -212,17 +191,14 @@ impl TypeTableMeta {
     pub fn locked_by_user_id(&self) -> Id {
         self.locked_by_user_id
     }
-    pub fn lock_time(&self) -> &str {
-        &self.lock_time
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn modified(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.modified)?)
     }
-    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.modified)
-    }
-    pub fn lock_time_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.lock_time)
+    pub fn lock_time(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.lock_time)?)
     }
 }
 
@@ -239,23 +215,17 @@ impl ConstantSetMeta {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
-    pub fn modified(&self) -> &str {
-        &self.modified
-    }
     pub fn vault(&self) -> &str {
         &self.vault
     }
     pub fn constant_type_id(&self) -> Id {
         self.constant_type_id
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
-    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.modified)
+    pub fn modified(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.modified)?)
     }
 }
 
@@ -275,12 +245,6 @@ impl AssignmentMeta {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
-    pub fn modified(&self) -> &str {
-        &self.modified
-    }
     pub fn variation_id(&self) -> Id {
         self.variation_id
     }
@@ -299,11 +263,11 @@ impl AssignmentMeta {
     pub fn constant_set_id(&self) -> Id {
         self.constant_set_id
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
-    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.modified)
+    pub fn modified(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.modified)?)
     }
 }
 
@@ -317,14 +281,11 @@ impl AssignmentMetaLite {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
     pub fn constant_set_id(&self) -> Id {
         self.constant_set_id
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
 }
 
@@ -350,12 +311,6 @@ impl VariationMeta {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
-    pub fn modified(&self) -> &str {
-        &self.modified
-    }
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -374,17 +329,11 @@ impl VariationMeta {
     pub fn is_locked(&self) -> bool {
         self.is_locked
     }
-    pub fn lock_time(&self) -> &str {
-        &self.lock_time
-    }
     pub fn locked_by_user_id(&self) -> Id {
         self.locked_by_user_id
     }
     pub fn go_back_behavior(&self) -> i64 {
         self.go_back_behavior
-    }
-    pub fn go_back_time(&self) -> &str {
-        &self.go_back_time
     }
     pub fn is_deprecated(&self) -> bool {
         self.is_deprecated
@@ -392,17 +341,17 @@ impl VariationMeta {
     pub fn deprecated_by_user_id(&self) -> Id {
         self.deprecated_by_user_id
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
-    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.modified)
+    pub fn modified(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.modified)?)
     }
-    pub fn lock_time_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.lock_time)
+    pub fn lock_time(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.lock_time)?)
     }
-    pub fn go_back_time_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.go_back_time)
+    pub fn go_back_time(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.go_back_time)?)
     }
 }
 
@@ -421,12 +370,6 @@ impl RunRangeMeta {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
-    pub fn modified(&self) -> &str {
-        &self.modified
-    }
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -439,11 +382,11 @@ impl RunRangeMeta {
     pub fn comment(&self) -> &str {
         &self.comment
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
-    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.modified)
+    pub fn modified(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.modified)?)
     }
 }
 
@@ -462,12 +405,6 @@ impl EventRangeMeta {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn created(&self) -> &str {
-        &self.created
-    }
-    pub fn modified(&self) -> &str {
-        &self.modified
-    }
     pub fn run_number(&self) -> i64 {
         self.run_number
     }
@@ -480,10 +417,10 @@ impl EventRangeMeta {
     pub fn comment(&self) -> &str {
         &self.comment
     }
-    pub fn created_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
-    pub fn modified_ts(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.modified)
+    pub fn modified(&self) -> CCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.modified)?)
     }
 }

@@ -35,6 +35,9 @@ class TypeTableMeta:
     @property
     def n_columns(self) -> int: ...
 
+    @property
+    def comment(self) -> str: ...
+
 
 class Column:
     @property
