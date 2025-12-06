@@ -1,0 +1,29 @@
+[package]
+name = "gluex-ccdb"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "gluex_ccdb"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+dashmap.workspace = true
+itertools.workspace = true
+jiff.workspace = true
+parking_lot.workspace = true
+pyo3.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "endpoint_energy"
+harness = false

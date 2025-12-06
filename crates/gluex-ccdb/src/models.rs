@@ -164,6 +164,18 @@ impl AssignmentMeta {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct AssignmentMetaLite {
+    pub id: Id,
+    pub created: String,
+    pub constant_set_id: Id,
+}
+impl AssignmentMetaLite {
+    pub fn created(&self) -> Result<Timestamp, ParseTimestampError> {
+        parse_timestamp(&self.created)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct VariationMeta {
     pub id: Id,
     pub created: String,

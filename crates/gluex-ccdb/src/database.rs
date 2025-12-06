@@ -12,7 +12,7 @@ use crate::{
     context::{Context, Request},
     data::Data,
     models::{
-        AssignmentMeta, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta,
+        AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta,
         VariationMeta,
     },
     CCDBError, Id, RunNumber,
@@ -21,8 +21,8 @@ use crate::{
 #[derive(Clone)]
 pub struct Database {
     connection: Arc<Connection>,
-    variation_cache: Arc<DashMap<String, VariationMeta>>, // keyed by name
-    variation_chain_cache: Arc<DashMap<Id, Vec<VariationMeta>>>, // keyed by variation id
+    variation_cache: Arc<DashMap<String, VariationMeta>>,
+    variation_chain_cache: Arc<DashMap<Id, Vec<VariationMeta>>>,
     directory_meta: Arc<DashMap<Id, DirectoryMeta>>,
     directory_by_path: Arc<DashMap<String, Id>>,
     table_meta: Arc<DashMap<Id, TypeTableMeta>>,
@@ -408,7 +408,7 @@ impl TypeTableHandle {
              WHERE typeId = ?
              ORDER BY `order`",
         )?;
-        Ok(stmt
+        let columns = stmt
             .query_map([self.meta.id], |row| {
                 Ok(ColumnMeta {
                     id: row.get(0)?,
@@ -422,7 +422,8 @@ impl TypeTableHandle {
                     comment: row.get(7).unwrap_or_default(),
                 })
             })?
-            .collect::<Result<Vec<ColumnMeta>, _>>()?)
+            .collect::<Result<Vec<ColumnMeta>, _>>()?;
+        Ok(columns)
     }
     pub fn fetch(&self, ctx: &Context) -> Result<HashMap<RunNumber, Data>, CCDBError> {
         let runs: Vec<RunNumber> = if ctx.runs.is_empty() {
@@ -441,7 +442,7 @@ impl TypeTableHandle {
         runs: &[RunNumber],
         variation: &str,
         timestamp: Timestamp,
-    ) -> Result<HashMap<RunNumber, AssignmentMeta>, CCDBError> {
+    ) -> Result<HashMap<RunNumber, AssignmentMetaLite>, CCDBError> {
         if runs.is_empty() {
             return Ok(HashMap::new());
         }
@@ -449,7 +450,7 @@ impl TypeTableHandle {
         let max_run = *runs.iter().max().expect("this is a bug, please report it!");
         let start_var_meta = self.db.variation(variation)?; // TODO: hierarchy lookup
         let var_chain = self.db.variation_chain(&start_var_meta)?;
-        let mut final_assignments: HashMap<RunNumber, AssignmentMeta> = HashMap::new();
+        let mut final_assignments: HashMap<RunNumber, AssignmentMetaLite> = HashMap::new();
         let mut unresolved: HashSet<RunNumber> = runs.iter().copied().collect();
         for var_meta in var_chain {
             if unresolved.is_empty() {
@@ -476,12 +477,10 @@ impl TypeTableHandle {
         timestamp: Timestamp,
         min_run: RunNumber,
         max_run: RunNumber,
-    ) -> Result<HashMap<RunNumber, AssignmentMeta>, CCDBError> {
+    ) -> Result<HashMap<RunNumber, AssignmentMetaLite>, CCDBError> {
         let mut stmt = self.db.connection.prepare_cached(
             "SELECT
-                 a.id, a.created, a.modified,
-                 a.variationId, a.runRangeId, a.eventRangeId,
-                 a.authorId, a.comment, a.constantSetId,
+                 a.id, a.created, a.constantSetId,
                  rr.runMin, rr.runMax
              FROM assignments a
              JOIN constantSets cs ON cs.id = a.constantSetId
@@ -502,24 +501,18 @@ impl TypeTableHandle {
                     max_run as i64,
                 ),
                 |row| {
-                    let meta = AssignmentMeta {
+                    let meta = AssignmentMetaLite {
                         id: row.get(0)?,
                         created: row.get(1)?,
-                        modified: row.get(2)?,
-                        variation_id: row.get(3)?,
-                        run_range_id: row.get(4).unwrap_or_default(),
-                        event_range_id: row.get(5).unwrap_or_default(),
-                        author_id: row.get(6)?,
-                        comment: row.get(7).unwrap_or_default(),
-                        constant_set_id: row.get(8)?,
+                        constant_set_id: row.get(2)?,
                     };
-                    let run_min: i64 = row.get(9)?;
-                    let run_max: i64 = row.get(10)?;
+                    let run_min: i64 = row.get(3)?;
+                    let run_max: i64 = row.get(4)?;
                     Ok((meta, run_min, run_max))
                 },
             )?
-            .collect::<Result<Vec<(AssignmentMeta, i64, i64)>, _>>()?;
-        let mut best: HashMap<RunNumber, AssignmentMeta> = HashMap::new();
+            .collect::<Result<Vec<(AssignmentMetaLite, i64, i64)>, _>>()?;
+        let mut best: HashMap<RunNumber, AssignmentMetaLite> = HashMap::new();
         let mut best_created: HashMap<RunNumber, Timestamp> = HashMap::new(); // timestamp map
         for &run in runs {
             let run_i64 = run as i64;
@@ -538,7 +531,7 @@ impl TypeTableHandle {
     }
     fn load_vaults(
         &self,
-        assignments: &HashMap<RunNumber, AssignmentMeta>,
+        assignments: &HashMap<RunNumber, AssignmentMetaLite>,
     ) -> Result<HashMap<RunNumber, Data>, CCDBError> {
         if assignments.is_empty() {
             return Ok(HashMap::new());
