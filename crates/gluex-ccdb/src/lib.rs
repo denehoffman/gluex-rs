@@ -13,9 +13,10 @@ pub mod context;
 pub mod data;
 /// High-level database entry points and handles to CCDB objects.
 pub mod database;
-#[allow(missing_docs, clippy::missing_docs_in_private_items)]
+#[allow(missing_docs)]
 pub mod models;
 #[cfg(feature = "python")]
+/// The Python bindings for this crate.
 pub mod python;
 
 /// Primary integer identifier type used throughout the CCDB.

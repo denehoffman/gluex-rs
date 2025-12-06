@@ -40,7 +40,7 @@ impl PyColumnType {
     pub fn name(&self) -> &'static str {
         self.kind.as_str()
     }
-    pub fn __repr__(&self) -> String {
+    fn __repr__(&self) -> String {
         format!("ColumnType('{}')", self.kind.as_str())
     }
 }
@@ -114,12 +114,12 @@ pub struct PyColumn {
 impl PyColumn {
     /// str: Column name as stored in CCDB metadata.
     #[getter]
-    fn name(&self) -> String {
+    pub fn name(&self) -> String {
         self.name.clone()
     }
     /// ColumnType: Declared storage type for the column.
     #[getter]
-    fn column_type(&self) -> PyColumnType {
+    pub fn column_type(&self) -> PyColumnType {
         PyColumnType::from(self.column_type)
     }
 
@@ -265,22 +265,22 @@ pub struct PyData {
 impl PyData {
     /// int: Number of rows in the dataset.
     #[getter]
-    fn n_rows(&self) -> usize {
+    pub fn n_rows(&self) -> usize {
         self.inner.n_rows()
     }
     /// int: Number of columns in the dataset.
     #[getter]
-    fn n_columns(&self) -> usize {
+    pub fn n_columns(&self) -> usize {
         self.inner.n_columns()
     }
     /// list[str]: Column names in positional order.
     #[getter]
-    fn column_names(&self) -> Vec<String> {
+    pub fn column_names(&self) -> Vec<String> {
         self.inner.column_names().to_vec()
     }
     /// list[ColumnType]: Column types in positional order.
     #[getter]
-    fn column_types(&self) -> Vec<PyColumnType> {
+    pub fn column_types(&self) -> Vec<PyColumnType> {
         self.inner
             .column_types()
             .iter()
@@ -424,13 +424,13 @@ pub struct PyRowView {
 impl PyRowView {
     /// int: Number of columns available in this row.
     #[getter]
-    fn n_columns(&self, _py: Python<'_>) -> usize {
+    pub fn n_columns(&self, _py: Python<'_>) -> usize {
         self.data.n_columns()
     }
 
     /// list[ColumnType]: Column types for this row in positional order.
     #[getter]
-    fn column_types(&self, _py: Python<'_>) -> Vec<PyColumnType> {
+    pub fn column_types(&self, _py: Python<'_>) -> Vec<PyColumnType> {
         self.data
             .column_types()
             .iter()
@@ -511,17 +511,17 @@ pub struct PyTypeTableHandle {
 impl PyTypeTableHandle {
     /// str: Table name (without directory components).
     #[getter]
-    fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         self.inner.name()
     }
     /// int: Numeric identifier of the table in CCDB.
     #[getter]
-    fn id(&self) -> i64 {
+    pub fn id(&self) -> i64 {
         self.inner.id()
     }
     /// TypeTableMeta: Metadata such as row counts and comments.
     #[getter]
-    fn meta(&self) -> PyTypeTableMeta {
+    pub fn meta(&self) -> PyTypeTableMeta {
         PyTypeTableMeta {
             inner: self.inner.meta().clone(),
         }
