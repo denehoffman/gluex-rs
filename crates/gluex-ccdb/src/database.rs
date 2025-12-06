@@ -1,13 +1,3 @@
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    path::Path,
-    sync::Arc,
-};
-
-use chrono::{DateTime, Utc};
-use dashmap::DashMap;
-use rusqlite::{Connection, OpenFlags};
-
 use crate::{
     context::{Context, Request},
     data::Data,
@@ -16,6 +6,14 @@ use crate::{
         VariationMeta,
     },
     CCDBError, CCDBResult, Id, RunNumber,
+};
+use chrono::{DateTime, Utc};
+use dashmap::DashMap;
+use rusqlite::{Connection, OpenFlags};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    path::Path,
+    sync::Arc,
 };
 
 fn normalize_path(base: &str, path: &str) -> String {
@@ -45,6 +43,7 @@ fn normalize_path(base: &str, path: &str) -> String {
     }
 }
 
+/// Read-only client for the Jefferson Lab Calibration and Conditions Database.
 #[derive(Clone)]
 pub struct CCDB {
     connection: Arc<Connection>,
@@ -58,6 +57,7 @@ pub struct CCDB {
 }
 
 impl CCDB {
+    /// Opens a read-only connection to an existing CCDB SQLite database file.
     pub fn open(path: impl AsRef<Path>) -> CCDBResult<Self> {
         let path_str = path.as_ref().to_string_lossy().to_string();
         let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
@@ -83,9 +83,11 @@ impl CCDB {
         db.load_tables()?;
         Ok(db)
     }
+    /// Returns the underlying SQLite connection.
     pub fn connection(&self) -> &Connection {
         &self.connection
     }
+    /// Returns the filesystem path used to open the database.
     pub fn connection_path(&self) -> &str {
         &self.connection_path
     }
@@ -173,6 +175,7 @@ impl CCDB {
         Ok(())
     }
 
+    /// Returns a handle to the virtual root directory.
     pub fn root(&self) -> DirectoryHandle {
         DirectoryHandle {
             db: self.clone(),
@@ -184,6 +187,7 @@ impl CCDB {
         }
     }
 
+    /// Resolves an absolute or relative directory path into a handle.
     pub fn dir(&self, path: &str) -> CCDBResult<DirectoryHandle> {
         if path == "/" || path.is_empty() {
             return Ok(self.root());
@@ -203,6 +207,7 @@ impl CCDB {
         })
     }
 
+    /// Resolves a table path ("/dir/name") into a handle.
     pub fn table(&self, path: &str) -> CCDBResult<TypeTableHandle> {
         let norm = normalize_path("/", path);
         let (dir_path, table_name) = match norm.rsplit_once('/') {
@@ -212,6 +217,7 @@ impl CCDB {
         let dir = self.dir(dir_path)?;
         dir.table(table_name)
     }
+    /// Loads variation metadata, caching repeated lookups.
     pub fn variation(&self, name: &str) -> CCDBResult<VariationMeta> {
         if let Some(v) = self.variation_cache.get(name) {
             return Ok(v.clone());
@@ -248,6 +254,7 @@ impl CCDB {
             Err(CCDBError::VariationNotFoundError(name.to_string()))
         }
     }
+    /// Resolves a variation chain from the given starting variation up to the root.
     pub fn variation_chain(&self, start: &VariationMeta) -> CCDBResult<Vec<VariationMeta>> {
         if let Some(cached) = self.variation_chain_cache.get(&start.id) {
             return Ok(cached.clone());
@@ -294,18 +301,21 @@ impl CCDB {
         self.variation_chain_cache.insert(start.id, chain.clone());
         Ok(chain)
     }
+    /// Parses a request string of the form "/path:run:variation:timestamp" and fetches data.
     pub fn request(&self, request_string: &str) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let request: Request = request_string.parse()?;
         let table = self.table(request.path.full_path())?;
         table.fetch(&request.context)
     }
 
+    /// Fetches data for a table path using the supplied query context.
     pub fn fetch(&self, path: &str, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let table = self.table(path)?;
         table.fetch(ctx)
     }
 }
 
+/// Handle to a CCDB directory, allowing navigation and table discovery.
 #[derive(Clone)]
 pub struct DirectoryHandle {
     db: CCDB,
@@ -313,9 +323,11 @@ pub struct DirectoryHandle {
 }
 
 impl DirectoryHandle {
+    /// Returns the directory metadata as loaded from CCDB.
     pub fn meta(&self) -> &DirectoryMeta {
         &self.meta
     }
+    /// Returns the absolute path for this directory.
     pub fn full_path(&self) -> String {
         if self.meta.id == 0 {
             "/".to_string()
@@ -338,6 +350,7 @@ impl DirectoryHandle {
             format!("/{}", names.join("/"))
         }
     }
+    /// Returns the parent directory, if one exists.
     pub fn parent(&self) -> Option<Self> {
         if self.meta.parent_id == 0 {
             None
@@ -348,6 +361,7 @@ impl DirectoryHandle {
             })
         }
     }
+    /// Lists subdirectories directly under this directory.
     pub fn dirs(&self) -> CCDBResult<Vec<DirectoryHandle>> {
         Ok(self
             .db
@@ -360,10 +374,12 @@ impl DirectoryHandle {
             })
             .collect())
     }
+    /// Resolves a child directory given a relative path.
     pub fn dir(&self, path: &str) -> CCDBResult<DirectoryHandle> {
         let target = normalize_path(&self.full_path(), path);
         self.db.dir(&target)
     }
+    /// Lists tables that live directly under this directory.
     pub fn tables(&self) -> CCDBResult<Vec<TypeTableHandle>> {
         Ok(self
             .db
@@ -376,6 +392,7 @@ impl DirectoryHandle {
             })
             .collect())
     }
+    /// Resolves a table within this directory by name.
     pub fn table(&self, name: &str) -> CCDBResult<TypeTableHandle> {
         let id = self
             .db
@@ -394,21 +411,26 @@ impl DirectoryHandle {
     }
 }
 
+/// Handle to a CCDB table, enabling metadata inspection and data fetches.
 #[derive(Clone)]
 pub struct TypeTableHandle {
     db: CCDB,
     pub(crate) meta: TypeTableMeta,
 }
 impl TypeTableHandle {
+    /// Returns the table metadata as loaded from CCDB.
     pub fn meta(&self) -> &TypeTableMeta {
         &self.meta
     }
+    /// Returns the table name (without parent path components).
     pub fn name(&self) -> &str {
         &self.meta.name
     }
+    /// Returns the unique numeric identifier for this table.
     pub fn id(&self) -> Id {
         self.meta.id
     }
+    /// Returns the absolute path of this table, including directory prefix.
     pub fn full_path(&self) -> String {
         let dir_meta = self.db.directory_meta.get(&self.meta.directory_id);
         if let Some(dir_meta) = dir_meta {
@@ -426,6 +448,7 @@ impl TypeTableHandle {
             format!("/{}", self.meta.name)
         }
     }
+    /// Loads column metadata for this table.
     pub fn columns(&self) -> CCDBResult<Vec<ColumnMeta>> {
         let mut stmt = self.db.connection.prepare_cached(
             "SELECT id, created, modified, name, typeId, columnType, `order`, comment
@@ -450,6 +473,7 @@ impl TypeTableHandle {
             .collect::<Result<Vec<ColumnMeta>, _>>()?;
         Ok(columns)
     }
+    /// Fetches data for this table using the provided query context.
     pub fn fetch(&self, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let runs: Vec<RunNumber> = if ctx.runs.is_empty() {
             vec![0]
@@ -473,7 +497,7 @@ impl TypeTableHandle {
         }
         let min_run = *runs.iter().min().expect("this is a bug, please report it!");
         let max_run = *runs.iter().max().expect("this is a bug, please report it!");
-        let start_var_meta = self.db.variation(variation)?; // TODO: hierarchy lookup
+        let start_var_meta = self.db.variation(variation)?;
         let var_chain = self.db.variation_chain(&start_var_meta)?;
         let mut final_assignments: BTreeMap<RunNumber, AssignmentMetaLite> = BTreeMap::new();
         let mut unresolved: HashSet<RunNumber> = runs.iter().copied().collect();
@@ -561,7 +585,8 @@ impl TypeTableHandle {
         if assignments.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let mut constant_set_ids: Vec<Id> = assignments.values().map(|a| a.constant_set_id).collect();
+        let mut constant_set_ids: Vec<Id> =
+            assignments.values().map(|a| a.constant_set_id).collect();
         constant_set_ids.sort_unstable();
         constant_set_ids.dedup(); // PERF: is this slower than sorting a hashset?
         self.db

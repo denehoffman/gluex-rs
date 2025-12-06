@@ -1,8 +1,11 @@
 #![cfg(feature = "python")]
-
-use std::collections::BTreeMap;
-use std::sync::Arc;
-
+use crate::{
+    context::{parse_timestamp, Context},
+    data::{self, Data, Value},
+    database::{DirectoryHandle, TypeTableHandle, CCDB},
+    models::{ColumnMeta, ColumnType, TypeTableMeta},
+    CCDBError, RunNumber,
+};
 use chrono::{DateTime, Utc};
 use pyo3::{
     conversion::IntoPyObject,
@@ -10,14 +13,7 @@ use pyo3::{
     prelude::*,
     types::{PyFloat, PyInt, PyModule, PyString},
 };
-
-use crate::{
-    context::{parse_timestamp, Context},
-    data::{self, Data, Value},
-    database::{CCDB, DirectoryHandle, TypeTableHandle},
-    models::{ColumnMeta, ColumnType, TypeTableMeta},
-    CCDBError, RunNumber,
-};
+use std::{collections::BTreeMap, sync::Arc};
 
 impl From<CCDBError> for PyErr {
     fn from(value: CCDBError) -> Self {
@@ -25,6 +21,12 @@ impl From<CCDBError> for PyErr {
     }
 }
 
+/// Column type describing how a CCDB column is stored.
+///
+/// Attributes
+/// ----------
+/// name : str
+///     Short lowercase identifier for the storage type (e.g. "int").
 #[pyclass(name = "ColumnType", module = "gluex_ccdb")]
 #[derive(Clone)]
 pub struct PyColumnType {
@@ -33,6 +35,7 @@ pub struct PyColumnType {
 
 #[pymethods]
 impl PyColumnType {
+    /// str: Short lowercase identifier for the storage type.
     #[getter]
     pub fn name(&self) -> &'static str {
         self.kind.as_str()
@@ -48,12 +51,14 @@ impl From<ColumnType> for PyColumnType {
     }
 }
 
+#[allow(missing_docs)]
 #[pyclass(name = "ColumnMeta", module = "gluex_ccdb")]
 #[derive(Clone)]
 pub struct PyColumnMeta {
     inner: ColumnMeta,
 }
 
+#[allow(missing_docs)]
 #[pymethods]
 impl PyColumnMeta {
     #[getter]
@@ -90,6 +95,14 @@ impl PyColumnMeta {
     }
 }
 
+/// Single column of a fetched CCDB table.
+///
+/// Attributes
+/// ----------
+/// name : str
+///     Column name as recorded in CCDB metadata.
+/// column_type : ColumnType
+///     Storage type of the column values.
 #[pyclass(name = "Column", module = "gluex_ccdb", unsendable)]
 pub struct PyColumn {
     name: String,
@@ -99,15 +112,33 @@ pub struct PyColumn {
 
 #[pymethods]
 impl PyColumn {
+    /// str: Column name as stored in CCDB metadata.
     #[getter]
     fn name(&self) -> String {
         self.name.clone()
     }
+    /// ColumnType: Declared storage type for the column.
     #[getter]
     fn column_type(&self) -> PyColumnType {
         PyColumnType::from(self.column_type)
     }
 
+    /// row(self, row)
+    ///
+    /// Parameters
+    /// ----------
+    /// row : int
+    ///     Zero-based row index.
+    ///
+    /// Returns
+    /// -------
+    /// object
+    ///     Value converted to a Python scalar.
+    ///
+    /// Raises
+    /// ------
+    /// RuntimeError
+    ///     If the requested row is out of range.
     pub fn row(&self, py: Python<'_>, row: usize) -> PyResult<Py<PyAny>> {
         if row >= self.column.len() {
             return Err(PyRuntimeError::new_err("row index out of range"));
@@ -115,6 +146,12 @@ impl PyColumn {
         value_to_py(py, self.column.row(row))
     }
 
+    /// values(self)
+    ///
+    /// Returns
+    /// -------
+    /// list[object]
+    ///     All values converted to Python scalars in row order.
     pub fn values(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         let vals: Vec<Py<PyAny>> = match self.column.as_ref() {
             data::Column::Int(v) => v
@@ -167,12 +204,14 @@ impl PyColumn {
     }
 }
 
+#[allow(missing_docs)]
 #[pyclass(name = "TypeTableMeta", module = "gluex_ccdb")]
 #[derive(Clone)]
 pub struct PyTypeTableMeta {
     inner: TypeTableMeta,
 }
 
+#[allow(missing_docs)]
 #[pymethods]
 impl PyTypeTableMeta {
     #[getter]
@@ -205,6 +244,18 @@ impl PyTypeTableMeta {
     }
 }
 
+/// Column-major dataset returned from CCDB fetch operations.
+///
+/// Attributes
+/// ----------
+/// n_rows : int
+///     Number of rows in the dataset.
+/// n_columns : int
+///     Number of columns in the dataset.
+/// column_names : list[str]
+///     Names for each column in positional order.
+/// column_types : list[ColumnType]
+///     Storage type for each column in positional order.
 #[pyclass(name = "Data", module = "gluex_ccdb", unsendable)]
 pub struct PyData {
     inner: Arc<Data>,
@@ -212,18 +263,22 @@ pub struct PyData {
 
 #[pymethods]
 impl PyData {
+    /// int: Number of rows in the dataset.
     #[getter]
     fn n_rows(&self) -> usize {
         self.inner.n_rows()
     }
+    /// int: Number of columns in the dataset.
     #[getter]
     fn n_columns(&self) -> usize {
         self.inner.n_columns()
     }
+    /// list[str]: Column names in positional order.
     #[getter]
     fn column_names(&self) -> Vec<String> {
         self.inner.column_names().to_vec()
     }
+    /// list[ColumnType]: Column types in positional order.
     #[getter]
     fn column_types(&self) -> Vec<PyColumnType> {
         self.inner
@@ -234,6 +289,22 @@ impl PyData {
             .collect()
     }
 
+    /// column(self, column)
+    ///
+    /// Parameters
+    /// ----------
+    /// column : int | str
+    ///     Column index or name.
+    ///
+    /// Returns
+    /// -------
+    /// Column
+    ///     Column wrapper exposing values and metadata.
+    ///
+    /// Raises
+    /// ------
+    /// RuntimeError
+    ///     If the column cannot be found.
     pub fn column(&self, column: Bound<'_, PyAny>) -> PyResult<PyColumn> {
         let idx = parse_column_index(&self.inner, column)?;
         let name = self.inner.column_names()[idx].clone();
@@ -249,6 +320,22 @@ impl PyData {
         })
     }
 
+    /// row(self, row)
+    ///
+    /// Parameters
+    /// ----------
+    /// row : int
+    ///     Zero-based row index.
+    ///
+    /// Returns
+    /// -------
+    /// RowView
+    ///     Lightweight view over the requested row.
+    ///
+    /// Raises
+    /// ------
+    /// RuntimeError
+    ///     If the row index is out of range.
     pub fn row(&self, row: usize) -> PyResult<PyRowView> {
         self.inner
             .row(row)
@@ -259,6 +346,12 @@ impl PyData {
         })
     }
 
+    /// rows(self)
+    ///
+    /// Returns
+    /// -------
+    /// list[RowView]
+    ///     View objects for each row in order.
     pub fn rows(&self) -> PyResult<Vec<PyRowView>> {
         let n_rows = self.inner.n_rows();
         let data = Arc::clone(&self.inner);
@@ -270,6 +363,19 @@ impl PyData {
             .collect())
     }
 
+    /// value(self, column, row)
+    ///
+    /// Parameters
+    /// ----------
+    /// column : int | str
+    ///     Column index or name.
+    /// row : int
+    ///     Zero-based row index.
+    ///
+    /// Returns
+    /// -------
+    /// object
+    ///     Cell value converted to a Python scalar or `None` if missing.
     pub fn value(
         &self,
         py: Python<'_>,
@@ -300,6 +406,14 @@ impl PyData {
     }
 }
 
+/// Lightweight view of a single row in a CCDB result set.
+///
+/// Attributes
+/// ----------
+/// n_columns : int
+///     Number of columns available in the row.
+/// column_types : list[ColumnType]
+///     Storage type for each column in the row.
 #[pyclass(name = "RowView", module = "gluex_ccdb")]
 pub struct PyRowView {
     data: Arc<Data>,
@@ -308,11 +422,13 @@ pub struct PyRowView {
 
 #[pymethods]
 impl PyRowView {
+    /// int: Number of columns available in this row.
     #[getter]
     fn n_columns(&self, _py: Python<'_>) -> usize {
         self.data.n_columns()
     }
 
+    /// list[ColumnType]: Column types for this row in positional order.
     #[getter]
     fn column_types(&self, _py: Python<'_>) -> Vec<PyColumnType> {
         self.data
@@ -323,6 +439,17 @@ impl PyRowView {
             .collect()
     }
 
+    /// value(self, column)
+    ///
+    /// Parameters
+    /// ----------
+    /// column : int | str
+    ///     Column index or name.
+    ///
+    /// Returns
+    /// -------
+    /// object
+    ///     Cell value converted to a Python scalar or `None` if missing.
     pub fn value(&self, py: Python<'_>, column: Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let idx = parse_column_index(&self.data, column)?;
         match self.data.value(self.row, idx) {
@@ -331,6 +458,12 @@ impl PyRowView {
         }
     }
 
+    /// columns(self)
+    ///
+    /// Returns
+    /// -------
+    /// list[tuple[str, ColumnType, object]]
+    ///     Column name, type, and value for each column in the row.
     pub fn columns(&self, py: Python<'_>) -> PyResult<Vec<(String, PyColumnType, Py<PyAny>)>> {
         let row = self
             .data
@@ -359,6 +492,16 @@ impl PyRowView {
     }
 }
 
+/// Handle to a CCDB type table, exposing metadata and fetch APIs to Python.
+///
+/// Attributes
+/// ----------
+/// name : str
+///     Table name without directory components.
+/// id : int
+///     Unique table identifier in CCDB.
+/// meta : TypeTableMeta
+///     Metadata describing row/column counts and comments.
 #[pyclass(name = "TypeTableHandle", module = "gluex_ccdb", unsendable)]
 pub struct PyTypeTableHandle {
     inner: TypeTableHandle,
@@ -366,23 +509,33 @@ pub struct PyTypeTableHandle {
 
 #[pymethods]
 impl PyTypeTableHandle {
+    /// str: Table name (without directory components).
     #[getter]
     fn name(&self) -> &str {
         self.inner.name()
     }
+    /// int: Numeric identifier of the table in CCDB.
     #[getter]
     fn id(&self) -> i64 {
         self.inner.id()
     }
+    /// TypeTableMeta: Metadata such as row counts and comments.
     #[getter]
     fn meta(&self) -> PyTypeTableMeta {
         PyTypeTableMeta {
             inner: self.inner.meta().clone(),
         }
     }
+    /// str: Absolute path to this table.
     pub fn full_path(&self) -> String {
         self.inner.full_path()
     }
+    /// columns(self)
+    ///
+    /// Returns
+    /// -------
+    /// list[ColumnMeta]
+    ///     Metadata for each column in order.
     pub fn columns(&self) -> PyResult<Vec<PyColumnMeta>> {
         Ok(self
             .inner
@@ -392,6 +545,21 @@ impl PyTypeTableHandle {
             .map(|m| PyColumnMeta { inner: m })
             .collect())
     }
+    /// fetch(self, *, runs=None, variation=None, timestamp=None)
+    ///
+    /// Parameters
+    /// ----------
+    /// runs : list[int] | None, optional
+    ///     Run numbers to query; defaults to run 0 when omitted.
+    /// variation : str | None, optional
+    ///     Variation branch to resolve (default "default").
+    /// timestamp : datetime | str | None, optional
+    ///     Timestamp used to select historical assignments.
+    ///
+    /// Returns
+    /// -------
+    /// dict[int, Data]
+    ///     Mapping of run number to fetched dataset.
     #[pyo3(signature = ( *, runs=None, variation=None, timestamp=None))]
     pub fn fetch(
         &self,
@@ -424,6 +592,12 @@ impl PyTypeTableHandle {
     }
 }
 
+/// Handle to a CCDB directory, mirroring the Rust API for navigation.
+///
+/// Attributes
+/// ----------
+/// full_path : str
+///     Absolute directory path within CCDB.
 #[pyclass(name = "DirectoryHandle", module = "gluex_ccdb", unsendable)]
 pub struct PyDirectoryHandle {
     inner: DirectoryHandle,
@@ -431,12 +605,25 @@ pub struct PyDirectoryHandle {
 
 #[pymethods]
 impl PyDirectoryHandle {
+    /// str: Full path of this directory.
     pub fn full_path(&self) -> String {
         self.inner.full_path()
     }
+    /// parent(self)
+    ///
+    /// Returns
+    /// -------
+    /// DirectoryHandle | None
+    ///     Parent directory or ``None`` when at the root.
     pub fn parent(&self) -> Option<Self> {
         self.inner.parent().map(|inner| Self { inner })
     }
+    /// dirs(self)
+    ///
+    /// Returns
+    /// -------
+    /// list[DirectoryHandle]
+    ///     Child directories directly under this directory.
     pub fn dirs(&self) -> PyResult<Vec<Self>> {
         Ok(self
             .inner
@@ -446,11 +633,28 @@ impl PyDirectoryHandle {
             .map(|inner| Self { inner })
             .collect())
     }
+    /// dir(self, name)
+    ///
+    /// Parameters
+    /// ----------
+    /// name : str
+    ///     Relative directory name.
+    ///
+    /// Returns
+    /// -------
+    /// DirectoryHandle
+    ///     Handle to the requested subdirectory.
     pub fn dir(&self, name: &str) -> PyResult<Self> {
         Ok(Self {
             inner: self.inner.dir(name).map_err(PyErr::from)?,
         })
     }
+    /// tables(self)
+    ///
+    /// Returns
+    /// -------
+    /// list[TypeTableHandle]
+    ///     Tables that live directly under this directory.
     pub fn tables(&self) -> PyResult<Vec<PyTypeTableHandle>> {
         Ok(self
             .inner
@@ -460,6 +664,17 @@ impl PyDirectoryHandle {
             .map(|inner| PyTypeTableHandle { inner })
             .collect())
     }
+    /// table(self, name)
+    ///
+    /// Parameters
+    /// ----------
+    /// name : str
+    ///     Table name relative to this directory.
+    ///
+    /// Returns
+    /// -------
+    /// TypeTableHandle
+    ///     Handle to the requested table.
     pub fn table(&self, name: &str) -> PyResult<PyTypeTableHandle> {
         Ok(PyTypeTableHandle {
             inner: self.inner.table(name).map_err(PyErr::from)?,
@@ -473,6 +688,12 @@ impl PyDirectoryHandle {
     }
 }
 
+/// Entry point for interacting with CCDB from Python.
+///
+/// Parameters
+/// ----------
+/// path : str
+///     Filesystem path to an existing CCDB SQLite database file.
 #[pyclass(name = "CCDB", module = "gluex_ccdb", unsendable)]
 pub struct PyCCDB {
     inner: CCDB,
@@ -480,6 +701,12 @@ pub struct PyCCDB {
 
 #[pymethods]
 impl PyCCDB {
+    /// __init__(self, path)
+    ///
+    /// Parameters
+    /// ----------
+    /// path : str
+    ///     Filesystem path to an existing CCDB SQLite database file.
     #[new]
     pub fn new(path: &str) -> PyResult<Self> {
         Ok(Self {
@@ -487,16 +714,55 @@ impl PyCCDB {
         })
     }
 
+    /// dir(self, path)
+    ///
+    /// Parameters
+    /// ----------
+    /// path : str
+    ///     Absolute or relative directory path.
+    ///
+    /// Returns
+    /// -------
+    /// DirectoryHandle
+    ///     Handle to the requested directory.
     pub fn dir(&self, path: &str) -> PyResult<PyDirectoryHandle> {
         Ok(PyDirectoryHandle {
             inner: self.inner.dir(path).map_err(PyErr::from)?,
         })
     }
+    /// table(self, path)
+    ///
+    /// Parameters
+    /// ----------
+    /// path : str
+    ///     Absolute or relative table path.
+    ///
+    /// Returns
+    /// -------
+    /// TypeTableHandle
+    ///     Handle to the requested table.
     pub fn table(&self, path: &str) -> PyResult<PyTypeTableHandle> {
         Ok(PyTypeTableHandle {
             inner: self.inner.table(path).map_err(PyErr::from)?,
         })
     }
+    /// fetch(self, path, *, runs=None, variation=None, timestamp=None)
+    ///
+    /// Parameters
+    /// ----------
+    /// path : str
+    ///     Absolute or relative table path.
+    /// runs : list[int] | None, optional
+    ///     Run numbers to query; defaults to run 0 when omitted.
+    /// variation : str | None, optional
+    ///     Variation branch to resolve (default "default").
+    /// timestamp : datetime | str | None, optional
+    ///     Timestamp used to select historical assignments.
+    ///
+    /// Returns
+    /// -------
+    /// dict[int, Data]
+    ///     Mapping of run number to fetched dataset.
     #[pyo3(signature = (path, *, runs=None, variation=None, timestamp=None))]
     pub fn fetch(
         &self,
@@ -521,6 +787,12 @@ impl PyCCDB {
             })
             .collect())
     }
+    /// root(self)
+    ///
+    /// Returns
+    /// -------
+    /// DirectoryHandle
+    ///     Handle to the root directory.
     pub fn root(&self) -> PyResult<PyDirectoryHandle> {
         Ok(PyDirectoryHandle {
             inner: self.inner.root(),
@@ -601,6 +873,7 @@ fn build_context(
 }
 
 #[pymodule]
+/// Python module initializer for `gluex_ccdb` bindings.
 pub fn gluex_ccdb(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyCCDB>()?;
     m.add_class::<PyTypeTableHandle>()?;

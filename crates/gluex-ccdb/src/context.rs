@@ -1,10 +1,9 @@
-use std::{ops::Bound, str::FromStr};
-
+use crate::RunNumber;
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use std::{ops::Bound, str::FromStr};
 use thiserror::Error;
 
-use crate::RunNumber;
-
+/// Absolute CCDB path wrapper that enforces formatting rules.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NamePath(pub String);
 impl FromStr for NamePath {
@@ -24,12 +23,15 @@ impl FromStr for NamePath {
     }
 }
 impl NamePath {
+    /// Returns the absolute path string (always begins with `/`).
     pub fn full_path(&self) -> &str {
         &self.0
     }
+    /// Returns the final component of the path (table or directory name).
     pub fn name(&self) -> &str {
         self.0.rsplit('/').next().unwrap_or("")
     }
+    /// Returns the parent path, or `None` when this path is root.
     pub fn parent(&self) -> Option<NamePath> {
         if self.is_root() {
             return None;
@@ -38,15 +40,18 @@ impl NamePath {
         parts.pop();
         Some(NamePath(format!("/{}", parts.join("/"))))
     }
+    /// True when the path corresponds to the root directory.
     pub fn is_root(&self) -> bool {
         self.0 == "/"
     }
 }
-
+/// Errors that can occur while parsing or validating CCDB paths.
 #[derive(Error, Debug)]
 pub enum NamePathError {
+    /// Path did not begin with a forward slash.
     #[error("path \"{0}\" is not absolute (must start with '/')")]
     NotAbsolutePath(String),
+    /// Path contained a character outside the allowed set.
     #[error("illegal character encountered in path \"{0}\"")]
     IllegalCharacter(String),
 }
@@ -55,10 +60,14 @@ const DEFAULT_VARIATION: &str = "default";
 const DEFAULT_RUN_NUMBER: RunNumber = 0;
 const MAX_RUN_NUMBER: RunNumber = 2_147_483_647;
 
+/// Query context describing run selection, variation, and timestamp.
 #[derive(Debug, Clone)]
 pub struct Context {
+    /// Run numbers to consider when resolving assignments.
     pub runs: Vec<RunNumber>,
+    /// Variation (branch) to resolve within CCDB.
     pub variation: String,
+    /// Timestamp used to select the newest constants not newer than this time.
     pub timestamp: DateTime<Utc>,
 }
 impl Default for Context {
@@ -71,6 +80,7 @@ impl Default for Context {
     }
 }
 impl Context {
+    /// Builds a new context with optional run, variation, and timestamp overrides.
     pub fn new(
         runs: Option<Vec<RunNumber>>,
         variation: Option<String>,
@@ -88,10 +98,12 @@ impl Context {
         }
         context
     }
+    /// Returns a context scoped to a single run number.
     pub fn with_run(mut self, run: RunNumber) -> Self {
         self.runs = vec![run.clamp(0, MAX_RUN_NUMBER)];
         self
     }
+    /// Replaces the run list with the provided runs.
     pub fn with_runs(mut self, iter: impl IntoIterator<Item = RunNumber>) -> Self {
         self.runs = iter
             .into_iter()
@@ -99,6 +111,7 @@ impl Context {
             .collect();
         self
     }
+    /// Replaces the run list with all runs inside the supplied range.
     pub fn with_run_range(mut self, run_range: impl std::ops::RangeBounds<RunNumber>) -> Self {
         let start = match run_range.start_bound() {
             Bound::Included(&s) => s,
@@ -119,24 +132,35 @@ impl Context {
         };
         self
     }
+    /// Sets the variation branch for subsequent queries.
     pub fn with_variation(mut self, variation: &str) -> Self {
         self.variation = variation.to_string();
         self
     }
+    /// Sets the timestamp for selecting assignments (query will give the most recent assignment not newer than this).
     pub fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
         self.timestamp = timestamp;
         self
     }
+    /// Sets the timestamp for selecting assignments from a formatted timestamp string (query will give the most recent assignment not newer than this).
+    pub fn with_timestamp_string(mut self, timestamp: &str) -> Result<Self, ParseTimestampError> {
+        self.timestamp = parse_timestamp(timestamp)?;
+        Ok(self)
+    }
 }
 
+/// Errors that can occur while parsing a timestamp string.
 #[derive(Error, Debug)]
 pub enum ParseTimestampError {
+    /// Input contained no digits from which to form a timestamp.
     #[error("timestamp \"{0}\" has no digits")]
     NoDigits(String),
+    /// Parsed timestamp was invalid according to `chrono`.
     #[error("invalid timestamp: {0}")]
     ChronoError(String),
 }
 
+/// Parses a timestamp string into a UTC datetime, inferring missing fields.
 pub fn parse_timestamp(input: &str) -> Result<DateTime<Utc>, ParseTimestampError> {
     let digits: Vec<i32> = input
         .split(|c: char| !c.is_ascii_digit())
@@ -173,19 +197,26 @@ pub fn parse_timestamp(input: &str) -> Result<DateTime<Utc>, ParseTimestampError
     Ok(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
 }
 
+/// Errors that can occur when parsing a request string.
 #[derive(Error, Debug)]
 pub enum ParseRequestError {
+    /// Failed to parse the path portion of the request.
     #[error("{0}")]
     NamePathError(#[from] NamePathError),
+    /// Failed to parse the timestamp portion of the request.
     #[error("{0}")]
     TimestampParseError(#[from] ParseTimestampError),
+    /// Run number was not a valid integer.
     #[error("invalid run number: {0}")]
     InvalidRunNumberError(String),
 }
 
+/// Parsed representation of a CCDB request string.
 #[derive(Debug, Clone)]
 pub struct Request {
+    /// Absolute path to the requested table.
     pub path: NamePath,
+    /// Context describing run/variation/timestamp selection.
     pub context: Context,
 }
 impl FromStr for Request {

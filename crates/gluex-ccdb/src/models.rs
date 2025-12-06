@@ -1,8 +1,6 @@
-use std::fmt::Display;
-
-use chrono::{DateTime, Utc};
-
 use crate::{context::parse_timestamp, CCDBResult, Id};
+use chrono::{DateTime, Utc};
+use std::fmt::Display;
 
 #[derive(Debug, Copy, Clone, Default)]
 pub enum ColumnType {
