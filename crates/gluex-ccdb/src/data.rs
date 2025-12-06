@@ -113,6 +113,7 @@ pub struct RowView<'a> {
     columns: &'a [Column],
     column_names: &'a [String],
     column_indices: &'a HashMap<String, usize>,
+    column_types: &'a [ColumnType],
 }
 impl<'a> RowView<'a> {
     pub fn value(&self, column: usize) -> Option<Value<'a>> {
@@ -169,9 +170,13 @@ impl<'a> RowView<'a> {
         self.named_value(name)?.as_bool()
     }
 
-    pub fn iter_columns(&self) -> impl Iterator<Item = (&'a str, Value<'a>)> + '_ {
-        izip!(self.column_names.iter(), self.columns.iter())
-            .map(move |(name, col)| (name.as_str(), col.row(self.row)))
+    pub fn iter_columns(&self) -> impl Iterator<Item = (&'a str, ColumnType, Value<'a>)> + '_ {
+        izip!(
+            self.column_names.iter(),
+            self.column_types.iter(),
+            self.columns.iter()
+        )
+        .map(move |(name, column_type, col)| (name.as_str(), *column_type, col.row(self.row)))
     }
 
     pub fn contains(&self, name: &str) -> bool {
@@ -180,6 +185,10 @@ impl<'a> RowView<'a> {
 
     pub fn n_columns(&self) -> usize {
         self.columns.len()
+    }
+
+    pub fn column_types(&self) -> &'a [ColumnType] {
+        self.column_types
     }
 }
 
@@ -419,6 +428,7 @@ impl Data {
             columns: &self.columns,
             column_names: &self.column_names,
             column_indices: &self.column_indices,
+            column_types: &self.column_types,
         })
     }
 
@@ -428,11 +438,12 @@ impl Data {
             columns: &self.columns,
             column_names: &self.column_names,
             column_indices: &self.column_indices,
+            column_types: &self.column_types,
         })
     }
 
-    pub fn iter_columns(&self) -> impl Iterator<Item = (&String, &Column)> {
-        izip!(self.column_names.iter(), self.columns.iter())
+    pub fn iter_columns(&self) -> impl Iterator<Item = (&String, &ColumnType, &Column)> {
+        izip!(self.column_names.iter(), self.column_types.iter(), self.columns.iter())
     }
 
     pub fn contains(&self, name: &str) -> bool {

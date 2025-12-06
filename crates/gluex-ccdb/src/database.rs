@@ -15,7 +15,7 @@ use crate::{
         AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta,
         VariationMeta,
     },
-    CCDBError, Id, RunNumber,
+    CCDBError, CCDBResult, Id, RunNumber,
 };
 
 #[derive(Clone)]
@@ -30,7 +30,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, CCDBError> {
+    pub fn open(path: impl AsRef<Path>) -> CCDBResult<Self> {
         let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
         conn.pragma_update(None, "temp_store", "MEMORY")?;
@@ -56,7 +56,7 @@ impl Database {
     pub fn connection(&self) -> &Connection {
         &self.connection
     }
-    fn load_directories(&self) -> Result<(), CCDBError> {
+    fn load_directories(&self) -> CCDBResult<()> {
         let mut stmt = self.connection.prepare(
             "SELECT id, created, modified, name, parentId, authorId, comment,
                     isDeprecated, deprecatedByUserId, isLocked, lockedByUserId
@@ -102,7 +102,7 @@ impl Database {
             format!("/{}", dir.name)
         }
     }
-    fn load_tables(&self) -> Result<(), CCDBError> {
+    fn load_tables(&self) -> CCDBResult<()> {
         let mut stmt = self.connection.prepare(
             "SELECT id, created, modified, directoryId, name,
                     nRows, nColumns, nAssignments, authorId, comment,
@@ -151,7 +151,7 @@ impl Database {
         }
     }
 
-    pub fn dir(&self, path: &str) -> Result<DirectoryHandle, CCDBError> {
+    pub fn dir(&self, path: &str) -> CCDBResult<DirectoryHandle> {
         if path == "/" || path.is_empty() {
             return Ok(self.root());
         }
@@ -174,7 +174,7 @@ impl Database {
         })
     }
 
-    pub fn table(&self, path: &str) -> Result<TypeTableHandle, CCDBError> {
+    pub fn table(&self, path: &str) -> CCDBResult<TypeTableHandle> {
         let norm = if path.starts_with('/') {
             path.to_string()
         } else {
@@ -187,7 +187,7 @@ impl Database {
         let dir = self.dir(dir_path)?;
         dir.table(table_name)
     }
-    pub fn variation(&self, name: &str) -> Result<VariationMeta, CCDBError> {
+    pub fn variation(&self, name: &str) -> CCDBResult<VariationMeta> {
         if let Some(v) = self.variation_cache.get(name) {
             return Ok(v.clone());
         }
@@ -223,7 +223,7 @@ impl Database {
             Err(CCDBError::VariationNotFoundError(name.to_string()))
         }
     }
-    pub fn variation_chain(&self, start: &VariationMeta) -> Result<Vec<VariationMeta>, CCDBError> {
+    pub fn variation_chain(&self, start: &VariationMeta) -> CCDBResult<Vec<VariationMeta>> {
         if let Some(cached) = self.variation_chain_cache.get(&start.id) {
             return Ok(cached.clone());
         }
@@ -269,7 +269,7 @@ impl Database {
         self.variation_chain_cache.insert(start.id, chain.clone());
         Ok(chain)
     }
-    pub fn request(&self, request_string: &str) -> Result<HashMap<RunNumber, Data>, CCDBError> {
+    pub fn request(&self, request_string: &str) -> CCDBResult<HashMap<RunNumber, Data>> {
         let request: Request = request_string.parse()?;
         let table = self.table(request.path.full_path())?;
         table.fetch(&request.context)
@@ -315,7 +315,7 @@ impl DirectoryHandle {
             })
         }
     }
-    pub fn subdirs(&self) -> Result<Vec<DirectoryHandle>, CCDBError> {
+    pub fn subdirs(&self) -> CCDBResult<Vec<DirectoryHandle>> {
         Ok(self
             .db
             .directory_meta
@@ -327,7 +327,7 @@ impl DirectoryHandle {
             })
             .collect())
     }
-    pub fn subdir(&self, name: &str) -> Result<DirectoryHandle, CCDBError> {
+    pub fn subdir(&self, name: &str) -> CCDBResult<DirectoryHandle> {
         for meta in self.db.directory_meta.iter() {
             if meta.parent_id == self.meta.id && meta.name == name {
                 return Ok(DirectoryHandle {
@@ -342,7 +342,7 @@ impl DirectoryHandle {
             name
         )))
     }
-    pub fn tables(&self) -> Result<Vec<TypeTableHandle>, CCDBError> {
+    pub fn tables(&self) -> CCDBResult<Vec<TypeTableHandle>> {
         Ok(self
             .db
             .table_meta
@@ -354,7 +354,7 @@ impl DirectoryHandle {
             })
             .collect())
     }
-    pub fn table(&self, name: &str) -> Result<TypeTableHandle, CCDBError> {
+    pub fn table(&self, name: &str) -> CCDBResult<TypeTableHandle> {
         let id = self
             .db
             .table_by_dir_name
@@ -401,7 +401,7 @@ impl TypeTableHandle {
             format!("/{}", self.meta.name)
         }
     }
-    pub fn columns(&self) -> Result<Vec<ColumnMeta>, CCDBError> {
+    pub fn columns(&self) -> CCDBResult<Vec<ColumnMeta>> {
         let mut stmt = self.db.connection.prepare_cached(
             "SELECT id, created, modified, name, typeId, columnType, `order`, comment
              FROM columns
@@ -425,7 +425,7 @@ impl TypeTableHandle {
             .collect::<Result<Vec<ColumnMeta>, _>>()?;
         Ok(columns)
     }
-    pub fn fetch(&self, ctx: &Context) -> Result<HashMap<RunNumber, Data>, CCDBError> {
+    pub fn fetch(&self, ctx: &Context) -> CCDBResult<HashMap<RunNumber, Data>> {
         let runs: Vec<RunNumber> = if ctx.runs.is_empty() {
             vec![0]
         } else {
@@ -442,7 +442,7 @@ impl TypeTableHandle {
         runs: &[RunNumber],
         variation: &str,
         timestamp: Timestamp,
-    ) -> Result<HashMap<RunNumber, AssignmentMetaLite>, CCDBError> {
+    ) -> CCDBResult<HashMap<RunNumber, AssignmentMetaLite>> {
         if runs.is_empty() {
             return Ok(HashMap::new());
         }
@@ -477,7 +477,7 @@ impl TypeTableHandle {
         timestamp: Timestamp,
         min_run: RunNumber,
         max_run: RunNumber,
-    ) -> Result<HashMap<RunNumber, AssignmentMetaLite>, CCDBError> {
+    ) -> CCDBResult<HashMap<RunNumber, AssignmentMetaLite>> {
         let mut stmt = self.db.connection.prepare_cached(
             "SELECT
                  a.id, a.created, a.constantSetId,
@@ -532,7 +532,7 @@ impl TypeTableHandle {
     fn load_vaults(
         &self,
         assignments: &HashMap<RunNumber, AssignmentMetaLite>,
-    ) -> Result<HashMap<RunNumber, Data>, CCDBError> {
+    ) -> CCDBResult<HashMap<RunNumber, Data>> {
         if assignments.is_empty() {
             return Ok(HashMap::new());
         }
@@ -577,6 +577,6 @@ impl TypeTableHandle {
             .iter()
             .filter_map(|(run, meta)| Some((run, cs_map.get(&meta.constant_set_id)?)))
             .map(|(run, cs_meta)| Ok((*run, Data::from_vault(&cs_meta.vault, &columns, n_rows)?)))
-            .collect::<Result<HashMap<RunNumber, Data>, CCDBError>>()
+            .collect::<CCDBResult<HashMap<RunNumber, Data>>>()
     }
 }

@@ -7,6 +7,7 @@ pub mod models;
 
 pub type Id = i64;
 pub type RunNumber = u32;
+pub type CCDBResult<T> = Result<T, CCDBError>;
 
 #[derive(Error, Debug)]
 pub enum CCDBError {
@@ -26,4 +27,8 @@ pub enum CCDBError {
     ParseRequestError(#[from] context::ParseRequestError),
     #[error("{0}")]
     ParseTimestampError(#[from] context::ParseTimestampError),
+}
+
+pub mod prelude {
+    pub use crate::{context::Context, database::Database, CCDBError, CCDBResult, Id, RunNumber};
 }
