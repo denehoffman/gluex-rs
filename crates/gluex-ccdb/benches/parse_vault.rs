@@ -6,7 +6,7 @@ use gluex_ccdb::{data::ColumnLayout, database::CCDB, models::ColumnMeta};
 const TABLE_PATH: &str = "/test/demo/mytable";
 const DEFAULT_DB: &str = "ccdb.sqlite";
 
-fn load_layout_and_vault() -> (Arc<ColumnLayout>, String, usize) {
+fn load_layout_and_vaults() -> (Arc<ColumnLayout>, Vec<String>, usize) {
     let db_path = std::env::var("CCDB_BENCH_DB").unwrap_or_else(|_| DEFAULT_DB.to_string());
     let db = CCDB::open(&db_path).expect("failed to open database");
     let table = db
@@ -23,28 +23,48 @@ fn load_layout_and_vault() -> (Arc<ColumnLayout>, String, usize) {
              FROM constantSets cs
              JOIN assignments a ON cs.id = a.constantSetId
              WHERE cs.constantTypeId = ?
-             ORDER BY a.created DESC
-             LIMIT 1",
+             ORDER BY a.created DESC",
         )
         .expect("failed to prepare vault query");
-    let vault: String = stmt
-        .query_row([table.id()], |row| row.get(0))
-        .expect("failed to load vault");
+    let vaults: Vec<String> = stmt
+        .query_map([table.id()], |row| row.get(0))
+        .expect("failed to query vaults")
+        .collect::<Result<Vec<String>, _>>()
+        .expect("failed to collect vaults");
+    assert!(!vaults.is_empty(), "no vaults returned for benchmark table");
 
-    (layout, vault, n_rows)
+    (layout, vaults, n_rows)
 }
 
 fn bench_parse_vault(c: &mut Criterion) {
-    let (layout, vault, n_rows) = load_layout_and_vault();
+    let (layout, vaults, n_rows) = load_layout_and_vaults();
+    let first = vaults
+        .get(0)
+        .expect("expected at least one vault for benchmark")
+        .clone();
     c.bench_function("parse_vault_test_table", |b| {
         b.iter(|| {
             let data =
-                gluex_ccdb::data::Data::from_vault(black_box(&vault), layout.clone(), n_rows)
+                gluex_ccdb::data::Data::from_vault(black_box(&first), layout.clone(), n_rows)
                     .expect("parse failed");
             black_box(data);
         })
     });
 }
 
-criterion_group!(benches, bench_parse_vault);
+fn bench_parse_multiple_vaults(c: &mut Criterion) {
+    let (layout, vaults, n_rows) = load_layout_and_vaults();
+    c.bench_function("parse_multiple_vaults_test_table", |b| {
+        b.iter(|| {
+            for vault in &vaults {
+                let data =
+                    gluex_ccdb::data::Data::from_vault(black_box(vault), layout.clone(), n_rows)
+                        .expect("parse failed");
+                black_box(data);
+            }
+        })
+    });
+}
+
+criterion_group!(benches, bench_parse_vault, bench_parse_multiple_vaults);
 criterion_main!(benches);
