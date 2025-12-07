@@ -24,6 +24,7 @@ parking_lot.workspace = true
 pyo3 = { workspace = true, optional = true }
 rusqlite.workspace = true
 thiserror.workspace = true
+memchr.workspace = true
 
 gluex-core.workspace = true
 
@@ -31,5 +32,9 @@ gluex-core.workspace = true
 criterion.workspace = true
 
 [[bench]]
-name = "endpoint_energy"
+name = "fetch_test_table"
+harness = false
+
+[[bench]]
+name = "parse_vault"
 harness = false

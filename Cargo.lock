@@ -272,6 +272,7 @@ dependencies = [
  "dashmap",
  "gluex-core",
  "itertools 0.14.0",
+ "memchr",
  "parking_lot",
  "pyo3",
  "rusqlite",

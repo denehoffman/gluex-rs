@@ -23,6 +23,8 @@ thiserror = "2.0.17"
 
 gluex-core = { version = "0.1.0", path = "crates/gluex-core" }
 
+memchr = "2.7.4"
+
 [profile.profiling]
 inherits = "release"
 debug = true
