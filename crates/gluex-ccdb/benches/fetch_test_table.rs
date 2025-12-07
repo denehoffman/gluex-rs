@@ -15,12 +15,12 @@ fn open_table() -> gluex_ccdb::database::TypeTableHandle {
 
 fn bench_fetch_range(c: &mut Criterion) {
     let table = open_table();
-    let ctx = Context::default().with_run_range(0..=3);
+    let ctx = Context::default().with_run_range(0..=30_000);
 
     let mut group = c.benchmark_group("fetch_test_table_range");
     group.sample_size(20);
     group.measurement_time(Duration::from_secs(15));
-    group.bench_function("run_range_0_3", |b| {
+    group.bench_function("run_range_0_30000", |b| {
         b.iter(|| {
             let data = table.fetch(&ctx).expect("fetch failed");
             std::hint::black_box(&data);
