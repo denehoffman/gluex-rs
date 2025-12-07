@@ -1,5 +1,5 @@
 [package]
-name = "gluex-ccdb"
+name = "gluex-rcdb"
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lib]
-name = "gluex_ccdb"
+name = "gluex_rcdb"
 crate-type = ["rlib", "cdylib"]
 
 [features]
@@ -18,8 +18,6 @@ python = ["pyo3/extension-module", "pyo3", "pyo3/chrono"]
 
 [dependencies]
 chrono.workspace = true
-dashmap.workspace = true
-itertools.workspace = true
 parking_lot.workspace = true
 pyo3 = { workspace = true, optional = true }
 rusqlite.workspace = true
@@ -29,7 +27,3 @@ gluex-core.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-
-[[bench]]
-name = "endpoint_energy"
-harness = false

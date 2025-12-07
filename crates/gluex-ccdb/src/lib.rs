@@ -5,6 +5,7 @@
 //! optional Python API (via PyO3) for exploring directory structure, querying
 //! tables, and loading typed constant data.
 #![deny(missing_docs)]
+use gluex_core::errors::ParseTimestampError;
 use thiserror::Error;
 
 /// Context handling for run-, variation-, and timestamp-aware requests.
@@ -19,10 +20,6 @@ pub mod models;
 /// The Python bindings for this crate.
 pub mod python;
 
-/// Primary integer identifier type used throughout the CCDB.
-pub type Id = i64;
-/// Run number type as stored in CCDB assignments.
-pub type RunNumber = u32;
 /// Convenience alias for functions that can return a `CCDBError`.
 pub type CCDBResult<T> = Result<T, CCDBError>;
 
@@ -52,12 +49,13 @@ pub enum CCDBError {
     ParseRequestError(#[from] context::ParseRequestError),
     /// Timestamp string failed to parse.
     #[error("{0}")]
-    ParseTimestampError(#[from] context::ParseTimestampError),
+    ParseTimestampError(#[from] ParseTimestampError),
 }
 
 /// Re-exports of the most commonly used types and constructors.
 pub mod prelude {
-    pub use crate::{context::Context, database::CCDB, CCDBError, CCDBResult, Id, RunNumber};
+    pub use crate::{context::Context, database::CCDB, CCDBError, CCDBResult};
+    pub use gluex_core::RunNumber;
 }
 #[cfg(feature = "python")]
 pub use python::*;

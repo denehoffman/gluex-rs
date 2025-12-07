@@ -1,5 +1,6 @@
-use crate::{context::parse_timestamp, CCDBResult, Id};
+use crate::CCDBResult;
 use chrono::{DateTime, Utc};
+use gluex_core::{parsers::parse_timestamp, Id, RunNumber};
 use std::fmt::Display;
 
 #[derive(Debug, Copy, Clone, Default)]
@@ -359,8 +360,8 @@ pub struct RunRangeMeta {
     pub(crate) created: String,
     pub(crate) modified: String,
     pub(crate) name: String,
-    pub(crate) run_min: i64,
-    pub(crate) run_max: i64,
+    pub(crate) run_min: RunNumber,
+    pub(crate) run_max: RunNumber,
     pub(crate) comment: String,
 }
 
@@ -371,10 +372,10 @@ impl RunRangeMeta {
     pub fn name(&self) -> &str {
         &self.name
     }
-    pub fn run_min(&self) -> i64 {
+    pub fn run_min(&self) -> RunNumber {
         self.run_min
     }
-    pub fn run_max(&self) -> i64 {
+    pub fn run_max(&self) -> RunNumber {
         self.run_max
     }
     pub fn comment(&self) -> &str {
@@ -393,7 +394,7 @@ pub struct EventRangeMeta {
     pub(crate) id: Id,
     pub(crate) created: String,
     pub(crate) modified: String,
-    pub(crate) run_number: i64,
+    pub(crate) run_number: RunNumber,
     pub(crate) event_min: i64,
     pub(crate) event_max: i64,
     pub(crate) comment: String,
@@ -403,7 +404,7 @@ impl EventRangeMeta {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn run_number(&self) -> i64 {
+    pub fn run_number(&self) -> RunNumber {
         self.run_number
     }
     pub fn event_min(&self) -> i64 {

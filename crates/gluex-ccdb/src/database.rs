@@ -5,10 +5,11 @@ use crate::{
         AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta,
         VariationMeta,
     },
-    CCDBError, CCDBResult, Id, RunNumber,
+    CCDBError, CCDBResult,
 };
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use gluex_core::{Id, RunNumber};
 use rusqlite::{Connection, OpenFlags};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -546,8 +547,8 @@ impl TypeTableHandle {
                     self.meta.id,
                     timestamp.timestamp(),
                     var_meta.id,
-                    min_run as i64,
-                    max_run as i64,
+                    min_run,
+                    max_run,
                 ),
                 |row| {
                     let meta = AssignmentMetaLite {
@@ -555,18 +556,17 @@ impl TypeTableHandle {
                         created: row.get(1)?,
                         constant_set_id: row.get(2)?,
                     };
-                    let run_min: i64 = row.get(3)?;
-                    let run_max: i64 = row.get(4)?;
+                    let run_min: RunNumber = row.get(3)?;
+                    let run_max: RunNumber = row.get(4)?;
                     Ok((meta, run_min, run_max))
                 },
             )?
-            .collect::<Result<Vec<(AssignmentMetaLite, i64, i64)>, _>>()?;
+            .collect::<Result<Vec<(AssignmentMetaLite, RunNumber, RunNumber)>, _>>()?;
         let mut best: BTreeMap<RunNumber, AssignmentMetaLite> = BTreeMap::new();
         let mut best_created: HashMap<RunNumber, DateTime<Utc>> = HashMap::new(); // timestamp map
         for &run in runs {
-            let run_i64 = run as i64;
             for (meta, rmin, rmax) in &valid_assignments {
-                if run_i64 >= *rmin && run_i64 <= *rmax {
+                if run >= *rmin && run <= *rmax {
                     let cur_best = best_created.get(&run);
                     let created = meta.created()?;
                     if cur_best.map(|t| created > *t).unwrap_or(true) {

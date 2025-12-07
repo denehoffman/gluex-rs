@@ -270,7 +270,29 @@ dependencies = [
  "chrono",
  "criterion",
  "dashmap",
+ "gluex-core",
  "itertools 0.14.0",
+ "parking_lot",
+ "pyo3",
+ "rusqlite",
+ "thiserror",
+]
+
+[[package]]
+name = "gluex-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "thiserror",
+]
+
+[[package]]
+name = "gluex-rcdb"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "criterion",
+ "gluex-core",
  "parking_lot",
  "pyo3",
  "rusqlite",

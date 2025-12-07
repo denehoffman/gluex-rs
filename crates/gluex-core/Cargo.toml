@@ -1,0 +1,20 @@
+[package]
+name = "gluex-core"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "gluex_core"
+crate-type = ["rlib"]
+
+[features]
+default = []
+
+[dependencies]
+chrono.workspace = true
+thiserror.workspace = true
