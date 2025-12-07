@@ -1,6 +1,6 @@
 use crate::{
     context::{Context, Request},
-    data::Data,
+    data::{ColumnLayout, Data},
     models::{
         AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta,
         VariationMeta,
@@ -55,6 +55,7 @@ pub struct CCDB {
     directory_by_path: Arc<DashMap<String, Id>>,
     table_meta: Arc<DashMap<Id, TypeTableMeta>>,
     table_by_dir_name: Arc<DashMap<(Id, String), Id>>,
+    column_layouts: Arc<DashMap<Id, Arc<ColumnLayout>>>,
 }
 
 impl CCDB {
@@ -71,6 +72,7 @@ impl CCDB {
             directory_by_path: Arc::new(DashMap::new()),
             table_meta: Arc::new(DashMap::new()),
             table_by_dir_name: Arc::new(DashMap::new()),
+            column_layouts: Arc::new(DashMap::new()),
             connection_path: path_str,
         };
         db.load_directories()?;
@@ -444,6 +446,9 @@ impl TypeTableHandle {
     }
     /// Loads column metadata for this table.
     pub fn columns(&self) -> CCDBResult<Vec<ColumnMeta>> {
+        Ok(self.column_layout()?.columns().to_vec())
+    }
+    fn load_column_metadata(&self) -> CCDBResult<Vec<ColumnMeta>> {
         let mut stmt = self.db.connection.prepare_cached(
             "SELECT id, created, modified, name, typeId, columnType, `order`, comment
              FROM columns
@@ -466,6 +471,16 @@ impl TypeTableHandle {
             })?
             .collect::<Result<Vec<ColumnMeta>, _>>()?;
         Ok(columns)
+    }
+
+    fn column_layout(&self) -> CCDBResult<Arc<ColumnLayout>> {
+        if let Some(existing) = self.db.column_layouts.get(&self.meta.id) {
+            return Ok(existing.clone());
+        }
+        let columns = self.load_column_metadata()?;
+        let layout = Arc::new(ColumnLayout::new(columns));
+        self.db.column_layouts.insert(self.meta.id, layout.clone());
+        Ok(layout)
     }
     /// Fetches data for this table using the provided query context.
     pub fn fetch(&self, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
@@ -592,14 +607,14 @@ impl TypeTableHandle {
         if assignments.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let columns = self.columns()?;
+        let layout = self.column_layout()?;
         let n_rows = self.meta.n_rows as usize;
         assignments
             .iter()
             .map(|(run, constant_set)| {
                 Ok((
                     *run,
-                    Data::from_vault(&constant_set.vault, &columns, n_rows)?,
+                    Data::from_vault(&constant_set.vault, layout.clone(), n_rows)?,
                 ))
             })
             .collect::<CCDBResult<BTreeMap<RunNumber, Data>>>()

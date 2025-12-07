@@ -1,6 +1,7 @@
 use crate::models::{ColumnMeta, ColumnType};
 use itertools::izip;
-use std::collections::HashMap;
+use memchr::memchr;
+use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 
 /// Column-oriented storage for a single CCDB field.
@@ -299,30 +300,20 @@ pub struct ColumnDef {
     pub column_type: ColumnType,
 }
 
-/// Column-major table returned from CCDB fetch operations.
-pub struct Data {
-    n_rows: usize,
-    n_columns: usize,
+/// Immutable layout information for a table's columns.
+#[derive(Debug, Clone)]
+pub struct ColumnLayout {
+    columns: Vec<ColumnMeta>,
     column_names: Vec<String>,
     column_indices: HashMap<String, usize>,
     column_types: Vec<ColumnType>,
-    columns: Vec<Column>,
 }
 
-impl Data {
-    /// Builds a [`Data`] table from a raw vault string and column metadata.
-    pub fn from_vault(
-        vault: &str,
-        columns: &[ColumnMeta],
-        n_rows: usize,
-    ) -> Result<Self, CCDBDataError> {
-        let n_columns = columns.len();
-        let expected_cells = n_rows * n_columns;
-
-        let mut cols_sorted = columns.to_vec();
-        cols_sorted.sort_unstable_by_key(|c| c.order);
-
-        let column_names: Vec<String> = cols_sorted
+impl ColumnLayout {
+    /// Builds a layout from ordered column metadata.
+    pub fn new(mut columns: Vec<ColumnMeta>) -> Self {
+        columns.sort_unstable_by_key(|c| c.order);
+        let column_names: Vec<String> = columns
             .iter()
             .enumerate()
             .map(|(i, c)| {
@@ -333,14 +324,63 @@ impl Data {
                 }
             })
             .collect();
-
-        let column_types: Vec<ColumnType> = cols_sorted.iter().map(|c| c.column_type).collect();
+        let column_types: Vec<ColumnType> = columns.iter().map(|c| c.column_type).collect();
         let column_indices: HashMap<String, usize> = column_names
             .iter()
             .enumerate()
             .map(|(idx, name)| (name.clone(), idx))
             .collect();
+        Self {
+            columns,
+            column_names,
+            column_indices,
+            column_types,
+        }
+    }
 
+    /// Sorted column metadata.
+    pub fn columns(&self) -> &[ColumnMeta] {
+        &self.columns
+    }
+
+    /// Column names in positional order.
+    pub fn column_names(&self) -> &[String] {
+        &self.column_names
+    }
+
+    /// Column name to positional index lookup table.
+    pub fn column_indices(&self) -> &HashMap<String, usize> {
+        &self.column_indices
+    }
+
+    /// Column types in positional order.
+    pub fn column_types(&self) -> &[ColumnType] {
+        &self.column_types
+    }
+
+    /// Number of columns described by this layout.
+    pub fn column_count(&self) -> usize {
+        self.columns.len()
+    }
+}
+
+/// Column-major table returned from CCDB fetch operations.
+pub struct Data {
+    n_rows: usize,
+    layout: Arc<ColumnLayout>,
+    columns: Vec<Column>,
+}
+
+impl Data {
+    /// Builds a [`Data`] table from a raw vault string and column metadata.
+    pub fn from_vault(
+        vault: &str,
+        layout: Arc<ColumnLayout>,
+        n_rows: usize,
+    ) -> Result<Self, CCDBDataError> {
+        let n_columns = layout.column_count();
+        let expected_cells = n_rows * n_columns;
+        let column_types = layout.column_types();
         let mut column_vecs: Vec<Column> = column_types
             .iter()
             .map(|t| match t {
@@ -353,7 +393,7 @@ impl Data {
                 ColumnType::Bool => Column::Bool(Vec::with_capacity(n_rows)),
             })
             .collect();
-        let mut raw_iter = vault.split('|');
+        let mut raw_iter = VaultFieldIter::new(vault);
         for idx in 0..expected_cells {
             let raw = match raw_iter.next() {
                 Some(raw) => raw,
@@ -428,10 +468,7 @@ impl Data {
         }
         Ok(Data {
             n_rows,
-            n_columns,
-            column_names,
-            column_indices,
-            column_types,
+            layout,
             columns: column_vecs,
         })
     }
@@ -442,16 +479,16 @@ impl Data {
     }
     /// Number of columns in the dataset.
     pub fn n_columns(&self) -> usize {
-        self.n_columns
+        self.layout.column_count()
     }
     /// Column names in positional order.
     pub fn column_names(&self) -> &[String] {
-        &self.column_names
+        self.layout.column_names()
     }
 
     /// Column types in positional order.
     pub fn column_types(&self) -> &[ColumnType] {
-        &self.column_types
+        self.layout.column_types()
     }
 
     /// Returns a borrowed column by positional index.
@@ -461,7 +498,8 @@ impl Data {
 
     /// Returns a borrowed column by name.
     pub fn named_column(&self, name: &str) -> Option<&Column> {
-        self.column_indices
+        self.layout
+            .column_indices()
             .get(name)
             .and_then(|idx| self.columns.get(*idx))
     }
@@ -473,7 +511,8 @@ impl Data {
 
     /// Returns a cloned column by name.
     pub fn named_column_clone(&self, name: &str) -> Option<Column> {
-        self.column_indices
+        self.layout
+            .column_indices()
             .get(name)
             .and_then(|idx| self.columns.get(*idx))
             .cloned()
@@ -481,7 +520,7 @@ impl Data {
 
     /// Returns a single cell value by column and row index.
     pub fn value(&self, column: usize, row: usize) -> Option<Value<'_>> {
-        if row >= self.n_rows || column >= self.n_columns {
+        if row >= self.n_rows || column >= self.layout.column_count() {
             return None;
         }
         match self.columns.get(column)? {
@@ -560,38 +599,92 @@ impl Data {
                 n_rows: self.n_rows,
             });
         }
+        let layout = self.layout.as_ref();
         Ok(RowView {
             row,
             columns: &self.columns,
-            column_names: &self.column_names,
-            column_indices: &self.column_indices,
-            column_types: &self.column_types,
+            column_names: layout.column_names(),
+            column_indices: layout.column_indices(),
+            column_types: layout.column_types(),
         })
     }
 
     /// Iterates over all rows in the dataset.
     pub fn iter_rows(&self) -> impl Iterator<Item = RowView<'_>> {
+        let layout = self.layout.as_ref();
+        let columns = &self.columns;
+        let column_names = layout.column_names();
+        let column_indices = layout.column_indices();
+        let column_types = layout.column_types();
         (0..self.n_rows).map(move |row| RowView {
             row,
-            columns: &self.columns,
-            column_names: &self.column_names,
-            column_indices: &self.column_indices,
-            column_types: &self.column_types,
+            columns,
+            column_names,
+            column_indices,
+            column_types,
         })
     }
 
     /// Iterates over `(name, type, column)` tuples for each column.
     pub fn iter_columns(&self) -> impl Iterator<Item = (&String, &ColumnType, &Column)> {
         izip!(
-            self.column_names.iter(),
-            self.column_types.iter(),
+            self.layout.column_names().iter(),
+            self.layout.column_types().iter(),
             self.columns.iter()
         )
     }
 
     /// True if a column with the given name exists.
     pub fn contains(&self, name: &str) -> bool {
-        self.column_indices.contains_key(name)
+        self.layout.column_indices().contains_key(name)
+    }
+}
+
+struct VaultFieldIter<'a> {
+    input: &'a str,
+    cursor: usize,
+    finished: bool,
+}
+
+impl<'a> VaultFieldIter<'a> {
+    fn new(input: &'a str) -> Self {
+        Self {
+            input,
+            cursor: 0,
+            finished: false,
+        }
+    }
+}
+
+impl<'a> Iterator for VaultFieldIter<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+        if self.cursor > self.input.len() {
+            self.finished = true;
+            return Some("");
+        }
+        if self.cursor == self.input.len() {
+            self.finished = true;
+            return Some("");
+        }
+        let bytes = self.input.as_bytes();
+        match memchr(b'|', &bytes[self.cursor..]) {
+            Some(pos) => {
+                let start = self.cursor;
+                let end = start + pos;
+                self.cursor = end + 1;
+                Some(&self.input[start..end])
+            }
+            None => {
+                self.finished = true;
+                let start = self.cursor;
+                Some(&self.input[start..])
+            }
+        }
     }
 }
 
