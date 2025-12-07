@@ -63,13 +63,6 @@ impl CCDB {
         let path_str = path.as_ref().to_string_lossy().to_string();
         let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
-        conn.pragma_update(None, "temp_store", "MEMORY")?;
-        conn.execute(
-            "CREATE TEMP TABLE IF NOT EXISTS ccdb_rs_query_constant_ids (
-                id INTEGER PRIMARY KEY
-             )",
-            [],
-        )?;
         let db = CCDB {
             connection: Arc::new(conn),
             variation_cache: Arc::new(DashMap::new()),
@@ -492,7 +485,7 @@ impl TypeTableHandle {
         runs: &[RunNumber],
         variation: &str,
         timestamp: DateTime<Utc>,
-    ) -> CCDBResult<BTreeMap<RunNumber, AssignmentMetaLite>> {
+    ) -> CCDBResult<BTreeMap<RunNumber, Arc<ConstantSetMeta>>> {
         if runs.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -500,7 +493,7 @@ impl TypeTableHandle {
         let max_run = *runs.iter().max().expect("this is a bug, please report it!");
         let start_var_meta = self.db.variation(variation)?;
         let var_chain = self.db.variation_chain(&start_var_meta)?;
-        let mut final_assignments: BTreeMap<RunNumber, AssignmentMetaLite> = BTreeMap::new();
+        let mut final_assignments: BTreeMap<RunNumber, Arc<ConstantSetMeta>> = BTreeMap::new();
         let mut unresolved: HashSet<RunNumber> = runs.iter().copied().collect();
         for var_meta in var_chain {
             if unresolved.is_empty() {
@@ -527,10 +520,11 @@ impl TypeTableHandle {
         timestamp: DateTime<Utc>,
         min_run: RunNumber,
         max_run: RunNumber,
-    ) -> CCDBResult<BTreeMap<RunNumber, AssignmentMetaLite>> {
+    ) -> CCDBResult<BTreeMap<RunNumber, Arc<ConstantSetMeta>>> {
         let mut stmt = self.db.connection.prepare_cached(
             "SELECT
                  a.id, a.created, a.constantSetId,
+                 cs.id, cs.created, cs.modified, cs.vault, cs.constantTypeId,
                  rr.runMin, rr.runMax
              FROM assignments a
              JOIN constantSets cs ON cs.id = a.constantSetId
@@ -556,21 +550,34 @@ impl TypeTableHandle {
                         created: row.get(1)?,
                         constant_set_id: row.get(2)?,
                     };
-                    let run_min: RunNumber = row.get(3)?;
-                    let run_max: RunNumber = row.get(4)?;
-                    Ok((meta, run_min, run_max))
+                    let constant_set = ConstantSetMeta {
+                        id: row.get(3)?,
+                        created: row.get(4)?,
+                        modified: row.get(5)?,
+                        vault: row.get(6)?,
+                        constant_type_id: row.get(7)?,
+                    };
+                    let run_min: RunNumber = row.get(8)?;
+                    let run_max: RunNumber = row.get(9)?;
+                    Ok((meta, constant_set, run_min, run_max))
                 },
             )?
-            .collect::<Result<Vec<(AssignmentMetaLite, RunNumber, RunNumber)>, _>>()?;
-        let mut best: BTreeMap<RunNumber, AssignmentMetaLite> = BTreeMap::new();
+            .collect::<Result<Vec<(AssignmentMetaLite, ConstantSetMeta, RunNumber, RunNumber)>, _>>(
+            )?;
+        let mut best: BTreeMap<RunNumber, Arc<ConstantSetMeta>> = BTreeMap::new();
         let mut best_created: HashMap<RunNumber, DateTime<Utc>> = HashMap::new(); // timestamp map
+        let mut constant_set_cache: HashMap<Id, Arc<ConstantSetMeta>> = HashMap::new();
         for &run in runs {
-            for (meta, rmin, rmax) in &valid_assignments {
+            for (meta, constant_set, rmin, rmax) in &valid_assignments {
                 if run >= *rmin && run <= *rmax {
                     let cur_best = best_created.get(&run);
                     let created = meta.created()?;
                     if cur_best.map(|t| created > *t).unwrap_or(true) {
-                        best.insert(run, meta.clone());
+                        let cs_entry = constant_set_cache
+                            .entry(constant_set.id)
+                            .or_insert_with(|| Arc::new(constant_set.clone()))
+                            .clone();
+                        best.insert(run, cs_entry);
                         best_created.insert(run, created);
                     }
                 }
@@ -580,52 +587,21 @@ impl TypeTableHandle {
     }
     fn load_vaults(
         &self,
-        assignments: &BTreeMap<RunNumber, AssignmentMetaLite>,
+        assignments: &BTreeMap<RunNumber, Arc<ConstantSetMeta>>,
     ) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         if assignments.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let mut constant_set_ids: Vec<Id> =
-            assignments.values().map(|a| a.constant_set_id).collect();
-        constant_set_ids.sort_unstable();
-        constant_set_ids.dedup(); // PERF: is this slower than sorting a hashset?
-        self.db
-            .connection
-            .execute("DELETE FROM ccdb_rs_query_constant_ids", [])?;
-        {
-            let tx = self.db.connection.unchecked_transaction()?;
-            {
-                let mut insert =
-                    tx.prepare_cached("INSERT INTO ccdb_rs_query_constant_ids(id) VALUES(?)")?;
-                for id in &constant_set_ids {
-                    insert.execute([*id])?;
-                }
-            }
-            tx.commit()?;
-        }
-        let mut stmt = self.db.connection.prepare_cached(
-            "SELECT cs.id, cs.created, cs.modified, cs.vault, cs.constantTypeId
-             FROM constantSets cs
-             JOIN ccdb_rs_query_constant_ids tmp ON cs.id = tmp.id",
-        )?;
-        let cs_map = stmt
-            .query_map([], |row| {
-                let cs = ConstantSetMeta {
-                    id: row.get(0)?,
-                    created: row.get(1)?,
-                    modified: row.get(2)?,
-                    vault: row.get(3)?,
-                    constant_type_id: row.get(4)?,
-                };
-                Ok((cs.id, cs))
-            })?
-            .collect::<Result<HashMap<Id, ConstantSetMeta>, _>>()?;
         let columns = self.columns()?;
         let n_rows = self.meta.n_rows as usize;
         assignments
             .iter()
-            .filter_map(|(run, meta)| Some((run, cs_map.get(&meta.constant_set_id)?)))
-            .map(|(run, cs_meta)| Ok((*run, Data::from_vault(&cs_meta.vault, &columns, n_rows)?)))
+            .map(|(run, constant_set)| {
+                Ok((
+                    *run,
+                    Data::from_vault(&constant_set.vault, &columns, n_rows)?,
+                ))
+            })
             .collect::<CCDBResult<BTreeMap<RunNumber, Data>>>()
     }
 }
