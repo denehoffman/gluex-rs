@@ -1,8 +1,11 @@
+use std::ops::{Bound, RangeBounds};
+
 use gluex_core::{
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
     RunNumber,
 };
-use std::ops::{Bound, RangeBounds};
+
+use crate::cond::{Expr, IntoExprList};
 
 /// Describes how runs should be selected when fetching condition values.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,7 +15,12 @@ pub enum RunSelection {
     /// Return conditions only for the exact run numbers in the list.
     Runs(Vec<RunNumber>),
     /// Return conditions for every run within the inclusive range.
-    Range { start: RunNumber, end: RunNumber },
+    Range {
+        /// Inclusive start run number.
+        start: RunNumber,
+        /// Inclusive end run number.
+        end: RunNumber,
+    },
 }
 
 impl RunSelection {
@@ -23,23 +31,25 @@ impl RunSelection {
 }
 
 /// Lightweight request context describing run selection.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Context {
     selection: RunSelection,
+    filters: Vec<Expr>,
 }
 
 impl Default for Context {
     fn default() -> Self {
         Self {
             selection: RunSelection::All,
+            filters: Vec::new(),
         }
     }
 }
 
 impl Context {
     /// Builds a context that selects every run.
-    pub fn new(runs: RunSelection) -> Self {
-        Self { selection: runs }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Restricts the context to a single run number.
@@ -77,6 +87,12 @@ impl Context {
         self
     }
 
+    /// Adds one or more predicate expressions that must all evaluate to true.
+    pub fn filter(mut self, filters: impl IntoExprList) -> Self {
+        self.filters.extend(filters.into_list());
+        self
+    }
+
     /// Returns the run selection strategy for this context.
     pub fn selection(&self) -> &RunSelection {
         &self.selection
@@ -89,5 +105,9 @@ impl Context {
         } else {
             None
         }
+    }
+
+    pub(crate) fn filters(&self) -> &[Expr] {
+        &self.filters
     }
 }

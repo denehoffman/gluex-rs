@@ -17,3 +17,10 @@ tests = [
 ]
 [tool.maturin]
 python-source = "python"
+features = ["python"]
+
+[tool.ruff]
+target-version = "py38"
+
+[tool.ruff.lint]
+per-file-ignores = { "python/tests/test_all.py" = ["S101", "PLR2004", "PT018"] }
