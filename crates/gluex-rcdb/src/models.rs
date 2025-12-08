@@ -1,16 +1,60 @@
 use chrono::{DateTime, Utc};
 use gluex_core::{errors::ParseTimestampError, parsers::parse_timestamp, Id, RunNumber};
 
-#[derive(Debug, Copy, Clone, Default)]
+/// Typed representation of a condition value column.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub enum ValueType {
+    /// Human readable UTF-8 string payload.
     #[default]
-    Text,
+    String,
+    /// Signed integer payload stored in `int_value`.
     Int,
-    Float,
+    /// Boolean payload stored in `bool_value`.
     Bool,
+    /// Floating point payload stored in `float_value`.
+    Float,
+    /// JSON encoded blob stored in `text_value`.
+    Json,
+    /// Arbitrary blob (stored as text) stored in `text_value`.
+    Blob,
+    /// Timestamp payload stored in `time_value`.
     Time,
 }
+impl ValueType {
+    /// Returns the identifier string stored in the database.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ValueType::String => "string",
+            ValueType::Int => "int",
+            ValueType::Bool => "bool",
+            ValueType::Float => "float",
+            ValueType::Json => "json",
+            ValueType::Blob => "blob",
+            ValueType::Time => "time",
+        }
+    }
 
+    /// Builds a `ValueType` from the identifier stored in SQLite.
+    pub fn from_identifier(value: &str) -> Option<Self> {
+        match value {
+            "string" => Some(ValueType::String),
+            "int" => Some(ValueType::Int),
+            "bool" => Some(ValueType::Bool),
+            "float" => Some(ValueType::Float),
+            "json" => Some(ValueType::Json),
+            "blob" => Some(ValueType::Blob),
+            "time" => Some(ValueType::Time),
+            _ => None,
+        }
+    }
+
+    /// True when the value is backed by the `text_value` column.
+    pub fn is_textual(&self) -> bool {
+        matches!(self, ValueType::String | ValueType::Json | ValueType::Blob)
+    }
+}
+/// Metadata record for a condition type entry.
+#[derive(Debug, Clone)]
 pub struct ConditionTypeMeta {
     pub(crate) id: Id,
     pub(crate) name: String,

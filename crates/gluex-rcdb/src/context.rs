@@ -1,0 +1,93 @@
+use gluex_core::{
+    constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
+    RunNumber,
+};
+use std::ops::{Bound, RangeBounds};
+
+/// Describes how runs should be selected when fetching condition values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunSelection {
+    /// Return conditions for every run stored in RCDB.
+    All,
+    /// Return conditions only for the exact run numbers in the list.
+    Runs(Vec<RunNumber>),
+    /// Return conditions for every run within the inclusive range.
+    Range { start: RunNumber, end: RunNumber },
+}
+
+impl RunSelection {
+    /// True when no runs will be returned.
+    pub fn is_empty(&self) -> bool {
+        matches!(self, RunSelection::Runs(r) if r.is_empty())
+    }
+}
+
+/// Lightweight request context describing run selection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Context {
+    selection: RunSelection,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self {
+            selection: RunSelection::All,
+        }
+    }
+}
+
+impl Context {
+    /// Builds a context that selects every run.
+    pub fn new(runs: RunSelection) -> Self {
+        Self { selection: runs }
+    }
+
+    /// Restricts the context to a single run number.
+    pub fn with_run(mut self, run: RunNumber) -> Self {
+        self.selection = RunSelection::Runs(vec![run]);
+        self
+    }
+
+    /// Restricts the context to the provided run numbers.
+    pub fn with_runs(mut self, runs: impl IntoIterator<Item = RunNumber>) -> Self {
+        let mut run_list: Vec<RunNumber> = runs.into_iter().collect();
+        run_list.sort_unstable();
+        run_list.dedup();
+        self.selection = RunSelection::Runs(run_list);
+        self
+    }
+
+    /// Restricts the context to the inclusive range produced by `run_range`.
+    pub fn with_run_range(mut self, run_range: impl RangeBounds<RunNumber>) -> Self {
+        let start = match run_range.start_bound() {
+            Bound::Included(&s) => s,
+            Bound::Excluded(&s) => s.saturating_add(1),
+            Bound::Unbounded => MIN_RUN_NUMBER,
+        };
+        let end = match run_range.end_bound() {
+            Bound::Included(&e) => e,
+            Bound::Excluded(&e) => e.saturating_sub(1),
+            Bound::Unbounded => MAX_RUN_NUMBER,
+        };
+        if start > end {
+            self.selection = RunSelection::Runs(Vec::new());
+        } else {
+            self.selection = RunSelection::Range { start, end };
+        }
+        self
+    }
+
+    /// Returns the run selection strategy for this context.
+    pub fn selection(&self) -> &RunSelection {
+        &self.selection
+    }
+
+    /// Returns the run numbers when the context is scoped to explicit runs.
+    pub fn runs(&self) -> Option<&[RunNumber]> {
+        if let RunSelection::Runs(runs) = &self.selection {
+            Some(runs)
+        } else {
+            None
+        }
+    }
+}

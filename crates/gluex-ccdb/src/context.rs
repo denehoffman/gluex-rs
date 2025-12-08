@@ -1,5 +1,10 @@
 use chrono::{DateTime, Utc};
-use gluex_core::{errors::ParseTimestampError, parsers::parse_timestamp, RunNumber};
+use gluex_core::{
+    constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
+    errors::ParseTimestampError,
+    parsers::parse_timestamp,
+    RunNumber,
+};
 use std::{ops::Bound, str::FromStr};
 use thiserror::Error;
 
@@ -58,7 +63,6 @@ pub enum NamePathError {
 
 const DEFAULT_VARIATION: &str = "default";
 const DEFAULT_RUN_NUMBER: RunNumber = 0;
-const MAX_RUN_NUMBER: RunNumber = 2_147_483_647;
 
 /// Query context describing run selection, variation, and timestamp.
 #[derive(Debug, Clone)]
@@ -100,14 +104,14 @@ impl Context {
     }
     /// Returns a context scoped to a single run number.
     pub fn with_run(mut self, run: RunNumber) -> Self {
-        self.runs = vec![run.clamp(0, MAX_RUN_NUMBER)];
+        self.runs = vec![run.clamp(MIN_RUN_NUMBER, MAX_RUN_NUMBER)];
         self
     }
     /// Replaces the run list with the provided runs.
     pub fn with_runs(mut self, iter: impl IntoIterator<Item = RunNumber>) -> Self {
         self.runs = iter
             .into_iter()
-            .map(|r| r.clamp(0, MAX_RUN_NUMBER))
+            .map(|r| r.clamp(MIN_RUN_NUMBER, MAX_RUN_NUMBER))
             .collect();
         self
     }
@@ -115,13 +119,13 @@ impl Context {
     pub fn with_run_range(mut self, run_range: impl std::ops::RangeBounds<RunNumber>) -> Self {
         let start = match run_range.start_bound() {
             Bound::Included(&s) => s,
-            Bound::Excluded(&s) => s + 1,
-            Bound::Unbounded => 0,
+            Bound::Excluded(&s) => s.saturating_add(1),
+            Bound::Unbounded => MIN_RUN_NUMBER,
         }
-        .max(0);
+        .max(MIN_RUN_NUMBER);
         let end = match run_range.end_bound() {
             Bound::Included(&e) => e,
-            Bound::Excluded(&e) => e - 1,
+            Bound::Excluded(&e) => e.saturating_sub(1),
             Bound::Unbounded => MAX_RUN_NUMBER,
         }
         .min(MAX_RUN_NUMBER);
