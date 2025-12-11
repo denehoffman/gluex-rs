@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::{hint::black_box, sync::Arc};
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -14,10 +16,11 @@ fn load_layout_and_vaults() -> (Arc<ColumnLayout>, Vec<String>, usize) {
         .expect("failed to open benchmark table");
     let columns: Vec<ColumnMeta> = table.columns().expect("failed to load columns");
     let layout = Arc::new(ColumnLayout::new(columns));
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let n_rows = table.meta().n_rows() as usize;
 
-    let mut stmt = db
-        .connection()
+    let connection = db.connection();
+    let mut stmt = connection
         .prepare_cached(
             "SELECT cs.vault
              FROM constantSets cs
@@ -39,7 +42,7 @@ fn load_layout_and_vaults() -> (Arc<ColumnLayout>, Vec<String>, usize) {
 fn bench_parse_vault(c: &mut Criterion) {
     let (layout, vaults, n_rows) = load_layout_and_vaults();
     let first = vaults
-        .get(0)
+        .first()
         .expect("expected at least one vault for benchmark")
         .clone();
     c.bench_function("parse_vault_test_table", |b| {
@@ -48,7 +51,7 @@ fn bench_parse_vault(c: &mut Criterion) {
                 gluex_ccdb::data::Data::from_vault(black_box(&first), layout.clone(), n_rows)
                     .expect("parse failed");
             black_box(data);
-        })
+        });
     });
 }
 
@@ -62,7 +65,7 @@ fn bench_parse_multiple_vaults(c: &mut Criterion) {
                         .expect("parse failed");
                 black_box(data);
             }
-        })
+        });
     });
 }
 

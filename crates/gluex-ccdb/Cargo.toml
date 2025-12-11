@@ -10,21 +10,16 @@ rust-version.workspace = true
 
 [lib]
 name = "gluex_ccdb"
-crate-type = ["rlib", "cdylib"]
-
-[features]
-default = []
-python = ["pyo3/extension-module", "pyo3", "pyo3/chrono"]
+crate-type = ["rlib"]
 
 [dependencies]
 chrono.workspace = true
 dashmap.workspace = true
 itertools.workspace = true
+memchr.workspace = true
 parking_lot.workspace = true
-pyo3 = { workspace = true, optional = true }
 rusqlite.workspace = true
 thiserror.workspace = true
-memchr.workspace = true
 
 gluex-core.workspace = true
 
@@ -38,3 +33,6 @@ harness = false
 [[bench]]
 name = "parse_vault"
 harness = false
+
+[lints]
+workspace = true

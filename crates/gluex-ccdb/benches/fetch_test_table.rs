@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -24,7 +26,7 @@ fn bench_fetch_range(c: &mut Criterion) {
         b.iter(|| {
             let data = table.fetch(&ctx).expect("fetch failed");
             std::hint::black_box(&data);
-        })
+        });
     });
     group.finish();
 }
@@ -40,7 +42,7 @@ fn bench_fetch_single_run(c: &mut Criterion) {
         b.iter(|| {
             let data = table.fetch(&ctx).expect("fetch failed");
             std::hint::black_box(&data);
-        })
+        });
     });
     group.finish();
 }

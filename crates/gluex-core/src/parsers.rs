@@ -3,6 +3,10 @@ use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use crate::errors::ParseTimestampError;
 
 /// Parses a timestamp string into a UTC datetime, inferring missing fields.
+///
+/// # Errors
+///
+/// Returns an error if the input cannot be interpreted as a valid timestamp.
 pub fn parse_timestamp(input: &str) -> Result<DateTime<Utc>, ParseTimestampError> {
     let digits: Vec<i32> = input
         .split(|c: char| !c.is_ascii_digit())

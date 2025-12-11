@@ -1,5 +1,5 @@
 [package]
-name = "gluex-rcdb"
+name = "gluex-rcdb-py"
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
@@ -10,18 +10,10 @@ rust-version.workspace = true
 
 [lib]
 name = "gluex_rcdb"
-crate-type = ["rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 chrono.workspace = true
-parking_lot.workspace = true
-rusqlite.workspace = true
-thiserror.workspace = true
-
+pyo3 = { workspace = true, features = ["extension-module", "chrono"] }
 gluex-core.workspace = true
-
-[dev-dependencies]
-criterion.workspace = true
-
-[lints]
-workspace = true
+gluex-rcdb.workspace = true

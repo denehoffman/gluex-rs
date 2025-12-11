@@ -1,10 +1,7 @@
-//! GlueX CCDB access library with optional Python bindings.
+//! `GlueX` CCDB access library with optional Python bindings.
 //!
 //! This crate provides a read-only interface to the Jefferson Lab Calibration
-//! and Conditions Database (CCDB). It exposes both a native Rust API and an
-//! optional Python API (via PyO3) for exploring directory structure, querying
-//! tables, and loading typed constant data.
-#![deny(missing_docs)]
+//! and Conditions Database (CCDB).
 use gluex_core::errors::ParseTimestampError;
 use thiserror::Error;
 
@@ -14,11 +11,8 @@ pub mod context;
 pub mod data;
 /// High-level database entry points and handles to CCDB objects.
 pub mod database;
-#[allow(missing_docs)]
+/// Lightweight structs that mirror CCDB tables.
 pub mod models;
-#[cfg(feature = "python")]
-/// The Python bindings for this crate.
-pub mod python;
 
 /// Convenience alias for functions that can return a `CCDBError`.
 pub type CCDBResult<T> = Result<T, CCDBError>;
@@ -26,7 +20,7 @@ pub type CCDBResult<T> = Result<T, CCDBError>;
 /// Errors that can occur while interacting with CCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum CCDBError {
-    /// Wrapper around SQLite driver errors.
+    /// Wrapper around `SQLite` driver errors.
     #[error("{0}")]
     SqliteError(#[from] rusqlite::Error),
     /// Wrapper around data parsing or shape errors when decoding payloads.
@@ -57,5 +51,3 @@ pub mod prelude {
     pub use crate::{context::Context, database::CCDB, CCDBError, CCDBResult};
     pub use gluex_core::RunNumber;
 }
-#[cfg(feature = "python")]
-pub use python::*;

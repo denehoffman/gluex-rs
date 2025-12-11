@@ -7,13 +7,13 @@ pub enum ValueType {
     /// Human readable UTF-8 string payload.
     #[default]
     String,
-    /// Signed integer payload stored in `int_value`.
+    /// Signed integer payload stored in `int_value` (i32).
     Int,
     /// Boolean payload stored in `bool_value`.
     Bool,
     /// Floating point payload stored in `float_value`.
     Float,
-    /// JSON encoded blob stored in `text_value`.
+    /// JSON encoded blob stored in `text_value` (f64).
     Json,
     /// Arbitrary blob (stored as text) stored in `text_value`.
     Blob,
@@ -22,6 +22,7 @@ pub enum ValueType {
 }
 impl ValueType {
     /// Returns the identifier string stored in the database.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             ValueType::String => "string",
@@ -34,7 +35,8 @@ impl ValueType {
         }
     }
 
-    /// Builds a `ValueType` from the identifier stored in SQLite.
+    /// Builds a `ValueType` from the identifier stored in `SQLite`.
+    #[must_use]
     pub fn from_identifier(value: &str) -> Option<Self> {
         match value {
             "string" => Some(ValueType::String),
@@ -49,11 +51,13 @@ impl ValueType {
     }
 
     /// True when the value is backed by the `text_value` column.
+    #[must_use]
     pub fn is_textual(&self) -> bool {
         matches!(self, ValueType::String | ValueType::Json | ValueType::Blob)
     }
 
     /// Returns the storage column name used in the `conditions` table.
+    #[must_use]
     pub fn column_name(&self) -> &'static str {
         match self {
             ValueType::String | ValueType::Json | ValueType::Blob => "text_value",
@@ -75,22 +79,27 @@ pub struct ConditionTypeMeta {
 }
 impl ConditionTypeMeta {
     /// Database identifier for the condition type.
+    #[must_use]
     pub fn id(&self) -> Id {
         self.id
     }
     /// Name of the condition type.
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
     /// Value type used to store the condition.
+    #[must_use]
     pub fn value_type(&self) -> ValueType {
         self.value_type
     }
     /// Timestamp describing when the condition was created.
+    #[must_use]
     pub fn created(&self) -> String {
         self.created.clone()
     }
     /// Free-form description associated with the condition.
+    #[must_use]
     pub fn description(&self) -> &str {
         &self.description
     }
@@ -110,38 +119,53 @@ pub struct ConditionMeta {
 }
 impl ConditionMeta {
     /// Identifier of the condition row.
+    #[must_use]
     pub fn id(&self) -> Id {
         self.id
     }
     /// Raw text value stored alongside the condition.
+    #[must_use]
     pub fn text_value(&self) -> &str {
         &self.text_value
     }
     /// Raw integer value stored alongside the condition.
+    #[must_use]
     pub fn int_value(&self) -> i64 {
         self.int_value
     }
     /// Raw floating-point value stored alongside the condition.
+    #[must_use]
     pub fn float_value(&self) -> f64 {
         self.float_value
     }
     /// Raw boolean stored as an integer (0 or 1).
+    #[must_use]
     pub fn bool_value(&self) -> i64 {
         self.bool_value
     }
     /// Run number associated with the condition.
+    #[must_use]
     pub fn run_number(&self) -> i64 {
         self.run_number
     }
     /// Identifier referencing the condition type entry.
+    #[must_use]
     pub fn condition_type_id(&self) -> Id {
         self.condition_type_id
     }
     /// Timestamp describing when the condition was created.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stored creation timestamp cannot be parsed as a UTC datetime.
     pub fn created(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.created)
     }
     /// Optional timestamp value associated with the condition.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stored timestamp cannot be parsed as a UTC datetime.
     pub fn time_value(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.time_value)
     }
@@ -159,30 +183,43 @@ pub struct RunPeriodMeta {
 }
 impl RunPeriodMeta {
     /// Identifier of the run period.
+    #[must_use]
     pub fn id(&self) -> Id {
         self.id
     }
     /// Human-readable period name.
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
     /// Optional descriptive text for the run period.
+    #[must_use]
     pub fn description(&self) -> &str {
         &self.description
     }
     /// Minimum run number included in the period.
+    #[must_use]
     pub fn run_min(&self) -> RunNumber {
         self.run_min
     }
     /// Maximum run number included in the period.
+    #[must_use]
     pub fn run_max(&self) -> RunNumber {
         self.run_max
     }
     /// Timestamp describing when the period started.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stored start timestamp cannot be parsed as a UTC datetime.
     pub fn start_date(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.start_date)
     }
     /// Timestamp describing when the period ended.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stored end timestamp cannot be parsed as a UTC datetime.
     pub fn end_date(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.end_date)
     }
@@ -196,14 +233,23 @@ pub struct RunMeta {
 }
 impl RunMeta {
     /// Run number for this record.
+    #[must_use]
     pub fn number(&self) -> RunNumber {
         self.number
     }
     /// Timestamp indicating when the run began.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stored run start timestamp cannot be parsed as a UTC datetime.
     pub fn started(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.started)
     }
     /// Timestamp indicating when the run finished.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stored run end timestamp cannot be parsed as a UTC datetime.
     pub fn finished(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
         parse_timestamp(&self.finished)
     }

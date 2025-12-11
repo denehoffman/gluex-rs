@@ -10,6 +10,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use gluex_core::{Id, RunNumber};
+use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{Connection, OpenFlags};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -47,7 +48,7 @@ fn normalize_path(base: &str, path: &str) -> String {
 /// Read-only client for the Jefferson Lab Calibration and Conditions Database.
 #[derive(Clone)]
 pub struct CCDB {
-    connection: Arc<Connection>,
+    connection: Arc<Mutex<Connection>>,
     connection_path: String,
     variation_cache: Arc<DashMap<String, VariationMeta>>,
     variation_chain_cache: Arc<DashMap<Id, Vec<VariationMeta>>>,
@@ -59,13 +60,17 @@ pub struct CCDB {
 }
 
 impl CCDB {
-    /// Opens a read-only connection to an existing CCDB SQLite database file.
+    /// Opens a read-only connection to an existing CCDB `SQLite` database file.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the database cannot be opened.
     pub fn open(path: impl AsRef<Path>) -> CCDBResult<Self> {
         let path_str = path.as_ref().to_string_lossy().to_string();
         let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
         let db = CCDB {
-            connection: Arc::new(conn),
+            connection: Arc::new(Mutex::new(conn)),
             variation_cache: Arc::new(DashMap::new()),
             variation_chain_cache: Arc::new(DashMap::new()),
             directory_meta: Arc::new(DashMap::new()),
@@ -79,16 +84,18 @@ impl CCDB {
         db.load_tables()?;
         Ok(db)
     }
-    /// Returns the underlying SQLite connection.
-    pub fn connection(&self) -> &Connection {
-        &self.connection
+    /// Returns the underlying `SQLite` connection.
+    pub fn connection(&self) -> MutexGuard<'_, Connection> {
+        self.connection.lock()
     }
     /// Returns the filesystem path used to open the database.
+    #[must_use]
     pub fn connection_path(&self) -> &str {
         &self.connection_path
     }
     fn load_directories(&self) -> CCDBResult<()> {
-        let mut stmt = self.connection.prepare(
+        let connection = self.connection();
+        let mut stmt = connection.prepare(
             "SELECT id, created, modified, name, parentId, authorId, comment,
                     isDeprecated, deprecatedByUserId, isLocked, lockedByUserId
              FROM directories",
@@ -134,7 +141,8 @@ impl CCDB {
         }
     }
     fn load_tables(&self) -> CCDBResult<()> {
-        let mut stmt = self.connection.prepare(
+        let connection = self.connection();
+        let mut stmt = connection.prepare(
             "SELECT id, created, modified, directoryId, name,
                     nRows, nColumns, nAssignments, authorId, comment,
                     isDeprecated, deprecatedByUserId, isLocked, lockedByUserId, lockTime
@@ -172,18 +180,23 @@ impl CCDB {
     }
 
     /// Returns a handle to the virtual root directory.
+    #[must_use]
     pub fn root(&self) -> DirectoryHandle {
         DirectoryHandle {
             db: self.clone(),
             meta: DirectoryMeta {
                 id: 0,
-                name: "".to_string(),
+                name: String::new(),
                 ..Default::default()
             },
         }
     }
 
     /// Resolves an absolute or relative directory path into a handle.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the directory cannot be found.
     pub fn dir(&self, path: &str) -> CCDBResult<DirectoryHandle> {
         if path == "/" || path.is_empty() {
             return Ok(self.root());
@@ -204,6 +217,10 @@ impl CCDB {
     }
 
     /// Resolves a table path ("/dir/name") into a handle.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the table cannot be found.
     pub fn table(&self, path: &str) -> CCDBResult<TypeTableHandle> {
         let norm = normalize_path("/", path);
         let (dir_path, table_name) = match norm.rsplit_once('/') {
@@ -214,11 +231,16 @@ impl CCDB {
         dir.table(table_name)
     }
     /// Loads variation metadata, caching repeated lookups.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the variation cannot be found.
     pub fn variation(&self, name: &str) -> CCDBResult<VariationMeta> {
         if let Some(v) = self.variation_cache.get(name) {
             return Ok(v.clone());
         }
-        let mut stmt = self.connection.prepare_cached(
+        let connection = self.connection();
+        let mut stmt = connection.prepare_cached(
             "SELECT id, created, modified, name, description, authorId, comment,
                     parentId, isLocked, lockTime, lockedByUserId,
                     goBackBehavior, goBackTime, isDeprecated, deprecatedByUserId
@@ -251,6 +273,10 @@ impl CCDB {
         }
     }
     /// Resolves a variation chain from the given starting variation up to the root.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if any of the variations cannot be found.
     pub fn variation_chain(&self, start: &VariationMeta) -> CCDBResult<Vec<VariationMeta>> {
         if let Some(cached) = self.variation_chain_cache.get(&start.id) {
             return Ok(cached.clone());
@@ -259,8 +285,8 @@ impl CCDB {
         let mut current = start.clone();
 
         chain.push(current.clone());
-
-        let mut stmt = self.connection.prepare_cached(
+        let connection = self.connection();
+        let mut stmt = connection.prepare_cached(
             "SELECT id, created, modified, name, description, authorId, comment,
                     parentId, isLocked, lockTime, lockedByUserId,
                     goBackBehavior, goBackTime, isDeprecated, deprecatedByUserId
@@ -298,6 +324,11 @@ impl CCDB {
         Ok(chain)
     }
     /// Parses a request string of the form "/path:run:variation:timestamp" and fetches data.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the request string cannot be parsed, the parsed table path
+    /// does not exist, or an error occurs while fetching data.
     pub fn request(&self, request_string: &str) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let request: Request = request_string.parse()?;
         let table = self.table(request.path.full_path())?;
@@ -305,6 +336,10 @@ impl CCDB {
     }
 
     /// Fetches data for a table path using the supplied query context.
+    /// # Errors
+    ///
+    /// This method returns an error if the parsed table path
+    /// does not exist or an error occurs while fetching data.
     pub fn fetch(&self, path: &str, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let table = self.table(path)?;
         table.fetch(ctx)
@@ -320,10 +355,12 @@ pub struct DirectoryHandle {
 
 impl DirectoryHandle {
     /// Returns the directory metadata as loaded from CCDB.
+    #[must_use]
     pub fn meta(&self) -> &DirectoryMeta {
         &self.meta
     }
     /// Returns the absolute path for this directory.
+    #[must_use]
     pub fn full_path(&self) -> String {
         if self.meta.id == 0 {
             "/".to_string()
@@ -337,7 +374,7 @@ impl DirectoryHandle {
                 }
                 names.push(current.name.clone());
                 if let Some(parent) = self.db.directory_meta.get(&current.parent_id) {
-                    current = parent.clone()
+                    current = parent.clone();
                 } else {
                     break;
                 }
@@ -347,6 +384,7 @@ impl DirectoryHandle {
         }
     }
     /// Returns the parent directory, if one exists.
+    #[must_use]
     pub fn parent(&self) -> Option<Self> {
         if self.meta.parent_id == 0 {
             None
@@ -358,9 +396,9 @@ impl DirectoryHandle {
         }
     }
     /// Lists subdirectories directly under this directory.
-    pub fn dirs(&self) -> CCDBResult<Vec<DirectoryHandle>> {
-        Ok(self
-            .db
+    #[must_use]
+    pub fn dirs(&self) -> Vec<DirectoryHandle> {
+        self.db
             .directory_meta
             .iter()
             .filter(|meta| meta.parent_id == self.meta.id)
@@ -368,17 +406,21 @@ impl DirectoryHandle {
                 db: self.db.clone(),
                 meta: meta.value().clone(),
             })
-            .collect())
+            .collect()
     }
     /// Resolves a child directory given a relative path.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the directory cannot be found.
     pub fn dir(&self, path: &str) -> CCDBResult<DirectoryHandle> {
         let target = normalize_path(&self.full_path(), path);
         self.db.dir(&target)
     }
     /// Lists tables that live directly under this directory.
-    pub fn tables(&self) -> CCDBResult<Vec<TypeTableHandle>> {
-        Ok(self
-            .db
+    #[must_use]
+    pub fn tables(&self) -> Vec<TypeTableHandle> {
+        self.db
             .table_meta
             .iter()
             .filter(|meta| meta.directory_id == self.meta.id)
@@ -386,9 +428,13 @@ impl DirectoryHandle {
                 db: self.db.clone(),
                 meta: meta.value().clone(),
             })
-            .collect())
+            .collect()
     }
     /// Resolves a table within this directory by name.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the table cannot be found.
     pub fn table(&self, name: &str) -> CCDBResult<TypeTableHandle> {
         let id = self
             .db
@@ -415,18 +461,22 @@ pub struct TypeTableHandle {
 }
 impl TypeTableHandle {
     /// Returns the table metadata as loaded from CCDB.
+    #[must_use]
     pub fn meta(&self) -> &TypeTableMeta {
         &self.meta
     }
     /// Returns the table name (without parent path components).
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.meta.name
     }
     /// Returns the unique numeric identifier for this table.
+    #[must_use]
     pub fn id(&self) -> Id {
         self.meta.id
     }
     /// Returns the absolute path of this table, including directory prefix.
+    #[must_use]
     pub fn full_path(&self) -> String {
         let dir_meta = self.db.directory_meta.get(&self.meta.directory_id);
         if let Some(dir_meta) = dir_meta {
@@ -445,11 +495,17 @@ impl TypeTableHandle {
         }
     }
     /// Loads column metadata for this table.
+    ///
+    /// # Errors
+    ///
+    /// This method will fail if the underlying SQL query fails or any part of the `columns` table
+    /// fails to parse.
     pub fn columns(&self) -> CCDBResult<Vec<ColumnMeta>> {
         Ok(self.column_layout()?.columns().to_vec())
     }
     fn load_column_metadata(&self) -> CCDBResult<Vec<ColumnMeta>> {
-        let mut stmt = self.db.connection.prepare_cached(
+        let connection = self.db.connection();
+        let mut stmt = connection.prepare_cached(
             "SELECT id, created, modified, name, typeId, columnType, `order`, comment
              FROM columns
              WHERE typeId = ?
@@ -463,7 +519,7 @@ impl TypeTableHandle {
                     modified: row.get(2)?,
                     name: row.get(3).unwrap_or_default(),
                     type_id: row.get(4)?,
-                    column_type: ColumnType::from_str(&row.get::<_, String>(5)?)
+                    column_type: ColumnType::type_from_str(&row.get::<_, String>(5)?)
                         .unwrap_or_default(),
                     order: row.get(6)?,
                     comment: row.get(7).unwrap_or_default(),
@@ -483,6 +539,11 @@ impl TypeTableHandle {
         Ok(layout)
     }
     /// Fetches data for this table using the provided query context.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if resolving assignments fails, if any SQL queries fail, or if vault data
+    /// cannot be decoded for the requested runs.
     pub fn fetch(&self, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let runs: Vec<RunNumber> = if ctx.runs.is_empty() {
             vec![0]
@@ -493,7 +554,7 @@ impl TypeTableHandle {
         if assignments.is_empty() {
             return Ok(BTreeMap::new());
         }
-        Ok(self.load_vaults(&assignments)?)
+        self.load_vaults(&assignments)
     }
     fn resolve_assignments(
         &self,
@@ -536,7 +597,8 @@ impl TypeTableHandle {
         min_run: RunNumber,
         max_run: RunNumber,
     ) -> CCDBResult<BTreeMap<RunNumber, Arc<ConstantSetMeta>>> {
-        let mut stmt = self.db.connection.prepare_cached(
+        let connection = self.db.connection();
+        let mut stmt = connection.prepare_cached(
             "SELECT
                  a.id, a.created, a.constantSetId,
                  cs.id, cs.created, cs.modified, cs.vault, cs.constantTypeId,
@@ -587,7 +649,7 @@ impl TypeTableHandle {
                 if run >= *rmin && run <= *rmax {
                     let cur_best = best_created.get(&run);
                     let created = meta.created()?;
-                    if cur_best.map(|t| created > *t).unwrap_or(true) {
+                    if cur_best.is_none_or(|t| created > *t) {
                         let cs_entry = constant_set_cache
                             .entry(constant_set.id)
                             .or_insert_with(|| Arc::new(constant_set.clone()))
@@ -608,6 +670,7 @@ impl TypeTableHandle {
             return Ok(BTreeMap::new());
         }
         let layout = self.column_layout()?;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let n_rows = self.meta.n_rows as usize;
         assignments
             .iter()

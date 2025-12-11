@@ -1,7 +1,9 @@
+#![allow(missing_docs)]
+
 use std::path::PathBuf;
 
 use gluex_core::parsers::parse_timestamp;
-use gluex_rcdb::{condition as cond, Context, RCDBResult, ValueType, RCDB};
+use gluex_rcdb::{conditions, Context, RCDBResult, Value, ValueType, RCDB};
 
 fn rcdb_path() -> PathBuf {
     if let Ok(raw) = std::env::var("RCDB_TEST_SQLITE_CONNECTION") {
@@ -43,7 +45,7 @@ fn fetch_run_range_collects_multiple_rows() -> RCDBResult<()> {
         values
             .get(&3)
             .and_then(|row| row.get("event_count"))
-            .and_then(|value| value.as_int()),
+            .and_then(Value::as_int),
         Some(1686),
     );
     assert!(values.contains_key(&5));
@@ -59,14 +61,14 @@ fn fetch_bool_condition() -> RCDBResult<()> {
         values
             .get(&2)
             .and_then(|row| row.get("is_valid_run_end"))
-            .and_then(|value| value.as_bool()),
+            .and_then(Value::as_bool),
         Some(false),
     );
     assert_eq!(
         values
             .get(&4)
             .and_then(|row| row.get("is_valid_run_end"))
-            .and_then(|value| value.as_bool()),
+            .and_then(Value::as_bool),
         Some(true),
     );
     Ok(())
@@ -92,10 +94,14 @@ fn fetch_with_predicates() -> RCDBResult<()> {
     let db = open_db();
     let ctx = Context::default()
         .with_run_range(1000..=1100)
-        .filter(cond::all([
-            cond::string_cond("run_type").isin(["hd_all.tsg", "hd_all.tsg-m8", "hd_all.tsg-m7"]),
-            cond::float_cond("beam_current").gt(0.1),
-            cond::int_cond("event_count").gt(50),
+        .filter(conditions::all([
+            conditions::string_cond("run_type").isin([
+                "hd_all.tsg",
+                "hd_all.tsg-m8",
+                "hd_all.tsg-m7",
+            ]),
+            conditions::float_cond("beam_current").gt(0.1),
+            conditions::int_cond("event_count").gt(50),
         ]));
     let values = db.fetch(
         [
@@ -110,9 +116,9 @@ fn fetch_with_predicates() -> RCDBResult<()> {
     for (run, row) in &values {
         let event_count = row
             .get("event_count")
-            .and_then(|value| value.as_int())
+            .and_then(Value::as_int)
             .expect("event_count missing");
-        assert!(event_count > 50, "run {} failed event_count", run);
+        assert!(event_count > 50, "run {run} failed event_count");
     }
     Ok(())
 }
@@ -122,9 +128,9 @@ fn fetch_runs_with_filters() -> RCDBResult<()> {
     let db = open_db();
     let ctx = Context::default()
         .with_run_range(1000..=1100)
-        .filter(cond::all([
-            cond::float_cond("beam_current").gt(0.1),
-            cond::int_cond("event_count").gt(50),
+        .filter(conditions::all([
+            conditions::float_cond("beam_current").gt(0.1),
+            conditions::int_cond("event_count").gt(50),
         ]));
     let runs = db.fetch_runs(&ctx)?;
     assert!(!runs.is_empty());
@@ -135,7 +141,7 @@ fn fetch_runs_with_filters() -> RCDBResult<()> {
 #[test]
 fn fetch_runs_with_alias() -> RCDBResult<()> {
     let db = open_db();
-    let alias_expr = cond::alias("is_production").expect("alias available");
+    let alias_expr = conditions::aliases::is_production();
     let ctx = Context::default()
         .with_run_range(10_000..=10_300)
         .filter(alias_expr);

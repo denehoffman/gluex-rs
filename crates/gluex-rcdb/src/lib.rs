@@ -1,8 +1,7 @@
-//! GlueX RCDB access library with optional Python bindings.
-#![deny(missing_docs)]
+//! `GlueX` RCDB access library with optional Python bindings.
 
 /// Condition expression builders and helpers.
-pub mod cond;
+pub mod conditions;
 /// Run-selection context utilities.
 pub mod context;
 /// Value container utilities returned from queries.
@@ -11,11 +10,8 @@ pub mod data;
 pub mod database;
 /// Lightweight structs that mirror RCDB tables.
 pub mod models;
-#[cfg(feature = "python")]
-/// Python bindings for the RCDB APIs.
-pub mod python;
 
-pub use cond as condition;
+pub use conditions as condition;
 pub use context::{Context, RunSelection};
 pub use data::Value;
 pub use database::RCDB;
@@ -37,7 +33,7 @@ pub enum RCDBError {
     /// Requested condition name does not exist.
     #[error("condition type not found: {0}")]
     ConditionTypeNotFound(String),
-    /// The SQLite file does not contain the expected schema version entry.
+    /// The `SQLite` file does not contain the expected schema version entry.
     #[error("schema_versions table does not contain version 2")]
     MissingSchemaVersion,
     /// Fetch API requires at least one condition name.

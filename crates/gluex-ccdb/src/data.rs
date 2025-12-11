@@ -25,6 +25,7 @@ pub enum Column {
 
 impl Column {
     /// Number of rows in this column.
+    #[must_use]
     pub fn len(&self) -> usize {
         match self {
             Self::Int(v) => v.len(),
@@ -37,7 +38,22 @@ impl Column {
         }
     }
 
+    /// Check if the column is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Int(v) => v.is_empty(),
+            Self::UInt(v) => v.is_empty(),
+            Self::Long(v) => v.is_empty(),
+            Self::ULong(v) => v.is_empty(),
+            Self::Double(v) => v.is_empty(),
+            Self::Bool(v) => v.is_empty(),
+            Self::String(v) => v.is_empty(),
+        }
+    }
+
     /// Returns the value at the requested row.
+    #[must_use]
     pub fn row(&self, row: usize) -> Value<'_> {
         match self {
             Self::Int(v) => Value::Int(&v[row]),
@@ -51,6 +67,7 @@ impl Column {
     }
 
     /// Returns a clone of the underlying `i32` data, if the type matches.
+    #[must_use]
     pub fn int(&self) -> Option<Vec<i32>> {
         match self {
             Self::Int(v) => Some(v.clone()),
@@ -58,6 +75,7 @@ impl Column {
         }
     }
     /// Returns a clone of the underlying `u32` data, if the type matches.
+    #[must_use]
     pub fn uint(&self) -> Option<Vec<u32>> {
         match self {
             Self::UInt(v) => Some(v.clone()),
@@ -65,6 +83,7 @@ impl Column {
         }
     }
     /// Returns a clone of the underlying `i64` data, if the type matches.
+    #[must_use]
     pub fn long(&self) -> Option<Vec<i64>> {
         match self {
             Self::Long(v) => Some(v.clone()),
@@ -72,6 +91,7 @@ impl Column {
         }
     }
     /// Returns a clone of the underlying `u64` data, if the type matches.
+    #[must_use]
     pub fn ulong(&self) -> Option<Vec<u64>> {
         match self {
             Self::ULong(v) => Some(v.clone()),
@@ -79,6 +99,7 @@ impl Column {
         }
     }
     /// Returns a clone of the underlying `f64` data, if the type matches.
+    #[must_use]
     pub fn double(&self) -> Option<Vec<f64>> {
         match self {
             Self::Double(v) => Some(v.clone()),
@@ -86,6 +107,7 @@ impl Column {
         }
     }
     /// Returns a clone of the underlying `bool` data, if the type matches.
+    #[must_use]
     pub fn bool(&self) -> Option<Vec<bool>> {
         match self {
             Self::Bool(v) => Some(v.clone()),
@@ -93,6 +115,7 @@ impl Column {
         }
     }
     /// Returns a clone of the underlying `String` data, if the type matches.
+    #[must_use]
     pub fn string(&self) -> Option<Vec<String>> {
         match self {
             Self::String(v) => Some(v.clone()),
@@ -121,6 +144,7 @@ pub enum Value<'a> {
 }
 impl<'a> Value<'a> {
     /// Converts to `i32` if this is an integer cell.
+    #[must_use]
     pub fn as_int(self) -> Option<i32> {
         if let Value::Int(v) = self {
             Some(*v)
@@ -130,6 +154,7 @@ impl<'a> Value<'a> {
     }
 
     /// Converts to `u32` if this is an unsigned integer cell.
+    #[must_use]
     pub fn as_uint(self) -> Option<u32> {
         if let Value::UInt(v) = self {
             Some(*v)
@@ -139,6 +164,7 @@ impl<'a> Value<'a> {
     }
 
     /// Converts to `i64` if this is a 64-bit integer cell.
+    #[must_use]
     pub fn as_long(self) -> Option<i64> {
         if let Value::Long(v) = self {
             Some(*v)
@@ -148,6 +174,7 @@ impl<'a> Value<'a> {
     }
 
     /// Converts to `u64` if this is an unsigned 64-bit integer cell.
+    #[must_use]
     pub fn as_ulong(self) -> Option<u64> {
         if let Value::ULong(v) = self {
             Some(*v)
@@ -157,6 +184,7 @@ impl<'a> Value<'a> {
     }
 
     /// Converts to `f64` if this is a floating-point cell.
+    #[must_use]
     pub fn as_double(self) -> Option<f64> {
         if let Value::Double(v) = self {
             Some(*v)
@@ -166,6 +194,7 @@ impl<'a> Value<'a> {
     }
 
     /// Converts to `bool` if this is a boolean cell.
+    #[must_use]
     pub fn as_bool(self) -> Option<bool> {
         if let Value::Bool(v) = self {
             Some(*v)
@@ -175,6 +204,7 @@ impl<'a> Value<'a> {
     }
 
     /// Converts to `&str` if this is a string cell.
+    #[must_use]
     pub fn as_str(self) -> Option<&'a str> {
         if let Value::String(v) = self {
             Some(v)
@@ -194,11 +224,13 @@ pub struct RowView<'a> {
 }
 impl<'a> RowView<'a> {
     /// Returns a typed cell by positional column index.
+    #[must_use]
     pub fn value(&self, column: usize) -> Option<Value<'a>> {
         self.columns.get(column).map(|col| col.row(self.row))
     }
 
     /// Returns a typed cell by column name.
+    #[must_use]
     pub fn named_value(&self, name: &str) -> Option<Value<'a>> {
         self.column_indices
             .get(name)
@@ -206,59 +238,73 @@ impl<'a> RowView<'a> {
     }
 
     /// Returns a positional column as `i32` if present and typed accordingly.
+    #[must_use]
     pub fn int(&self, column: usize) -> Option<i32> {
         self.value(column)?.as_int()
     }
     /// Returns a positional column as `u32` if present and typed accordingly.
+    #[must_use]
     pub fn uint(&self, column: usize) -> Option<u32> {
         self.value(column)?.as_uint()
     }
     /// Returns a positional column as `i64` if present and typed accordingly.
+    #[must_use]
     pub fn long(&self, column: usize) -> Option<i64> {
         self.value(column)?.as_long()
     }
     /// Returns a positional column as `u64` if present and typed accordingly.
+    #[must_use]
     pub fn ulong(&self, column: usize) -> Option<u64> {
         self.value(column)?.as_ulong()
     }
     /// Returns a positional column as `f64` if present and typed accordingly.
+    #[must_use]
     pub fn double(&self, column: usize) -> Option<f64> {
         self.value(column)?.as_double()
     }
     /// Returns a positional column as `&str` if present and typed accordingly.
+    #[must_use]
     pub fn string(&self, column: usize) -> Option<&'a str> {
         self.value(column)?.as_str()
     }
     /// Returns a positional column as `bool` if present and typed accordingly.
+    #[must_use]
     pub fn bool(&self, column: usize) -> Option<bool> {
         self.value(column)?.as_bool()
     }
 
     /// Returns a named column as `i32` if present and typed accordingly.
+    #[must_use]
     pub fn named_int(&self, name: &str) -> Option<i32> {
         self.named_value(name)?.as_int()
     }
     /// Returns a named column as `u32` if present and typed accordingly.
+    #[must_use]
     pub fn named_uint(&self, name: &str) -> Option<u32> {
         self.named_value(name)?.as_uint()
     }
     /// Returns a named column as `i64` if present and typed accordingly.
+    #[must_use]
     pub fn named_long(&self, name: &str) -> Option<i64> {
         self.named_value(name)?.as_long()
     }
     /// Returns a named column as `u64` if present and typed accordingly.
+    #[must_use]
     pub fn named_ulong(&self, name: &str) -> Option<u64> {
         self.named_value(name)?.as_ulong()
     }
     /// Returns a named column as `f64` if present and typed accordingly.
+    #[must_use]
     pub fn named_double(&self, name: &str) -> Option<f64> {
         self.named_value(name)?.as_double()
     }
     /// Returns a named column as `&str` if present and typed accordingly.
+    #[must_use]
     pub fn named_string(&self, name: &str) -> Option<&'a str> {
         self.named_value(name)?.as_str()
     }
     /// Returns a named column as `bool` if present and typed accordingly.
+    #[must_use]
     pub fn named_bool(&self, name: &str) -> Option<bool> {
         self.named_value(name)?.as_bool()
     }
@@ -274,16 +320,19 @@ impl<'a> RowView<'a> {
     }
 
     /// Checks whether the row contains a column with the given name.
+    #[must_use]
     pub fn contains(&self, name: &str) -> bool {
         self.column_indices.contains_key(name)
     }
 
     /// Number of columns in this row.
+    #[must_use]
     pub fn n_columns(&self) -> usize {
         self.columns.len()
     }
 
     /// Column types in this row in positional order.
+    #[must_use]
     pub fn column_types(&self) -> &'a [ColumnType] {
         self.column_types
     }
@@ -311,6 +360,7 @@ pub struct ColumnLayout {
 
 impl ColumnLayout {
     /// Builds a layout from ordered column metadata.
+    #[must_use]
     pub fn new(mut columns: Vec<ColumnMeta>) -> Self {
         columns.sort_unstable_by_key(|c| c.order);
         let column_names: Vec<String> = columns
@@ -339,26 +389,31 @@ impl ColumnLayout {
     }
 
     /// Sorted column metadata.
+    #[must_use]
     pub fn columns(&self) -> &[ColumnMeta] {
         &self.columns
     }
 
     /// Column names in positional order.
+    #[must_use]
     pub fn column_names(&self) -> &[String] {
         &self.column_names
     }
 
     /// Column name to positional index lookup table.
+    #[must_use]
     pub fn column_indices(&self) -> &HashMap<String, usize> {
         &self.column_indices
     }
 
     /// Column types in positional order.
+    #[must_use]
     pub fn column_types(&self) -> &[ColumnType] {
         &self.column_types
     }
 
     /// Number of columns described by this layout.
+    #[must_use]
     pub fn column_count(&self) -> usize {
         self.columns.len()
     }
@@ -373,6 +428,12 @@ pub struct Data {
 
 impl Data {
     /// Builds a [`Data`] table from a raw vault string and column metadata.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if the parsed number of columns does not equal the
+    /// expected number from the database or if any of the column contents cannot be parsed into
+    /// their respective data types.
     pub fn from_vault(
         vault: &str,
         layout: Arc<ColumnLayout>,
@@ -395,14 +456,11 @@ impl Data {
             .collect();
         let mut raw_iter = VaultFieldIter::new(vault);
         for idx in 0..expected_cells {
-            let raw = match raw_iter.next() {
-                Some(raw) => raw,
-                None => {
-                    return Err(CCDBDataError::ColumnCountMismatch {
-                        expected: expected_cells,
-                        found: idx,
-                    })
-                }
+            let Some(raw) = raw_iter.next() else {
+                return Err(CCDBDataError::ColumnCountMismatch {
+                    expected: expected_cells,
+                    found: idx,
+                });
             };
             let row = idx / n_columns;
             let col = idx % n_columns;
@@ -415,7 +473,7 @@ impl Data {
                         row,
                         column_type,
                         text: raw.to_string(),
-                    })?)
+                    })?);
                 }
                 (Column::UInt(vec), ColumnType::UInt) => {
                     vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
@@ -423,7 +481,7 @@ impl Data {
                         row,
                         column_type,
                         text: raw.to_string(),
-                    })?)
+                    })?);
                 }
                 (Column::Long(vec), ColumnType::Long) => {
                     vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
@@ -431,7 +489,7 @@ impl Data {
                         row,
                         column_type,
                         text: raw.to_string(),
-                    })?)
+                    })?);
                 }
                 (Column::ULong(vec), ColumnType::ULong) => {
                     vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
@@ -439,7 +497,7 @@ impl Data {
                         row,
                         column_type,
                         text: raw.to_string(),
-                    })?)
+                    })?);
                 }
                 (Column::Double(vec), ColumnType::Double) => {
                     vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
@@ -447,7 +505,7 @@ impl Data {
                         row,
                         column_type,
                         text: raw.to_string(),
-                    })?)
+                    })?);
                 }
                 (Column::String(vec), ColumnType::String) => {
                     let decoded = raw.replace("&delimeter", "|");
@@ -459,7 +517,7 @@ impl Data {
                 _ => unreachable!("column type mismatch"),
             }
         }
-        if let Some(_) = raw_iter.next() {
+        if raw_iter.next().is_some() {
             let found = expected_cells + 1 + raw_iter.count();
             return Err(CCDBDataError::ColumnCountMismatch {
                 expected: expected_cells,
@@ -474,29 +532,35 @@ impl Data {
     }
 
     /// Number of rows in the dataset.
+    #[must_use]
     pub fn n_rows(&self) -> usize {
         self.n_rows
     }
     /// Number of columns in the dataset.
+    #[must_use]
     pub fn n_columns(&self) -> usize {
         self.layout.column_count()
     }
     /// Column names in positional order.
+    #[must_use]
     pub fn column_names(&self) -> &[String] {
         self.layout.column_names()
     }
 
     /// Column types in positional order.
+    #[must_use]
     pub fn column_types(&self) -> &[ColumnType] {
         self.layout.column_types()
     }
 
     /// Returns a borrowed column by positional index.
+    #[must_use]
     pub fn column(&self, idx: usize) -> Option<&Column> {
         self.columns.get(idx)
     }
 
     /// Returns a borrowed column by name.
+    #[must_use]
     pub fn named_column(&self, name: &str) -> Option<&Column> {
         self.layout
             .column_indices()
@@ -505,11 +569,13 @@ impl Data {
     }
 
     /// Returns a cloned column by positional index.
+    #[must_use]
     pub fn column_clone(&self, idx: usize) -> Option<Column> {
         self.columns.get(idx).cloned()
     }
 
     /// Returns a cloned column by name.
+    #[must_use]
     pub fn named_column_clone(&self, name: &str) -> Option<Column> {
         self.layout
             .column_indices()
@@ -519,6 +585,7 @@ impl Data {
     }
 
     /// Returns a single cell value by column and row index.
+    #[must_use]
     pub fn value(&self, column: usize, row: usize) -> Option<Value<'_>> {
         if row >= self.n_rows || column >= self.layout.column_count() {
             return None;
@@ -534,64 +601,82 @@ impl Data {
         }
     }
     /// Returns a named cell as `i32` if present and typed accordingly.
+    #[must_use]
     pub fn named_int(&self, name: &str, row: usize) -> Option<i32> {
         self.named_column(name)?.row(row).as_int()
     }
     /// Returns a named cell as `u32` if present and typed accordingly.
+    #[must_use]
     pub fn named_uint(&self, name: &str, row: usize) -> Option<u32> {
         self.named_column(name)?.row(row).as_uint()
     }
     /// Returns a named cell as `i64` if present and typed accordingly.
+    #[must_use]
     pub fn named_long(&self, name: &str, row: usize) -> Option<i64> {
         self.named_column(name)?.row(row).as_long()
     }
     /// Returns a named cell as `u64` if present and typed accordingly.
+    #[must_use]
     pub fn named_ulong(&self, name: &str, row: usize) -> Option<u64> {
         self.named_column(name)?.row(row).as_ulong()
     }
     /// Returns a named cell as `f64` if present and typed accordingly.
+    #[must_use]
     pub fn named_double(&self, name: &str, row: usize) -> Option<f64> {
         self.named_column(name)?.row(row).as_double()
     }
     /// Returns a named cell as `&str` if present and typed accordingly.
+    #[must_use]
     pub fn named_string(&self, name: &str, row: usize) -> Option<&str> {
         self.named_column(name)?.row(row).as_str()
     }
     /// Returns a named cell as `bool` if present and typed accordingly.
+    #[must_use]
     pub fn named_bool(&self, name: &str, row: usize) -> Option<bool> {
         self.named_column(name)?.row(row).as_bool()
     }
 
     /// Returns a positional cell as `i32` if present and typed accordingly.
+    #[must_use]
     pub fn int(&self, column: usize, row: usize) -> Option<i32> {
         self.value(row, column)?.as_int()
     }
     /// Returns a positional cell as `u32` if present and typed accordingly.
+    #[must_use]
     pub fn uint(&self, column: usize, row: usize) -> Option<u32> {
         self.value(row, column)?.as_uint()
     }
     /// Returns a positional cell as `i64` if present and typed accordingly.
+    #[must_use]
     pub fn long(&self, column: usize, row: usize) -> Option<i64> {
         self.value(row, column)?.as_long()
     }
     /// Returns a positional cell as `u64` if present and typed accordingly.
+    #[must_use]
     pub fn ulong(&self, column: usize, row: usize) -> Option<u64> {
         self.value(row, column)?.as_ulong()
     }
     /// Returns a positional cell as `f64` if present and typed accordingly.
+    #[must_use]
     pub fn double(&self, column: usize, row: usize) -> Option<f64> {
         self.value(row, column)?.as_double()
     }
     /// Returns a positional cell as `&str` if present and typed accordingly.
+    #[must_use]
     pub fn string(&self, column: usize, row: usize) -> Option<&str> {
         self.value(row, column)?.as_str()
     }
     /// Returns a positional cell as `bool` if present and typed accordingly.
+    #[must_use]
     pub fn bool(&self, column: usize, row: usize) -> Option<bool> {
         self.value(row, column)?.as_bool()
     }
 
     /// Returns a borrowed view of a single row, or an error if out of bounds.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if `row` is out of bounds.
     pub fn row(&self, row: usize) -> Result<RowView<'_>, CCDBDataError> {
         if row >= self.n_rows {
             return Err(CCDBDataError::RowOutOfBounds {
@@ -635,6 +720,7 @@ impl Data {
     }
 
     /// True if a column with the given name exists.
+    #[must_use]
     pub fn contains(&self, name: &str) -> bool {
         self.layout.column_indices().contains_key(name)
     }
@@ -672,18 +758,15 @@ impl<'a> Iterator for VaultFieldIter<'a> {
             return Some("");
         }
         let bytes = self.input.as_bytes();
-        match memchr(b'|', &bytes[self.cursor..]) {
-            Some(pos) => {
-                let start = self.cursor;
-                let end = start + pos;
-                self.cursor = end + 1;
-                Some(&self.input[start..end])
-            }
-            None => {
-                self.finished = true;
-                let start = self.cursor;
-                Some(&self.input[start..])
-            }
+        if let Some(pos) = memchr(b'|', &bytes[self.cursor..]) {
+            let start = self.cursor;
+            let end = start + pos;
+            self.cursor = end + 1;
+            Some(&self.input[start..end])
+        } else {
+            self.finished = true;
+            let start = self.cursor;
+            Some(&self.input[start..])
         }
     }
 }

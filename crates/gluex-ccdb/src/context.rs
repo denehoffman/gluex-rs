@@ -29,14 +29,17 @@ impl FromStr for NamePath {
 }
 impl NamePath {
     /// Returns the absolute path string (always begins with `/`).
+    #[must_use]
     pub fn full_path(&self) -> &str {
         &self.0
     }
     /// Returns the final component of the path (table or directory name).
+    #[must_use]
     pub fn name(&self) -> &str {
         self.0.rsplit('/').next().unwrap_or("")
     }
     /// Returns the parent path, or `None` when this path is root.
+    #[must_use]
     pub fn parent(&self) -> Option<NamePath> {
         if self.is_root() {
             return None;
@@ -46,6 +49,7 @@ impl NamePath {
         Some(NamePath(format!("/{}", parts.join("/"))))
     }
     /// True when the path corresponds to the root directory.
+    #[must_use]
     pub fn is_root(&self) -> bool {
         self.0 == "/"
     }
@@ -85,6 +89,7 @@ impl Default for Context {
 }
 impl Context {
     /// Builds a new context with optional run, variation, and timestamp overrides.
+    #[must_use]
     pub fn new(
         runs: Option<Vec<RunNumber>>,
         variation: Option<String>,
@@ -98,16 +103,18 @@ impl Context {
             context.variation = variation;
         }
         if let Some(timestamp) = timestamp {
-            context.timestamp = timestamp
+            context.timestamp = timestamp;
         }
         context
     }
     /// Returns a context scoped to a single run number.
+    #[must_use]
     pub fn with_run(mut self, run: RunNumber) -> Self {
         self.runs = vec![run.clamp(MIN_RUN_NUMBER, MAX_RUN_NUMBER)];
         self
     }
     /// Replaces the run list with the provided runs.
+    #[must_use]
     pub fn with_runs(mut self, iter: impl IntoIterator<Item = RunNumber>) -> Self {
         self.runs = iter
             .into_iter()
@@ -116,6 +123,7 @@ impl Context {
         self
     }
     /// Replaces the run list with all runs inside the supplied range.
+    #[must_use]
     pub fn with_run_range(mut self, run_range: impl std::ops::RangeBounds<RunNumber>) -> Self {
         let start = match run_range.start_bound() {
             Bound::Included(&s) => s,
@@ -137,16 +145,22 @@ impl Context {
         self
     }
     /// Sets the variation branch for subsequent queries.
+    #[must_use]
     pub fn with_variation(mut self, variation: &str) -> Self {
         self.variation = variation.to_string();
         self
     }
     /// Sets the timestamp for selecting assignments (query will give the most recent assignment not newer than this).
+    #[must_use]
     pub fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
         self.timestamp = timestamp;
         self
     }
     /// Sets the timestamp for selecting assignments from a formatted timestamp string (query will give the most recent assignment not newer than this).
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if the timestamp is not in the format allowed by CCDB.
     pub fn with_timestamp_string(mut self, timestamp: &str) -> Result<Self, ParseTimestampError> {
         self.timestamp = parse_timestamp(timestamp)?;
         Ok(self)
@@ -179,10 +193,7 @@ impl FromStr for Request {
     type Err = ParseRequestError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (path_str, rest) = s
-            .split_once(':')
-            .map(|(p, r)| (p, Some(r)))
-            .unwrap_or((s, None));
+        let (path_str, rest) = s.split_once(':').map_or((s, None), |(p, r)| (p, Some(r)));
         let path = NamePath::from_str(path_str)?;
         let mut run: Option<RunNumber> = None;
         let mut variation: Option<String> = None;

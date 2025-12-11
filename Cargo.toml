@@ -12,18 +12,20 @@ repository = "TODO"
 rust-version = "1.88.0"
 
 [workspace.dependencies]
-criterion = "0.8.0"
+criterion = "0.8.1"
 dashmap = "6.1.0"
 itertools = "0.14.0"
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4.42", features = ["serde"] }
+memchr = "2.7.6"
 parking_lot = "0.12.5"
 pyo3 = "0.27.2"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 thiserror = "2.0.17"
 
 gluex-core = { version = "0.1.0", path = "crates/gluex-core" }
+gluex-ccdb = { version = "0.1.0", path = "crates/gluex-ccdb" }
+gluex-rcdb = { version = "0.1.0", path = "crates/gluex-rcdb" }
 
-memchr = "2.7.4"
 
 [profile.profiling]
 inherits = "release"
@@ -32,3 +34,13 @@ strip = "none"
 debug-assertions = false
 overflow-checks = false
 lto = "off"
+
+[workspace.lints.rust]
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+suspicious = "warn"
+complexity = "warn"
+perf = "warn"
+style = "warn"
+pedantic = "warn"

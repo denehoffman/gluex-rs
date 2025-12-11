@@ -3,7 +3,7 @@ requires = ["maturin>=1.10,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "gluex-ccdb"
+name = "gluex-rcdb"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
@@ -15,12 +15,9 @@ dynamic = ["version"]
 tests = [
     "pytest",
 ]
-[tool.maturin]
-python-source = "python"
-features = ["python"]
 
 [tool.ruff]
 target-version = "py38"
 
 [tool.ruff.lint]
-per-file-ignores = { "python/tests/test_all.py" = ["PLR2004"] }
+per-file-ignores = { "python/tests/test_all.py" = ["S101", "PLR2004", "PT018"] }

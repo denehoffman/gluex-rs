@@ -1,5 +1,4 @@
-#![cfg(feature = "python")]
-use crate::{
+use ::gluex_ccdb::{
     context::Context,
     data::{self, Data, Value},
     database::{DirectoryHandle, TypeTableHandle, CCDB},
@@ -16,10 +15,8 @@ use pyo3::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-impl From<CCDBError> for PyErr {
-    fn from(value: CCDBError) -> Self {
-        PyRuntimeError::new_err(value.to_string())
-    }
+fn py_ccdb_error(err: CCDBError) -> PyErr {
+    PyRuntimeError::new_err(err.to_string())
 }
 
 /// Column type describing how a CCDB column is stored.
@@ -59,7 +56,6 @@ pub struct PyColumnMeta {
     inner: ColumnMeta,
 }
 
-#[allow(missing_docs)]
 #[pymethods]
 impl PyColumnMeta {
     #[getter]
@@ -182,7 +178,6 @@ impl PyColumn {
                     <pyo3::Bound<'_, _> as Clone>::clone(&obj)
                         .into_any()
                         .unbind()
-                        .into()
                 })
                 .collect(),
             data::Column::String(v) => v
@@ -212,7 +207,6 @@ pub struct PyTypeTableMeta {
     inner: TypeTableMeta,
 }
 
-#[allow(missing_docs)]
 #[pymethods]
 impl PyTypeTableMeta {
     #[getter]
@@ -340,7 +334,7 @@ impl PyData {
     pub fn row(&self, row: usize) -> PyResult<PyRowView> {
         self.inner
             .row(row)
-            .map_err(|e| PyErr::from(CCDBError::from(e)))?;
+            .map_err(|e| py_ccdb_error(CCDBError::from(e)))?;
         Ok(PyRowView {
             data: Arc::clone(&self.inner),
             row,
@@ -469,7 +463,7 @@ impl PyRowView {
         let row = self
             .data
             .row(self.row)
-            .map_err(|e| PyErr::from(CCDBError::from(e)))?;
+            .map_err(|e| py_ccdb_error(CCDBError::from(e)))?;
         row.iter_columns()
             .map(|(name, ty, v)| {
                 Ok((
@@ -541,7 +535,7 @@ impl PyTypeTableHandle {
         Ok(self
             .inner
             .columns()
-            .map_err(PyErr::from)?
+            .map_err(py_ccdb_error)?
             .into_iter()
             .map(|m| PyColumnMeta { inner: m })
             .collect())
@@ -572,7 +566,7 @@ impl PyTypeTableHandle {
         Ok(self
             .inner
             .fetch(&ctx)
-            .map_err(PyErr::from)?
+            .map_err(py_ccdb_error)?
             .into_iter()
             .map(|(run, data)| {
                 (
@@ -625,14 +619,12 @@ impl PyDirectoryHandle {
     /// -------
     /// list[DirectoryHandle]
     ///     Child directories directly under this directory.
-    pub fn dirs(&self) -> PyResult<Vec<Self>> {
-        Ok(self
-            .inner
+    pub fn dirs(&self) -> Vec<Self> {
+        self.inner
             .dirs()
-            .map_err(PyErr::from)?
             .into_iter()
             .map(|inner| Self { inner })
-            .collect())
+            .collect()
     }
     /// dir(self, name)
     ///
@@ -647,7 +639,7 @@ impl PyDirectoryHandle {
     ///     Handle to the requested subdirectory.
     pub fn dir(&self, name: &str) -> PyResult<Self> {
         Ok(Self {
-            inner: self.inner.dir(name).map_err(PyErr::from)?,
+            inner: self.inner.dir(name).map_err(py_ccdb_error)?,
         })
     }
     /// tables(self)
@@ -656,14 +648,12 @@ impl PyDirectoryHandle {
     /// -------
     /// list[TypeTableHandle]
     ///     Tables that live directly under this directory.
-    pub fn tables(&self) -> PyResult<Vec<PyTypeTableHandle>> {
-        Ok(self
-            .inner
+    pub fn tables(&self) -> Vec<PyTypeTableHandle> {
+        self.inner
             .tables()
-            .map_err(PyErr::from)?
             .into_iter()
             .map(|inner| PyTypeTableHandle { inner })
-            .collect())
+            .collect()
     }
     /// table(self, name)
     ///
@@ -678,7 +668,7 @@ impl PyDirectoryHandle {
     ///     Handle to the requested table.
     pub fn table(&self, name: &str) -> PyResult<PyTypeTableHandle> {
         Ok(PyTypeTableHandle {
-            inner: self.inner.table(name).map_err(PyErr::from)?,
+            inner: self.inner.table(name).map_err(py_ccdb_error)?,
         })
     }
     fn __repr__(&self) -> String {
@@ -711,7 +701,7 @@ impl PyCCDB {
     #[new]
     pub fn new(path: &str) -> PyResult<Self> {
         Ok(Self {
-            inner: CCDB::open(path).map_err(PyErr::from)?,
+            inner: CCDB::open(path).map_err(py_ccdb_error)?,
         })
     }
 
@@ -728,7 +718,7 @@ impl PyCCDB {
     ///     Handle to the requested directory.
     pub fn dir(&self, path: &str) -> PyResult<PyDirectoryHandle> {
         Ok(PyDirectoryHandle {
-            inner: self.inner.dir(path).map_err(PyErr::from)?,
+            inner: self.inner.dir(path).map_err(py_ccdb_error)?,
         })
     }
     /// table(self, path)
@@ -744,7 +734,7 @@ impl PyCCDB {
     ///     Handle to the requested table.
     pub fn table(&self, path: &str) -> PyResult<PyTypeTableHandle> {
         Ok(PyTypeTableHandle {
-            inner: self.inner.table(path).map_err(PyErr::from)?,
+            inner: self.inner.table(path).map_err(py_ccdb_error)?,
         })
     }
     /// fetch(self, path, *, runs=None, variation=None, timestamp=None)
@@ -776,7 +766,7 @@ impl PyCCDB {
         Ok(self
             .inner
             .fetch(path, &ctx)
-            .map_err(PyErr::from)?
+            .map_err(py_ccdb_error)?
             .into_iter()
             .map(|(run, data)| {
                 (
@@ -799,6 +789,12 @@ impl PyCCDB {
             inner: self.inner.root(),
         })
     }
+    /// str: Filesystem path that was used to open the database.
+    #[getter]
+    pub fn connection_path(&self) -> &str {
+        self.inner.connection_path()
+    }
+
     fn __repr__(&self) -> String {
         format!("CCDB(\"{}\")", self.inner.connection_path())
     }
@@ -819,7 +815,6 @@ fn value_to_py(py: Python<'_>, value: Value<'_>) -> PyResult<Py<PyAny>> {
             <pyo3::Bound<'_, _> as Clone>::clone(&obj)
                 .into_any()
                 .unbind()
-                .into()
         }
         Value::String(v) => PyString::new(py, v).unbind().into(),
     })

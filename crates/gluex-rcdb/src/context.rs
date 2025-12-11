@@ -5,7 +5,7 @@ use gluex_core::{
     RunNumber,
 };
 
-use crate::cond::{Expr, IntoExprList};
+use crate::conditions::{Expr, IntoExprList};
 
 /// Describes how runs should be selected when fetching condition values.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +25,7 @@ pub enum RunSelection {
 
 impl RunSelection {
     /// True when no runs will be returned.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         matches!(self, RunSelection::Runs(r) if r.is_empty())
     }
@@ -48,17 +49,20 @@ impl Default for Context {
 
 impl Context {
     /// Builds a context that selects every run.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Restricts the context to a single run number.
+    #[must_use]
     pub fn with_run(mut self, run: RunNumber) -> Self {
         self.selection = RunSelection::Runs(vec![run]);
         self
     }
 
     /// Restricts the context to the provided run numbers.
+    #[must_use]
     pub fn with_runs(mut self, runs: impl IntoIterator<Item = RunNumber>) -> Self {
         let mut run_list: Vec<RunNumber> = runs.into_iter().collect();
         run_list.sort_unstable();
@@ -68,6 +72,7 @@ impl Context {
     }
 
     /// Restricts the context to the inclusive range produced by `run_range`.
+    #[must_use]
     pub fn with_run_range(mut self, run_range: impl RangeBounds<RunNumber>) -> Self {
         let start = match run_range.start_bound() {
             Bound::Included(&s) => s,
@@ -88,17 +93,20 @@ impl Context {
     }
 
     /// Adds one or more predicate expressions that must all evaluate to true.
+    #[must_use]
     pub fn filter(mut self, filters: impl IntoExprList) -> Self {
         self.filters.extend(filters.into_list());
         self
     }
 
     /// Returns the run selection strategy for this context.
+    #[must_use]
     pub fn selection(&self) -> &RunSelection {
         &self.selection
     }
 
     /// Returns the run numbers when the context is scoped to explicit runs.
+    #[must_use]
     pub fn runs(&self) -> Option<&[RunNumber]> {
         if let RunSelection::Runs(runs) = &self.selection {
             Some(runs)
@@ -107,7 +115,9 @@ impl Context {
         }
     }
 
-    pub(crate) fn filters(&self) -> &[Expr] {
+    /// Return the current filters specified by this context.
+    #[must_use]
+    pub fn filters(&self) -> &[Expr] {
         &self.filters
     }
 }

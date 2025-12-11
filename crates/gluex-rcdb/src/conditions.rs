@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use rusqlite::types::Value;
@@ -101,8 +101,36 @@ impl Expr {
     }
 
     /// Negates the expression.
-    pub fn not(self) -> Expr {
+    #[must_use]
+    pub fn negate(self) -> Expr {
         Expr::new(ExprInner::Not(self))
+    }
+
+    fn fmt_with(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            ExprInner::True => write!(f, "TRUE"),
+            ExprInner::Comparison(cmp) => write!(f, "{cmp}"),
+            ExprInner::Group { kind, clauses } => {
+                let joiner = match kind {
+                    GroupKind::And => " AND ",
+                    GroupKind::Or => " OR ",
+                };
+                let mut parts = Vec::new();
+                for clause in clauses {
+                    parts.push(clause.to_string());
+                }
+                write!(f, "({})", parts.join(joiner))
+            }
+            ExprInner::Not(inner) => {
+                write!(f, "NOT ({inner})")
+            }
+        }
+    }
+}
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_with(f)
     }
 }
 
@@ -122,8 +150,8 @@ impl Comparison {
             });
         }
         Ok(match &self.operator {
-            Operator::Bool(true) => format!("{}.bool_value = 1", alias),
-            Operator::Bool(false) => format!("{}.bool_value = 0", alias),
+            Operator::Bool(true) => format!("{alias}.bool_value = 1"),
+            Operator::Bool(false) => format!("{alias}.bool_value = 0"),
             Operator::IntEquals(v) => {
                 push_param(params, &alias, "int_value", "=", Value::Integer(*v))
             }
@@ -164,7 +192,7 @@ impl Comparison {
             }
             Operator::StringContains(substr) => {
                 params.push(Value::Text(substr.clone()));
-                format!("INSTR({}.text_value, ?) > 0", alias)
+                format!("INSTR({alias}.text_value, ?) > 0")
             }
             Operator::TimeEquals(v) => push_time(params, &alias, "=", v),
             Operator::TimeGt(v) => push_time(params, &alias, ">", v),
@@ -173,6 +201,75 @@ impl Comparison {
             Operator::TimeLe(v) => push_time(params, &alias, "<=", v),
             Operator::Exists => format!("{}.{} IS NOT NULL", alias, self.value_type.column_name()),
         })
+    }
+
+    fn fmt_operator(&self) -> String {
+        match &self.operator {
+            Operator::Bool(v) => format!("{v}"),
+            Operator::IntEquals(v)
+            | Operator::IntNotEquals(v)
+            | Operator::IntGt(v)
+            | Operator::IntGe(v)
+            | Operator::IntLt(v)
+            | Operator::IntLe(v) => v.to_string(),
+            Operator::FloatEquals(v)
+            | Operator::FloatGt(v)
+            | Operator::FloatGe(v)
+            | Operator::FloatLt(v)
+            | Operator::FloatLe(v) => format!("{v}"),
+            Operator::StringEquals(v)
+            | Operator::StringNotEquals(v)
+            | Operator::StringContains(v) => format!("{v:?}"),
+            Operator::TimeEquals(v)
+            | Operator::TimeGt(v)
+            | Operator::TimeGe(v)
+            | Operator::TimeLt(v)
+            | Operator::TimeLe(v) => format!("{v:?}"),
+            Operator::StringIn(values) => {
+                let rendered: Vec<String> = values.iter().map(|v| format!("{v:?}")).collect();
+                format!("[{}]", rendered.join(", "))
+            }
+            Operator::Exists => String::new(),
+        }
+    }
+}
+
+impl fmt::Display for Comparison {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let field = &self.field;
+        match &self.operator {
+            Operator::Bool(true) => write!(f, "{field} IS TRUE"),
+            Operator::Bool(false) => write!(f, "{field} IS FALSE"),
+            Operator::IntEquals(_)
+            | Operator::FloatEquals(_)
+            | Operator::StringEquals(_)
+            | Operator::TimeEquals(_) => {
+                write!(f, "{} == {}", field, self.fmt_operator())
+            }
+            Operator::IntNotEquals(_) | Operator::StringNotEquals(_) => {
+                write!(f, "{} != {}", field, self.fmt_operator())
+            }
+            Operator::IntGt(_) | Operator::FloatGt(_) | Operator::TimeGt(_) => {
+                write!(f, "{} > {}", field, self.fmt_operator())
+            }
+            Operator::IntGe(_) | Operator::FloatGe(_) | Operator::TimeGe(_) => {
+                write!(f, "{} >= {}", field, self.fmt_operator())
+            }
+            Operator::IntLt(_) | Operator::FloatLt(_) | Operator::TimeLt(_) => {
+                write!(f, "{} < {}", field, self.fmt_operator())
+            }
+            Operator::IntLe(_) | Operator::FloatLe(_) | Operator::TimeLe(_) => {
+                write!(f, "{} <= {}", field, self.fmt_operator())
+            }
+            Operator::StringIn(values) => {
+                let rendered: Vec<String> = values.iter().map(|v| format!("{v:?}")).collect();
+                write!(f, "{} IN [{}]", field, rendered.join(", "))
+            }
+            Operator::StringContains(_) => {
+                write!(f, "{} CONTAINS {}", field, self.fmt_operator())
+            }
+            Operator::Exists => write!(f, "{field} EXISTS"),
+        }
     }
 }
 
@@ -184,12 +281,12 @@ fn push_param(
     value: Value,
 ) -> String {
     params.push(value);
-    format!("{}.{} {} ?", alias, column, op)
+    format!("{alias}.{column} {op} ?")
 }
 
 fn push_time(params: &mut Vec<Value>, alias: &str, op: &str, value: &DateTime<Utc>) -> String {
     params.push(Value::Text(format_time(value)));
-    format!("{}.time_value {} ?", alias, op)
+    format!("{alias}.time_value {op} ?")
 }
 
 fn format_time(value: &DateTime<Utc>) -> String {
@@ -227,10 +324,11 @@ where
     I: IntoIterator<Item = Expr>,
 {
     let clauses: Vec<Expr> = iter.into_iter().collect();
-    if clauses.is_empty() {
-        Expr::new(ExprInner::True)
-    } else if clauses.len() == 1 {
-        clauses.into_iter().next().unwrap()
+    if clauses.len() <= 1 {
+        clauses
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Expr::new(ExprInner::True))
     } else {
         Expr::new(ExprInner::Group {
             kind: GroupKind::And,
@@ -245,10 +343,11 @@ where
     I: IntoIterator<Item = Expr>,
 {
     let clauses: Vec<Expr> = iter.into_iter().collect();
-    if clauses.is_empty() {
-        Expr::new(ExprInner::True)
-    } else if clauses.len() == 1 {
-        clauses.into_iter().next().unwrap()
+    if clauses.len() <= 1 {
+        clauses
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Expr::new(ExprInner::True))
     } else {
         Expr::new(ExprInner::Group {
             kind: GroupKind::Or,
@@ -264,6 +363,7 @@ pub struct IntField {
 }
 impl IntField {
     /// Matches when the condition is exactly equal to `value`.
+    #[must_use]
     pub fn eq(self, value: i64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -272,7 +372,8 @@ impl IntField {
         }))
     }
     /// Matches when the condition is not equal to `value`.
-    pub fn neq(self, value: i64) -> Expr {
+    #[must_use]
+    pub fn ne(self, value: i64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::Int,
@@ -280,6 +381,7 @@ impl IntField {
         }))
     }
     /// Matches when the condition is strictly greater than `value`.
+    #[must_use]
     pub fn gt(self, value: i64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -288,7 +390,8 @@ impl IntField {
         }))
     }
     /// Matches when the condition is greater than or equal to `value`.
-    pub fn geq(self, value: i64) -> Expr {
+    #[must_use]
+    pub fn ge(self, value: i64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::Int,
@@ -296,6 +399,7 @@ impl IntField {
         }))
     }
     /// Matches when the condition is strictly less than `value`.
+    #[must_use]
     pub fn lt(self, value: i64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -304,7 +408,8 @@ impl IntField {
         }))
     }
     /// Matches when the condition is less than or equal to `value`.
-    pub fn leq(self, value: i64) -> Expr {
+    #[must_use]
+    pub fn le(self, value: i64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::Int,
@@ -320,6 +425,7 @@ pub struct FloatField {
 }
 impl FloatField {
     /// Matches when the condition is exactly equal to `value`.
+    #[must_use]
     pub fn eq(self, value: f64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -328,6 +434,7 @@ impl FloatField {
         }))
     }
     /// Matches when the condition is strictly greater than `value`.
+    #[must_use]
     pub fn gt(self, value: f64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -336,7 +443,8 @@ impl FloatField {
         }))
     }
     /// Matches when the condition is greater than or equal to `value`.
-    pub fn geq(self, value: f64) -> Expr {
+    #[must_use]
+    pub fn ge(self, value: f64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::Float,
@@ -344,6 +452,7 @@ impl FloatField {
         }))
     }
     /// Matches when the condition is strictly less than `value`.
+    #[must_use]
     pub fn lt(self, value: f64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -352,7 +461,8 @@ impl FloatField {
         }))
     }
     /// Matches when the condition is less than or equal to `value`.
-    pub fn leq(self, value: f64) -> Expr {
+    #[must_use]
+    pub fn le(self, value: f64) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::Float,
@@ -376,7 +486,7 @@ impl StringField {
         }))
     }
     /// Matches when the condition is not equal to `value`.
-    pub fn neq(self, value: impl Into<String>) -> Expr {
+    pub fn ne(self, value: impl Into<String>) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::String,
@@ -389,7 +499,7 @@ impl StringField {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let list: Vec<String> = values.into_iter().map(|v| v.into()).collect();
+        let list: Vec<String> = values.into_iter().map(std::convert::Into::into).collect();
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::String,
@@ -413,6 +523,7 @@ pub struct BoolField {
 }
 impl BoolField {
     /// Matches when the condition is explicitly true.
+    #[must_use]
     pub fn is_true(self) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -421,6 +532,7 @@ impl BoolField {
         }))
     }
     /// Matches when the condition is explicitly false.
+    #[must_use]
     pub fn is_false(self) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -429,6 +541,7 @@ impl BoolField {
         }))
     }
     /// Matches when the condition exists for the run regardless of value.
+    #[must_use]
     pub fn exists(self) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -445,6 +558,7 @@ pub struct TimeField {
 }
 impl TimeField {
     /// Matches when the condition timestamp equals `value`.
+    #[must_use]
     pub fn eq(self, value: DateTime<Utc>) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -453,6 +567,7 @@ impl TimeField {
         }))
     }
     /// Matches when the condition timestamp is strictly greater than `value`.
+    #[must_use]
     pub fn gt(self, value: DateTime<Utc>) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -461,7 +576,8 @@ impl TimeField {
         }))
     }
     /// Matches when the condition timestamp is greater than or equal to `value`.
-    pub fn geq(self, value: DateTime<Utc>) -> Expr {
+    #[must_use]
+    pub fn ge(self, value: DateTime<Utc>) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::Time,
@@ -469,6 +585,7 @@ impl TimeField {
         }))
     }
     /// Matches when the condition timestamp is strictly less than `value`.
+    #[must_use]
     pub fn lt(self, value: DateTime<Utc>) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
@@ -477,7 +594,8 @@ impl TimeField {
         }))
     }
     /// Matches when the condition timestamp is less than or equal to `value`.
-    pub fn lte(self, value: DateTime<Utc>) -> Expr {
+    #[must_use]
+    pub fn le(self, value: DateTime<Utc>) -> Expr {
         Expr::new(ExprInner::Comparison(Comparison {
             field: self.field,
             value_type: ValueType::Time,
@@ -504,234 +622,175 @@ impl IntoExprList for Vec<Expr> {
     }
 }
 
-impl<'a> IntoExprList for &'a [Expr] {
+impl IntoExprList for &[Expr] {
     fn into_list(self) -> Vec<Expr> {
         self.to_vec()
     }
 }
 
-impl<'a> IntoExprList for &'a Vec<Expr> {
+impl IntoExprList for &Vec<Expr> {
     fn into_list(self) -> Vec<Expr> {
         self.clone()
     }
 }
 
-/// Named expression shortcuts that capture common selection logic.
-#[derive(Copy, Clone)]
-/// Named expression shortcut used for reusable filters.
-pub struct ConditionAlias {
-    /// Alias name used when referencing this expression.
-    pub name: &'static str,
-    /// Human-readable comment describing the alias.
-    pub comment: &'static str,
-    builder: fn() -> Expr,
-}
+/// Convenience functions for referencing built-in alias expressions directly.
+pub mod aliases {
+    use super::{all, float_cond, int_cond, string_cond, Expr};
 
-impl ConditionAlias {
-    /// Returns a fresh expression constructed from the alias definition.
-    pub fn expression(&self) -> Expr {
-        (self.builder)()
+    /// Returns the reusable expression for the `is_production` alias.
+    #[must_use]
+    pub fn is_production() -> Expr {
+        all([
+            string_cond("run_type").isin([
+                "hd_all.tsg",
+                "hd_all.tsg_ps",
+                "hd_all.bcal_fcal_st.tsg",
+            ]),
+            float_cond("beam_current").gt(2.0),
+            int_cond("event_count").gt(500_000),
+            float_cond("solenoid_current").gt(100.0),
+            string_cond("collimator_diameter").ne("Blocking"),
+        ])
     }
-}
 
-const fn make_alias(
-    name: &'static str,
-    comment: &'static str,
-    builder: fn() -> Expr,
-) -> ConditionAlias {
-    ConditionAlias {
-        name,
-        comment,
-        builder,
+    /// Returns the reusable expression for the `is_2018production` alias.
+    #[must_use]
+    pub fn is_2018production() -> Expr {
+        all([
+            string_cond("daq_run").eq("PHYSICS"),
+            float_cond("beam_current").gt(2.0),
+            int_cond("event_count").gt(10_000_000),
+            float_cond("solenoid_current").gt(100.0),
+            string_cond("collimator_diameter").ne("Blocking"),
+        ])
     }
-}
 
-/// Built-in list of condition aliases.
-pub const DEFAULT_ALIASES: &[ConditionAlias] = &[
-    make_alias("is_production", "Is production run", alias_is_production),
-    make_alias(
-        "is_2018production",
-        "Is production run",
-        alias_is_2018_production,
-    ),
-    make_alias(
-        "is_primex_production",
-        "Is PrimEx production run",
-        alias_is_primex_production,
-    ),
-    make_alias(
-        "is_dirc_production",
-        "Is DIRC production run",
-        alias_is_dirc_production,
-    ),
-    make_alias(
-        "is_src_production",
-        "Is SRC production run",
-        alias_is_src_production,
-    ),
-    make_alias(
-        "is_cpp_production",
-        "Is CPP production run",
-        alias_is_cpp_production,
-    ),
-    make_alias(
-        "is_production_long",
-        "Is production run with long mode data",
-        alias_is_production_long,
-    ),
-    make_alias("is_cosmic", "Is cosmic run", alias_is_cosmic),
-    make_alias("is_empty_target", "Target is empty", alias_is_empty_target),
-    make_alias(
-        "is_amorph_radiator",
-        "Amorphous Radiator",
-        alias_is_amorph_radiator,
-    ),
-    make_alias("is_coherent_beam", "Coherent Beam", alias_is_coherent_beam),
-    make_alias("is_field_off", " Field Off", alias_is_field_off),
-    make_alias("is_field_on", " Field On", alias_is_field_on),
-    make_alias(
-        "status_calibration",
-        "Run status = calibration",
-        alias_status_calibration,
-    ),
-    make_alias(
-        "status_approved_long",
-        "Run status = approved (long)",
-        alias_status_approved_long,
-    ),
-    make_alias(
-        "status_approved",
-        "Run status = approved",
-        alias_status_approved,
-    ),
-    make_alias(
-        "status_unchecked",
-        "Run status = unchecked",
-        alias_status_unchecked,
-    ),
-    make_alias("status_reject", "Run status = reject", alias_status_reject),
-];
+    /// Returns the reusable expression for the `is_primex_production` alias.
+    #[must_use]
+    pub fn is_primex_production() -> Expr {
+        all([
+            string_cond("daq_run").eq("PHYSICS_PRIMEX"),
+            int_cond("event_count").gt(1_000_000),
+            string_cond("collimator_diameter").ne("Blocking"),
+        ])
+    }
 
-/// Returns the expression associated with the supplied alias (if it exists).
-pub fn alias(name: &str) -> Option<Expr> {
-    DEFAULT_ALIASES
-        .iter()
-        .find(|alias| alias.name == name)
-        .map(|alias| alias.expression())
-}
+    /// Returns the reusable expression for the `is_dirc_production` alias.
+    #[must_use]
+    pub fn is_dirc_production() -> Expr {
+        all([
+            string_cond("daq_run").eq("PHYSICS_DIRC"),
+            float_cond("beam_current").gt(2.0),
+            int_cond("event_count").gt(5_000_000),
+            float_cond("solenoid_current").gt(100.0),
+            string_cond("collimator_diameter").ne("Blocking"),
+        ])
+    }
 
-fn alias_is_production() -> Expr {
-    all([
-        string_cond("run_type").isin(["hd_all.tsg", "hd_all.tsg_ps", "hd_all.bcal_fcal_st.tsg"]),
-        float_cond("beam_current").gt(2.0),
-        int_cond("event_count").gt(500_000),
-        float_cond("solenoid_current").gt(100.0),
-        string_cond("collimator_diameter").neq("Blocking"),
-    ])
-}
+    /// Returns the reusable expression for the `is_src_production` alias.
+    #[must_use]
+    pub fn is_src_production() -> Expr {
+        all([
+            string_cond("daq_run").eq("PHYSICS_SRC"),
+            float_cond("beam_current").gt(2.0),
+            int_cond("event_count").gt(5_000_000),
+            float_cond("solenoid_current").gt(100.0),
+            string_cond("collimator_diameter").ne("Blocking"),
+        ])
+    }
 
-fn alias_is_2018_production() -> Expr {
-    all([
-        string_cond("daq_run").eq("PHYSICS"),
-        float_cond("beam_current").gt(2.0),
-        int_cond("event_count").gt(10_000_000),
-        float_cond("solenoid_current").gt(100.0),
-        string_cond("collimator_diameter").neq("Blocking"),
-    ])
-}
+    /// Returns the reusable expression for the `is_cpp_production` alias.
+    #[must_use]
+    pub fn is_cpp_production() -> Expr {
+        all([
+            string_cond("daq_run").eq("PHYSICS_CPP"),
+            float_cond("beam_current").gt(2.0),
+            int_cond("event_count").gt(5_000_000),
+            float_cond("solenoid_current").gt(100.0),
+            string_cond("collimator_diameter").ne("Blocking"),
+        ])
+    }
 
-fn alias_is_primex_production() -> Expr {
-    all([
-        string_cond("daq_run").eq("PHYSICS_PRIMEX"),
-        int_cond("event_count").gt(1_000_000),
-        string_cond("collimator_diameter").neq("Blocking"),
-    ])
-}
+    /// Returns the reusable expression for the `is_production_long` alias.
+    #[must_use]
+    pub fn is_production_long() -> Expr {
+        all([
+            string_cond("daq_run").eq("PHYSICS_raw"),
+            float_cond("beam_current").gt(2.0),
+            int_cond("event_count").gt(5_000_000),
+            float_cond("solenoid_current").gt(100.0),
+            string_cond("collimator_diameter").ne("Blocking"),
+        ])
+    }
 
-fn alias_is_dirc_production() -> Expr {
-    all([
-        string_cond("daq_run").eq("PHYSICS_DIRC"),
-        float_cond("beam_current").gt(2.0),
-        int_cond("event_count").gt(5_000_000),
-        float_cond("solenoid_current").gt(100.0),
-        string_cond("collimator_diameter").neq("Blocking"),
-    ])
-}
+    /// Returns the reusable expression for the `is_cosmic` alias.
+    #[must_use]
+    pub fn is_cosmic() -> Expr {
+        all([
+            string_cond("run_config").contains("cosmic"),
+            float_cond("beam_current").lt(1.0),
+            int_cond("event_count").gt(5_000),
+        ])
+    }
 
-fn alias_is_src_production() -> Expr {
-    all([
-        string_cond("daq_run").eq("PHYSICS_SRC"),
-        float_cond("beam_current").gt(2.0),
-        int_cond("event_count").gt(5_000_000),
-        float_cond("solenoid_current").gt(100.0),
-        string_cond("collimator_diameter").neq("Blocking"),
-    ])
-}
+    /// Returns the reusable expression for the `is_empty_target` alias.
+    #[must_use]
+    pub fn is_empty_target() -> Expr {
+        string_cond("target_type").eq("EMPTY & Ready")
+    }
 
-fn alias_is_cpp_production() -> Expr {
-    all([
-        string_cond("daq_run").eq("PHYSICS_CPP"),
-        float_cond("beam_current").gt(2.0),
-        int_cond("event_count").gt(5_000_000),
-        float_cond("solenoid_current").gt(100.0),
-        string_cond("collimator_diameter").neq("Blocking"),
-    ])
-}
+    /// Returns the reusable expression for the `is_amorph_radiator` alias.
+    #[must_use]
+    pub fn is_amorph_radiator() -> Expr {
+        float_cond("polarization_angle").lt(0.0)
+    }
 
-fn alias_is_production_long() -> Expr {
-    all([
-        string_cond("daq_run").eq("PHYSICS_raw"),
-        float_cond("beam_current").gt(2.0),
-        int_cond("event_count").gt(5_000_000),
-        float_cond("solenoid_current").gt(100.0),
-        string_cond("collimator_diameter").neq("Blocking"),
-    ])
-}
+    /// Returns the reusable expression for the `is_coherent_beam` alias.
+    #[must_use]
+    pub fn is_coherent_beam() -> Expr {
+        float_cond("polarization_angle").ge(0.0)
+    }
 
-fn alias_is_cosmic() -> Expr {
-    all([
-        string_cond("run_config").contains("cosmic"),
-        float_cond("beam_current").lt(1.0),
-        int_cond("event_count").gt(5_000),
-    ])
-}
+    /// Returns the reusable expression for the `is_field_off` alias.
+    #[must_use]
+    pub fn is_field_off() -> Expr {
+        float_cond("solenoid_current").lt(100.0)
+    }
 
-fn alias_is_empty_target() -> Expr {
-    string_cond("target_type").eq("EMPTY & Ready")
-}
+    /// Returns the reusable expression for the `is_field_on` alias.
+    #[must_use]
+    pub fn is_field_on() -> Expr {
+        float_cond("solenoid_current").ge(100.0)
+    }
 
-fn alias_is_amorph_radiator() -> Expr {
-    float_cond("polarization_angle").lt(0.0)
-}
+    /// Returns the reusable expression for the `status_calibration` alias.
+    #[must_use]
+    pub fn status_calibration() -> Expr {
+        int_cond("status").eq(3)
+    }
 
-fn alias_is_coherent_beam() -> Expr {
-    float_cond("polarization_angle").geq(0.0)
-}
+    /// Returns the reusable expression for the `status_approved_long` alias.
+    #[must_use]
+    pub fn status_approved_long() -> Expr {
+        int_cond("status").eq(2)
+    }
 
-fn alias_is_field_off() -> Expr {
-    float_cond("solenoid_current").lt(100.0)
-}
+    /// Returns the reusable expression for the `status_approved` alias.
+    #[must_use]
+    pub fn status_approved() -> Expr {
+        int_cond("status").eq(1)
+    }
 
-fn alias_is_field_on() -> Expr {
-    float_cond("solenoid_current").geq(100.0)
-}
+    /// Returns the reusable expression for the `status_unchecked` alias.
+    #[must_use]
+    pub fn status_unchecked() -> Expr {
+        int_cond("status").eq(-1)
+    }
 
-fn alias_status_calibration() -> Expr {
-    int_cond("status").eq(3)
-}
-
-fn alias_status_approved_long() -> Expr {
-    int_cond("status").eq(2)
-}
-
-fn alias_status_approved() -> Expr {
-    int_cond("status").eq(1)
-}
-
-fn alias_status_unchecked() -> Expr {
-    int_cond("status").eq(-1)
-}
-
-fn alias_status_reject() -> Expr {
-    int_cond("status").eq(0)
+    /// Returns the reusable expression for the `status_reject` alias.
+    #[must_use]
+    pub fn status_reject() -> Expr {
+        int_cond("status").eq(0)
+    }
 }

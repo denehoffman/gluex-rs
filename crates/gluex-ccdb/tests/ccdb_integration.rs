@@ -1,5 +1,7 @@
+#![allow(missing_docs)]
+
 use chrono::{Datelike, Timelike};
-use gluex_ccdb::{context::Context, database::CCDB, CCDBResult};
+use gluex_ccdb::{context::Context, database::CCDB, models::ColumnMeta, CCDBResult};
 use gluex_core::{errors::ParseTimestampError, parsers::parse_timestamp};
 use std::path::PathBuf;
 
@@ -76,7 +78,7 @@ fn directory_and_table_metadata_can_be_discovered() -> CCDBResult<()> {
 
     let columns = table.columns()?;
     assert_eq!(columns.len(), 3);
-    let names: Vec<&str> = columns.iter().map(|c| c.name()).collect();
+    let names: Vec<&str> = columns.iter().map(ColumnMeta::name).collect();
     assert_eq!(names, ["x", "y", "z"]);
     let types: Vec<&str> = columns.iter().map(|c| c.column_type().as_str()).collect();
     assert_eq!(types, ["double", "double", "double"]);
@@ -109,7 +111,7 @@ fn fetch_respects_runs_variations_and_timestamps() -> CCDBResult<()> {
         assert_eq!(
             data.column_names()
                 .iter()
-                .map(|s| s.as_str())
+                .map(String::as_str)
                 .collect::<Vec<_>>(),
             vec!["x", "y", "z"]
         );

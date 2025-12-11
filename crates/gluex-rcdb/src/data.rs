@@ -44,11 +44,13 @@ impl Value {
     }
 
     /// Returns the declared RCDB type of the value.
+    #[must_use]
     pub fn value_type(&self) -> ValueType {
         self.value_type
     }
 
     /// Returns the inner string (string, json, or blob) value if available.
+    #[must_use]
     pub fn as_string(&self) -> Option<&str> {
         if self.value_type.is_textual() {
             if let Repr::Text(text) = &self.repr {
@@ -59,6 +61,7 @@ impl Value {
     }
 
     /// Returns the integer payload when the value type is `int`.
+    #[must_use]
     pub fn as_int(&self) -> Option<i64> {
         match &self.repr {
             Repr::Int(value) if self.value_type == ValueType::Int => Some(*value),
@@ -67,6 +70,7 @@ impl Value {
     }
 
     /// Returns the floating point payload when the value type is `float`.
+    #[must_use]
     pub fn as_float(&self) -> Option<f64> {
         match &self.repr {
             Repr::Float(value) if self.value_type == ValueType::Float => Some(*value),
@@ -75,6 +79,7 @@ impl Value {
     }
 
     /// Returns the boolean payload when the value type is `bool`.
+    #[must_use]
     pub fn as_bool(&self) -> Option<bool> {
         match &self.repr {
             Repr::Bool(value) if self.value_type == ValueType::Bool => Some(*value),
@@ -83,9 +88,10 @@ impl Value {
     }
 
     /// Returns the timestamp payload when the value type is `time`.
+    #[must_use]
     pub fn as_time(&self) -> Option<DateTime<Utc>> {
         match &self.repr {
-            Repr::Time(value) if self.value_type == ValueType::Time => Some(value.clone()),
+            Repr::Time(value) if self.value_type == ValueType::Time => Some(*value),
             _ => None,
         }
     }
