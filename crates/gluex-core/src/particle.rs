@@ -1939,6 +1939,6 @@ impl Particle {
                 return Self::Neutron;
             }
         }
-        return Self::UnknownParticle;
+        Self::UnknownParticle
     }
 }

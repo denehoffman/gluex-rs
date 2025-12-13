@@ -636,6 +636,8 @@ impl IntoExprList for &Vec<Expr> {
 
 /// Convenience functions for referencing built-in alias expressions directly.
 pub mod aliases {
+    use gluex_core::run_periods::RunPeriod;
+
     use super::{all, float_cond, int_cond, string_cond, Expr};
 
     /// Returns the reusable expression for the `is_production` alias.
@@ -792,5 +794,23 @@ pub mod aliases {
     #[must_use]
     pub fn status_reject() -> Expr {
         int_cond("status").eq(0)
+    }
+
+    /// Returns an expression which matches approved production runs for the given [`RunPeriod`].
+    #[must_use]
+    pub fn approved_production(run_period: RunPeriod) -> Expr {
+        match run_period {
+            RunPeriod::RP2016_02 | RunPeriod::RP2017_01 => {
+                all([is_production(), status_approved()])
+            }
+            RunPeriod::RP2018_01 | RunPeriod::RP2018_08 => {
+                all([is_2018production(), status_approved()])
+            }
+            RunPeriod::RP2019_11 => all([is_dirc_production(), status_approved()]),
+            RunPeriod::RP2023_01 | RunPeriod::RP2025_01 => {
+                all([is_dirc_production(), status_approved()])
+            }
+            _ => unimplemented!(),
+        }
     }
 }

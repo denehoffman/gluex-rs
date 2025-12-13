@@ -9,6 +9,7 @@ use ::gluex_rcdb::{
 use chrono::{DateTime, Utc};
 use gluex_core::{
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
+    run_periods::RunPeriodError,
     RunNumber,
 };
 use pyo3::{
@@ -819,6 +820,13 @@ impl Aliases {
     #[getter]
     pub fn status_reject(&self) -> PyExpr {
         PyExpr::new(conditions::aliases::status_reject())
+    }
+    pub fn approved_production(&self, run_period: String) -> PyResult<PyExpr> {
+        Ok(PyExpr::new(conditions::aliases::approved_production(
+            run_period
+                .parse()
+                .map_err(|e: RunPeriodError| PyRuntimeError::new_err(e.to_string()))?,
+        )))
     }
 }
 

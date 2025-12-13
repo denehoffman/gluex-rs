@@ -71,5 +71,4 @@ docs/_build/
 # Pyenv
 .python-version
 
-main.rs
 *.sqlite

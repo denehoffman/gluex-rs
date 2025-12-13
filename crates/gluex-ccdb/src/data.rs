@@ -639,37 +639,37 @@ impl Data {
     /// Returns a positional cell as `i32` if present and typed accordingly.
     #[must_use]
     pub fn int(&self, column: usize, row: usize) -> Option<i32> {
-        self.value(row, column)?.as_int()
+        self.value(column, row)?.as_int()
     }
     /// Returns a positional cell as `u32` if present and typed accordingly.
     #[must_use]
     pub fn uint(&self, column: usize, row: usize) -> Option<u32> {
-        self.value(row, column)?.as_uint()
+        self.value(column, row)?.as_uint()
     }
     /// Returns a positional cell as `i64` if present and typed accordingly.
     #[must_use]
     pub fn long(&self, column: usize, row: usize) -> Option<i64> {
-        self.value(row, column)?.as_long()
+        self.value(column, row)?.as_long()
     }
     /// Returns a positional cell as `u64` if present and typed accordingly.
     #[must_use]
     pub fn ulong(&self, column: usize, row: usize) -> Option<u64> {
-        self.value(row, column)?.as_ulong()
+        self.value(column, row)?.as_ulong()
     }
     /// Returns a positional cell as `f64` if present and typed accordingly.
     #[must_use]
     pub fn double(&self, column: usize, row: usize) -> Option<f64> {
-        self.value(row, column)?.as_double()
+        self.value(column, row)?.as_double()
     }
     /// Returns a positional cell as `&str` if present and typed accordingly.
     #[must_use]
     pub fn string(&self, column: usize, row: usize) -> Option<&str> {
-        self.value(row, column)?.as_str()
+        self.value(column, row)?.as_str()
     }
     /// Returns a positional cell as `bool` if present and typed accordingly.
     #[must_use]
     pub fn bool(&self, column: usize, row: usize) -> Option<bool> {
-        self.value(row, column)?.as_bool()
+        self.value(column, row)?.as_bool()
     }
 
     /// Returns a borrowed view of a single row, or an error if out of bounds.

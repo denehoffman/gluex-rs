@@ -11,15 +11,11 @@ pub mod database;
 /// Lightweight structs that mirror RCDB tables.
 pub mod models;
 
-pub use conditions as condition;
-pub use context::{Context, RunSelection};
-pub use data::Value;
-pub use database::RCDB;
-pub use models::ValueType;
-
 use gluex_core::errors::ParseTimestampError;
 use gluex_core::RunNumber;
 use thiserror::Error;
+
+use crate::models::ValueType;
 
 /// Convenience alias for results returned from RCDB operations.
 pub type RCDBResult<T> = Result<T, RCDBError>;
@@ -68,6 +64,7 @@ pub enum RCDBError {
 /// Re-exports for the most common types.
 pub mod prelude {
     pub use crate::{
+        conditions,
         context::{Context, RunSelection},
         data::Value,
         database::RCDB,

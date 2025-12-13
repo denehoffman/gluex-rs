@@ -1,5 +1,5 @@
 [package]
-name = "gluex-core"
+name = "gluex-lumi"
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
@@ -9,16 +9,20 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lib]
-name = "gluex_core"
+name = "gluex_lumi"
 crate-type = ["rlib"]
 
-[features]
-default = []
-
 [dependencies]
-auto_ops.workspace = true
 chrono.workspace = true
-lazy_static.workspace = true
+clap.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 strum.workspace = true
 thiserror.workspace = true
+
+gluex-core.workspace = true
+gluex-rcdb.workspace = true
+gluex-ccdb.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
