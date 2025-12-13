@@ -311,6 +311,7 @@ fn fetch_photon_endpoint_energy(
         .collect())
 }
 
+#[allow(clippy::type_complexity)]
 fn fetch_tagm_tagged_flux(
     ccdb: &CCDB,
     context: &CCDBContext,
@@ -347,6 +348,7 @@ fn fetch_tagm_scaled_energy_range(
         .collect())
 }
 
+#[allow(clippy::type_complexity)]
 fn fetch_tagh_tagged_flux(
     ccdb: &CCDB,
     context: &CCDBContext,

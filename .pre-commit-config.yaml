@@ -21,6 +21,11 @@ repos:
         entry: maturin develop --uv -r -m crates/gluex-ccdb-py/Cargo.toml
         language: system
         pass_filenames: false
+      - id: maturin-gluex-lumi-py
+        name: maturin build gluex-lumi-py
+        entry: maturin develop --uv -r -m crates/gluex-lumi-py/Cargo.toml
+        language: system
+        pass_filenames: false
       - id: ruff
         name: ruff
         entry: ruff check

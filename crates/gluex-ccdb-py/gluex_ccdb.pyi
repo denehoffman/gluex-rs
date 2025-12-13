@@ -1,10 +1,8 @@
 from datetime import datetime
 
-
 class ColumnType:
     @property
     def name(self) -> str: ...
-
 
 class ColumnMeta:
     @property
@@ -18,7 +16,6 @@ class ColumnMeta:
     @property
     def comment(self) -> str: ...
 
-
 class TypeTableMeta:
     @property
     def id(self) -> int: ...
@@ -31,7 +28,6 @@ class TypeTableMeta:
     @property
     def comment(self) -> str: ...
 
-
 class Column:
     @property
     def name(self) -> str: ...
@@ -40,7 +36,6 @@ class Column:
     def row(self, row: int) -> object: ...
     def values(self) -> list[object]: ...
 
-
 class RowView:
     @property
     def n_columns(self) -> int: ...
@@ -48,7 +43,6 @@ class RowView:
     def column_types(self) -> list[ColumnType]: ...
     def value(self, column: int | str) -> object | None: ...
     def columns(self) -> list[tuple[str, ColumnType, object]]: ...
-
 
 class Data:
     @property
@@ -63,7 +57,6 @@ class Data:
     def row(self, row: int) -> RowView: ...
     def rows(self) -> list[RowView]: ...
     def value(self, column: int | str, row: int) -> object | None: ...
-
 
 class TypeTableHandle:
     @property
@@ -82,7 +75,6 @@ class TypeTableHandle:
         timestamp: str | datetime | None = ...,
     ) -> dict[int, Data]: ...
 
-
 class DirectoryHandle:
     def full_path(self) -> str: ...
     def parent(self) -> DirectoryHandle | None: ...
@@ -90,7 +82,6 @@ class DirectoryHandle:
     def dir(self, path: str) -> DirectoryHandle: ...
     def tables(self) -> list[TypeTableHandle]: ...
     def table(self, name: str) -> TypeTableHandle: ...
-
 
 class CCDB:
     def __init__(self, path: str) -> None: ...
@@ -107,7 +98,6 @@ class CCDB:
         variation: str | None = ...,
         timestamp: str | datetime | None = ...,
     ) -> dict[int, Data]: ...
-
 
 __all__ = [
     "CCDB",

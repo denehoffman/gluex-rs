@@ -1,10 +1,8 @@
 from typing import Any, Sequence
 from datetime import datetime
 
-
 class Expr:
     def __invert__(self) -> Expr: ...
-
 
 class Context:
     def __init__(
@@ -16,10 +14,8 @@ class Context:
         run_max: int | None = None,
         filters: Expr | Sequence[Expr] | None = None,
     ): ...
-
     @property
     def runs(self) -> list[int]: ...
-
 
 class RCDB:
     def __init__(self, path: str) -> None: ...
@@ -43,7 +39,6 @@ class RCDB:
         filters: Expr | Sequence[Expr] | None = None,
     ) -> list[int]: ...
 
-
 class IntCondition:
     def eq(self, value: int) -> Expr: ...
     def ne(self, value: int) -> Expr: ...
@@ -52,7 +47,6 @@ class IntCondition:
     def lt(self, value: int) -> Expr: ...
     def le(self, value: int) -> Expr: ...
 
-
 class FloatCondition:
     def eq(self, value: float) -> Expr: ...
     def gt(self, value: float) -> Expr: ...
@@ -60,19 +54,16 @@ class FloatCondition:
     def lt(self, value: float) -> Expr: ...
     def le(self, value: float) -> Expr: ...
 
-
 class StringCondition:
     def eq(self, value: str) -> Expr: ...
     def ne(self, value: str) -> Expr: ...
     def isin(self, values: Sequence[str]) -> Expr: ...
     def contains(self, value: str) -> Expr: ...
 
-
 class BoolCondition:
     def is_true(self) -> Expr: ...
     def is_false(self) -> Expr: ...
     def exists(self) -> Expr: ...
-
 
 class TimeCondition:
     def eq(self, value: datetime) -> Expr: ...
@@ -81,7 +72,6 @@ class TimeCondition:
     def lt(self, value: datetime) -> Expr: ...
     def le(self, value: datetime) -> Expr: ...
 
-
 def int_cond(name: str) -> IntCondition: ...
 def float_cond(name: str) -> FloatCondition: ...
 def string_cond(name: str) -> StringCondition: ...
@@ -89,7 +79,6 @@ def bool_cond(name: str) -> BoolCondition: ...
 def time_cond(name: str) -> TimeCondition: ...
 def all(*exprs: Expr) -> Expr: ...
 def any(*exprs: Expr) -> Expr: ...
-
 
 class Aliases:
     @property
@@ -130,22 +119,21 @@ class Aliases:
     def status_reject(self) -> Expr: ...
     def approved_production(self, run_period: str) -> Expr: ...
 
-
 aliases: aliases
 
 __all__ = [
-    'RCDB',
-    'IntCondition',
-    'FloatCondition',
-    'StringCondition',
-    'BoolCondition',
-    'TimeCondition',
-    'int_cond',
-    'float_cond',
-    'string_cond',
-    'bool_cond',
-    'time_cond',
-    'all',
-    'any',
-    'aliases',
+    "RCDB",
+    "IntCondition",
+    "FloatCondition",
+    "StringCondition",
+    "BoolCondition",
+    "TimeCondition",
+    "int_cond",
+    "float_cond",
+    "string_cond",
+    "bool_cond",
+    "time_cond",
+    "all",
+    "any",
+    "aliases",
 ]

@@ -2,7 +2,10 @@ use std::{collections::HashMap, env, error::Error, ffi::CString, io, str::FromSt
 
 use ::gluex_lumi as lumi_crate;
 use gluex_core::{histograms::Histogram, run_periods::RunPeriod, RestVersion};
-use lumi_crate::{get_flux_histograms as compute_flux_histograms, FluxHistograms, GlueXLumiError};
+use lumi_crate::{
+    get_flux_histograms as compute_flux_histograms, FluxHistograms as RustFluxHistograms,
+    GlueXLumiError,
+};
 use pyo3::{
     exceptions::PyRuntimeError,
     prelude::*,
@@ -50,6 +53,91 @@ def plot_histograms(data):
     plt.show()
 "#;
 
+#[pyclass(module = "gluex_lumi", name = "Histogram")]
+pub struct PyHistogram {
+    #[pyo3(get)]
+    counts: Vec<f64>,
+    #[pyo3(get)]
+    edges: Vec<f64>,
+    #[pyo3(get)]
+    errors: Vec<f64>,
+}
+
+impl PyHistogram {
+    fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let dict = PyDict::new(py);
+        dict.set_item("counts", self.counts.clone())?;
+        dict.set_item("edges", self.edges.clone())?;
+        dict.set_item("errors", self.errors.clone())?;
+        Ok(dict.unbind())
+    }
+}
+
+#[pymethods]
+impl PyHistogram {
+    #[new]
+    fn new(counts: Vec<f64>, edges: Vec<f64>, errors: Vec<f64>) -> Self {
+        Self {
+            counts,
+            edges,
+            errors,
+        }
+    }
+
+    pub fn as_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        self.to_dict(py)
+    }
+}
+
+#[pyclass(module = "gluex_lumi", name = "FluxHistograms")]
+pub struct PyFluxHistograms {
+    #[pyo3(get)]
+    tagged_flux: Py<PyHistogram>,
+    #[pyo3(get)]
+    tagm_flux: Py<PyHistogram>,
+    #[pyo3(get)]
+    tagh_flux: Py<PyHistogram>,
+    #[pyo3(get)]
+    tagged_luminosity: Py<PyHistogram>,
+}
+
+impl PyFluxHistograms {
+    fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let dict = PyDict::new(py);
+        let tagged_flux = self.tagged_flux.bind(py);
+        let tagm_flux = self.tagm_flux.bind(py);
+        let tagh_flux = self.tagh_flux.bind(py);
+        let tagged_luminosity = self.tagged_luminosity.bind(py);
+        dict.set_item("tagged_flux", tagged_flux.borrow().to_dict(py)?)?;
+        dict.set_item("tagm_flux", tagm_flux.borrow().to_dict(py)?)?;
+        dict.set_item("tagh_flux", tagh_flux.borrow().to_dict(py)?)?;
+        dict.set_item("tagged_luminosity", tagged_luminosity.borrow().to_dict(py)?)?;
+        Ok(dict.unbind())
+    }
+}
+
+#[pymethods]
+impl PyFluxHistograms {
+    #[new]
+    fn new(
+        tagged_flux: Py<PyHistogram>,
+        tagm_flux: Py<PyHistogram>,
+        tagh_flux: Py<PyHistogram>,
+        tagged_luminosity: Py<PyHistogram>,
+    ) -> Self {
+        Self {
+            tagged_flux,
+            tagm_flux,
+            tagh_flux,
+            tagged_luminosity,
+        }
+    }
+
+    pub fn as_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        self.to_dict(py)
+    }
+}
+
 fn py_lumi_error(err: GlueXLumiError) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
 }
@@ -78,24 +166,34 @@ fn resolve_connection_path(value: Option<String>, env_var: &str) -> PyResult<Str
     }
 }
 
-fn histogram_to_dict(py: Python<'_>, hist: &Histogram) -> PyResult<Py<PyDict>> {
-    let dict = PyDict::new(py);
-    dict.set_item("counts", hist.counts.clone())?;
-    dict.set_item("edges", hist.edges.clone())?;
-    dict.set_item("errors", hist.errors.clone())?;
-    Ok(dict.unbind())
+fn histogram_to_py(py: Python<'_>, hist: &Histogram) -> PyResult<Py<PyHistogram>> {
+    Py::new(
+        py,
+        PyHistogram {
+            counts: hist.counts.clone(),
+            edges: hist.edges.clone(),
+            errors: hist.errors.clone(),
+        },
+    )
 }
 
-fn flux_histograms_to_dict(py: Python<'_>, flux: &FluxHistograms) -> PyResult<Py<PyDict>> {
-    let dict = PyDict::new(py);
-    dict.set_item("tagged_flux", histogram_to_dict(py, &flux.tagged_flux)?)?;
-    dict.set_item("tagm_flux", histogram_to_dict(py, &flux.tagm_flux)?)?;
-    dict.set_item("tagh_flux", histogram_to_dict(py, &flux.tagh_flux)?)?;
-    dict.set_item(
-        "tagged_luminosity",
-        histogram_to_dict(py, &flux.tagged_luminosity)?,
-    )?;
-    Ok(dict.unbind())
+fn flux_histograms_to_py(
+    py: Python<'_>,
+    flux: &RustFluxHistograms,
+) -> PyResult<Py<PyFluxHistograms>> {
+    let tagged_flux = histogram_to_py(py, &flux.tagged_flux)?;
+    let tagm_flux = histogram_to_py(py, &flux.tagm_flux)?;
+    let tagh_flux = histogram_to_py(py, &flux.tagh_flux)?;
+    let tagged_luminosity = histogram_to_py(py, &flux.tagged_luminosity)?;
+    Py::new(
+        py,
+        PyFluxHistograms {
+            tagged_flux,
+            tagm_flux,
+            tagh_flux,
+            tagged_luminosity,
+        },
+    )
 }
 
 fn plot_histograms(py: Python<'_>, data: &Bound<'_, PyDict>) -> PyResult<()> {
@@ -273,8 +371,9 @@ fn uniform_edges(bins: usize, min_edge: f64, max_edge: f64) -> Vec<f64> {
 ///
 /// Returns
 /// -------
-/// dict
-///     Nested ``dict`` containing ``counts``, ``edges``, and ``errors`` for each histogram.
+/// FluxHistograms
+///     Object exposing ``tagged_flux``, ``tagm_flux``, ``tagh_flux``, and
+///     ``tagged_luminosity`` histograms.
 #[pyfunction(name = "get_flux_histograms")]
 #[pyo3(signature = (run_periods, edges, *, coherent_peak=false, polarized=false, rcdb=None, ccdb=None))]
 pub fn py_get_flux_histograms(
@@ -285,7 +384,7 @@ pub fn py_get_flux_histograms(
     polarized: bool,
     rcdb: Option<String>,
     ccdb: Option<String>,
-) -> PyResult<Py<PyDict>> {
+) -> PyResult<Py<PyFluxHistograms>> {
     if edges.len() < 2 {
         return Err(PyRuntimeError::new_err(
             "edges must contain at least two values",
@@ -303,7 +402,7 @@ pub fn py_get_flux_histograms(
         ccdb_path,
     )
     .map_err(py_lumi_error)?;
-    flux_histograms_to_dict(py, &histograms)
+    flux_histograms_to_py(py, &histograms)
 }
 
 /// cli()
@@ -342,7 +441,9 @@ pub fn py_cli(py: Python<'_>) -> PyResult<()> {
         to_writer_pretty(io::stdout(), &hist)
             .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
         println!();
-        let dict = flux_histograms_to_dict(py, &hist)?;
+        let py_flux = flux_histograms_to_py(py, &hist)?;
+        let flux_bound = py_flux.bind(py);
+        let dict = flux_bound.borrow().to_dict(py)?;
         let bound = dict.bind(py);
         plot_histograms(py, &bound)?;
         Ok(())
@@ -359,6 +460,8 @@ pub fn py_cli(py: Python<'_>) -> PyResult<()> {
 pub fn gluex_lumi(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_get_flux_histograms, m)?)?;
     m.add_function(wrap_pyfunction!(py_cli, m)?)?;
+    m.add_class::<PyHistogram>()?;
+    m.add_class::<PyFluxHistograms>()?;
     let version = env!("CARGO_PKG_VERSION");
     m.add("__version__", version)?;
     Ok(())

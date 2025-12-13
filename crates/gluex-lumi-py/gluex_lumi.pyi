@@ -3,21 +3,33 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TypedDict
 
 
-class HistogramDict(TypedDict):
+class Histogram:
     counts: list[float]
     edges: list[float]
     errors: list[float]
 
+    def __init__(self, counts: list[float], edges: list[float], errors: list[float]) -> None: ...
 
-class FluxHistograms(TypedDict):
-    tagged_flux: HistogramDict
-    tagm_flux: HistogramDict
-    tagh_flux: HistogramDict
-    tagged_luminosity: HistogramDict
+    def as_dict(self) -> dict[str, list[float]]: ...
 
+
+class FluxHistograms:
+    tagged_flux: Histogram
+    tagm_flux: Histogram
+    tagh_flux: Histogram
+    tagged_luminosity: Histogram
+
+    def __init__(
+        self,
+        tagged_flux: Histogram,
+        tagm_flux: Histogram,
+        tagh_flux: Histogram,
+        tagged_luminosity: Histogram,
+    ) -> None: ...
+
+    def as_dict(self) -> dict[str, dict[str, list[float]]]: ...
 
 def get_flux_histograms(
     run_periods: Mapping[str, int],
@@ -28,6 +40,4 @@ def get_flux_histograms(
     rcdb: str | None = None,
     ccdb: str | None = None,
 ) -> FluxHistograms: ...
-
-
 def cli() -> None: ...
