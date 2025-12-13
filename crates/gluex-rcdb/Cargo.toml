@@ -23,5 +23,9 @@ gluex-core.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 
+[[bench]]
+name = "rcdb_fetch"
+harness = false
+
 [lints]
 workspace = true
