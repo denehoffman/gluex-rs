@@ -1,5 +1,8 @@
-use chrono::{DateTime, Utc};
-use gluex_ccdb::prelude::{CCDBError, CCDB};
+use chrono::{DateTime, TimeZone, Utc};
+use gluex_ccdb::{
+    context::Context as CCDBContext,
+    prelude::{CCDBError, CCDB},
+};
 use gluex_core::{
     histograms::Histogram,
     run_periods::{RunPeriod, REST_VERSION_TIMESTAMPS},
@@ -58,6 +61,10 @@ impl Converter {
 
 pub const TARGET_LENGTH_CM: f64 = 29.5;
 pub const AVOGADRO_CONSTANT: f64 = 6.02214076e23;
+const RP2019_11_OVERRIDE_START: RunNumber = 72436;
+fn rp2019_11_override_timestamp() -> DateTime<Utc> {
+    Utc.with_ymd_and_hms(2021, 4, 23, 0, 0, 1).unwrap()
+}
 
 #[derive(Debug)]
 pub struct FluxCache {
@@ -68,7 +75,7 @@ pub struct FluxCache {
     pub tagm_scaled_energy_range: Vec<(f64, f64)>,
     pub tagh_tagged_flux: Vec<(f64, f64, f64)>,
     pub tagh_scaled_energy_range: Vec<(f64, f64)>,
-    pub photon_endpoint_calibration: f64,
+    pub photon_endpoint_calibration: Option<f64>,
     pub target_scattering_centers: (f64, f64),
 }
 
@@ -80,6 +87,8 @@ pub enum GlueXLumiError {
     CCDBError(#[from] CCDBError),
     #[error("{0}")]
     ConverterParseError(#[from] ConverterParseError),
+    #[error("Missing endpoint calibration for run {0}")]
+    MissingEndpointCalibration(RunNumber),
 }
 
 fn get_flux_cache(
@@ -123,8 +132,8 @@ fn get_flux_cache(
         .collect::<Result<HashMap<RunNumber, Converter>, ConverterParseError>>()?;
     let ccdb = CCDB::open(ccdb_path)?;
     let ccdb_context = gluex_ccdb::context::Context::default()
-        .with_run_range(run_period.min_run()..run_period.max_run())
-        .with_timestamp(timestamp);
+        .with_run_range(run_period.min_run()..run_period.max_run());
+    let ccdb_context_restver = ccdb_context.clone().with_timestamp(timestamp);
     let livetime_ratio: HashMap<RunNumber, f64> = ccdb
         .fetch(
             "/PHOTON_BEAM/pair_spectrometer/lumi/trig_live",
@@ -148,82 +157,17 @@ fn get_flux_cache(
             ))
         })
         .collect();
-    let pair_spectrometer_parameters: HashMap<RunNumber, (f64, f64, f64)> = ccdb
-        .fetch(
-            "/PHOTON_BEAM/pair_spectrometer/lumi/PS_accept",
-            &ccdb_context,
-        )?
-        .into_iter()
-        .filter_map(|(r, d)| {
-            let row = d.row(0).ok()?;
-            let pars = (row.double(0)?, row.double(1)?, row.double(2)?);
-            Some((r, pars))
-        })
-        .collect();
-    let photon_endpoint_energy: HashMap<RunNumber, f64> = ccdb
-        .fetch("/PHOTON_BEAM/endpoint_energy", &ccdb_context)?
-        .into_iter()
-        .filter_map(|(r, d)| Some((r, d.value(0, 0)?.as_double()?)))
-        .collect();
-    let tagm_tagged_flux: HashMap<RunNumber, Vec<(f64, f64, f64)>> = ccdb
-        .fetch(
-            "/PHOTON_BEAM/pair_spectrometer/lumi/tagm/tagged",
-            &ccdb_context,
-        )?
-        .into_iter()
-        .map(|(r, d)| {
-            (
-                r,
-                d.iter_rows()
-                    .filter_map(|r| Some((r.double(0)?, r.double(1)?, r.double(2)?)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect();
-    let tagm_scaled_energy_range: HashMap<RunNumber, Vec<(f64, f64)>> = ccdb
-        .fetch("/PHOTON_BEAM/microscope/scaled_energy_range", &ccdb_context)?
-        .into_iter()
-        .map(|(r, d)| {
-            (
-                r,
-                d.iter_rows()
-                    .filter_map(|r| Some((r.double(1)?, r.double(2)?)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect();
-    let tagh_tagged_flux: HashMap<RunNumber, Vec<(f64, f64, f64)>> = ccdb
-        .fetch(
-            "/PHOTON_BEAM/pair_spectrometer/lumi/tagh/tagged",
-            &ccdb_context,
-        )?
-        .into_iter()
-        .map(|(r, d)| {
-            (
-                r,
-                d.iter_rows()
-                    .filter_map(|r| Some((r.double(0)?, r.double(1)?, r.double(2)?)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect();
-    let tagh_scaled_energy_range: HashMap<RunNumber, Vec<(f64, f64)>> = ccdb
-        .fetch("/PHOTON_BEAM/hodoscope/scaled_energy_range", &ccdb_context)?
-        .into_iter()
-        .map(|(r, d)| {
-            (
-                r,
-                d.iter_rows()
-                    .filter_map(|r| Some((r.double(1)?, r.double(2)?)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect();
-    let photon_endpoint_calibration: HashMap<RunNumber, f64> = ccdb
-        .fetch("/PHOTON_BEAM/hodoscope/endpoint_calib", &ccdb_context)?
-        .into_iter()
-        .filter_map(|(r, d)| Some((r, d.double(0, 0)?)))
-        .collect();
+    let mut pair_spectrometer_parameters =
+        fetch_pair_spectrometer_parameters(&ccdb, &ccdb_context_restver)?;
+    let mut photon_endpoint_energy = fetch_photon_endpoint_energy(&ccdb, &ccdb_context_restver)?;
+    let mut tagm_tagged_flux = fetch_tagm_tagged_flux(&ccdb, &ccdb_context_restver)?;
+    let mut tagm_scaled_energy_range =
+        fetch_tagm_scaled_energy_range(&ccdb, &ccdb_context_restver)?;
+    let mut tagh_tagged_flux = fetch_tagh_tagged_flux(&ccdb, &ccdb_context_restver)?;
+    let mut tagh_scaled_energy_range =
+        fetch_tagh_scaled_energy_range(&ccdb, &ccdb_context_restver)?;
+    let mut photon_endpoint_calibration =
+        fetch_photon_endpoint_calibration(&ccdb, &ccdb_context_restver)?;
     // Density is in mg/cm^3, so to get the number of scattering centers, we multiply density by
     // the target length to get mg/cm^2, then we multiply by 1e-3 to get g/cm^2. We then multiply
     // by 1e-24 cm^2/barn to get g/barn, and finally by Avogadro's constant to get g/(mol * barn).
@@ -234,21 +178,77 @@ fn get_flux_cache(
         .into_iter()
         .filter_map(|(r, d)| Some((r, (d.double(0, 0)? * factor, d.double(1, 0)? * factor))))
         .collect();
+
+    if run_period == RunPeriod::RP2019_11 {
+        let override_context = ccdb_context
+            .clone()
+            .with_timestamp(rp2019_11_override_timestamp());
+        apply_run_override(
+            &mut pair_spectrometer_parameters,
+            fetch_pair_spectrometer_parameters(&ccdb, &override_context)?,
+            RP2019_11_OVERRIDE_START,
+            run_period.max_run(),
+        );
+        apply_run_override(
+            &mut photon_endpoint_energy,
+            fetch_photon_endpoint_energy(&ccdb, &override_context)?,
+            RP2019_11_OVERRIDE_START,
+            run_period.max_run(),
+        );
+        apply_run_override(
+            &mut tagm_tagged_flux,
+            fetch_tagm_tagged_flux(&ccdb, &override_context)?,
+            RP2019_11_OVERRIDE_START,
+            run_period.max_run(),
+        );
+        apply_run_override(
+            &mut tagm_scaled_energy_range,
+            fetch_tagm_scaled_energy_range(&ccdb, &override_context)?,
+            RP2019_11_OVERRIDE_START,
+            run_period.max_run(),
+        );
+        apply_run_override(
+            &mut tagh_tagged_flux,
+            fetch_tagh_tagged_flux(&ccdb, &override_context)?,
+            RP2019_11_OVERRIDE_START,
+            run_period.max_run(),
+        );
+        apply_run_override(
+            &mut tagh_scaled_energy_range,
+            fetch_tagh_scaled_energy_range(&ccdb, &override_context)?,
+            RP2019_11_OVERRIDE_START,
+            run_period.max_run(),
+        );
+        apply_run_override(
+            &mut photon_endpoint_calibration,
+            fetch_photon_endpoint_calibration(&ccdb, &override_context)?,
+            RP2019_11_OVERRIDE_START,
+            run_period.max_run(),
+        );
+    }
     Ok(livetime_scaling
         .into_iter()
         .filter_map(|(r, livetime_scaling)| {
+            let pair_spectrometer_parameters = *pair_spectrometer_parameters.get(&r)?;
+            let photon_endpoint_energy = *photon_endpoint_energy.get(&r)?;
+            let tagm_tagged_flux = tagm_tagged_flux.get(&r)?.to_vec();
+            let tagm_scaled_energy_range = tagm_scaled_energy_range.get(&r)?.to_vec();
+            let tagh_tagged_flux = tagh_tagged_flux.get(&r)?.to_vec();
+            let tagh_scaled_energy_range = tagh_scaled_energy_range.get(&r)?.to_vec();
+            let photon_endpoint_calibration = photon_endpoint_calibration.get(&r).copied();
+            let target_scattering_centers = *target_scattering_centers.get(&r)?;
             Some((
                 r,
                 FluxCache {
                     livetime_scaling,
-                    pair_spectrometer_parameters: *pair_spectrometer_parameters.get(&r)?,
-                    photon_endpoint_energy: *photon_endpoint_energy.get(&r)?,
-                    tagm_tagged_flux: tagm_tagged_flux.get(&r)?.to_vec(),
-                    tagm_scaled_energy_range: tagm_scaled_energy_range.get(&r)?.to_vec(),
-                    tagh_tagged_flux: tagh_tagged_flux.get(&r)?.to_vec(),
-                    tagh_scaled_energy_range: tagh_scaled_energy_range.get(&r)?.to_vec(),
-                    photon_endpoint_calibration: *photon_endpoint_calibration.get(&r)?,
-                    target_scattering_centers: *target_scattering_centers.get(&r)?,
+                    pair_spectrometer_parameters,
+                    photon_endpoint_energy,
+                    tagm_tagged_flux,
+                    tagm_scaled_energy_range,
+                    tagh_tagged_flux,
+                    tagh_scaled_energy_range,
+                    photon_endpoint_calibration,
+                    target_scattering_centers,
                 },
             ))
         })
@@ -284,6 +284,127 @@ fn pair_spectrometer_acceptance(x: f64, args: (f64, f64, f64)) -> f64 {
         return p0 * (2.0 * p2 / x - 1.0);
     }
     0.0
+}
+
+fn fetch_pair_spectrometer_parameters(
+    ccdb: &CCDB,
+    context: &CCDBContext,
+) -> Result<HashMap<RunNumber, (f64, f64, f64)>, CCDBError> {
+    Ok(ccdb
+        .fetch("/PHOTON_BEAM/pair_spectrometer/lumi/PS_accept", context)?
+        .into_iter()
+        .filter_map(|(r, d)| {
+            let row = d.row(0).ok()?;
+            Some((r, (row.double(0)?, row.double(1)?, row.double(2)?)))
+        })
+        .collect())
+}
+
+fn fetch_photon_endpoint_energy(
+    ccdb: &CCDB,
+    context: &CCDBContext,
+) -> Result<HashMap<RunNumber, f64>, CCDBError> {
+    Ok(ccdb
+        .fetch("/PHOTON_BEAM/endpoint_energy", context)?
+        .into_iter()
+        .filter_map(|(r, d)| Some((r, d.value(0, 0)?.as_double()?)))
+        .collect())
+}
+
+fn fetch_tagm_tagged_flux(
+    ccdb: &CCDB,
+    context: &CCDBContext,
+) -> Result<HashMap<RunNumber, Vec<(f64, f64, f64)>>, CCDBError> {
+    Ok(ccdb
+        .fetch("/PHOTON_BEAM/pair_spectrometer/lumi/tagm/tagged", context)?
+        .into_iter()
+        .map(|(r, d)| {
+            (
+                r,
+                d.iter_rows()
+                    .filter_map(|row| Some((row.double(0)?, row.double(1)?, row.double(2)?)))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect())
+}
+
+fn fetch_tagm_scaled_energy_range(
+    ccdb: &CCDB,
+    context: &CCDBContext,
+) -> Result<HashMap<RunNumber, Vec<(f64, f64)>>, CCDBError> {
+    Ok(ccdb
+        .fetch("/PHOTON_BEAM/microscope/scaled_energy_range", context)?
+        .into_iter()
+        .map(|(r, d)| {
+            (
+                r,
+                d.iter_rows()
+                    .filter_map(|row| Some((row.double(1)?, row.double(2)?)))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect())
+}
+
+fn fetch_tagh_tagged_flux(
+    ccdb: &CCDB,
+    context: &CCDBContext,
+) -> Result<HashMap<RunNumber, Vec<(f64, f64, f64)>>, CCDBError> {
+    Ok(ccdb
+        .fetch("/PHOTON_BEAM/pair_spectrometer/lumi/tagh/tagged", context)?
+        .into_iter()
+        .map(|(r, d)| {
+            (
+                r,
+                d.iter_rows()
+                    .filter_map(|row| Some((row.double(0)?, row.double(1)?, row.double(2)?)))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect())
+}
+
+fn fetch_tagh_scaled_energy_range(
+    ccdb: &CCDB,
+    context: &CCDBContext,
+) -> Result<HashMap<RunNumber, Vec<(f64, f64)>>, CCDBError> {
+    Ok(ccdb
+        .fetch("/PHOTON_BEAM/hodoscope/scaled_energy_range", context)?
+        .into_iter()
+        .map(|(r, d)| {
+            (
+                r,
+                d.iter_rows()
+                    .filter_map(|row| Some((row.double(1)?, row.double(2)?)))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect())
+}
+
+fn fetch_photon_endpoint_calibration(
+    ccdb: &CCDB,
+    context: &CCDBContext,
+) -> Result<HashMap<RunNumber, f64>, CCDBError> {
+    Ok(ccdb
+        .fetch("/PHOTON_BEAM/hodoscope/endpoint_calib", context)?
+        .into_iter()
+        .filter_map(|(r, d)| Some((r, d.double(0, 0)?)))
+        .collect())
+}
+
+fn apply_run_override<T>(
+    target: &mut HashMap<RunNumber, T>,
+    overrides: HashMap<RunNumber, T>,
+    run_min: RunNumber,
+    run_max: RunNumber,
+) {
+    for (run, value) in overrides {
+        if run >= run_min && run <= run_max {
+            target.insert(run, value);
+        }
+    }
 }
 
 fn get_timestamp(run_period: RunPeriod, rest_version: RestVersion) -> DateTime<Utc> {
@@ -346,10 +467,12 @@ pub fn get_flux_histograms(
     }
     for run in run_numbers {
         if let Some(data) = cache.get(&run) {
-            let delta_e = if run > 60000 {
-                data.photon_endpoint_energy - data.photon_endpoint_calibration
-            } else {
-                0.0
+            let delta_e = match data.photon_endpoint_calibration {
+                Some(calibration) => data.photon_endpoint_energy - calibration,
+                None if run > 60000 => {
+                    return Err(GlueXLumiError::MissingEndpointCalibration(run));
+                }
+                None => 0.0,
             };
             // Fill microscope
             for (tagged_flux, e_range) in data

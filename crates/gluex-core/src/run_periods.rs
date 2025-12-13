@@ -9,20 +9,8 @@ use crate::{RestVersion, RunNumber};
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RunPeriod {
-    /// Commissioning, 10 GeV
-    RP2014_10,
-    /// Cosmics
-    RP2015_01,
-    /// Commissioning, 5.5 GeV
-    RP2015_03,
-    /// Cosmics
-    RP2015_06,
-    /// Commissioning, 12 GeV, Cosmics
-    RP2015_12,
     /// Commisioning, 12 GeV
     RP2016_02,
-    /// 12 GeV
-    RP2016_10,
     /// GlueX Phase I, 12 GeV
     RP2017_01,
     /// GlueX Phase I, 12 GeV
@@ -50,59 +38,41 @@ pub enum RunPeriod {
 impl RunPeriod {
     pub fn min_run(&self) -> RunNumber {
         match self {
-            Self::RP2014_10 => 630,
-            Self::RP2015_01 => 2440,
-            Self::RP2015_03 => 2607,
-            Self::RP2015_06 => 3386,
-            Self::RP2015_12 => 3939,
             Self::RP2016_02 => 10000,
-            Self::RP2016_10 => 20000,
             Self::RP2017_01 => 30000,
-            Self::RP2018_01 => 40856,
-            Self::RP2018_08 => 50685,
-            Self::RP2019_01 => 60700,
-            Self::RP2019_11 => 71275, // TODO: get correct range
-            Self::RP2021_08 => 81262,
-            Self::RP2021_11 => 90033,
-            Self::RP2022_05 => 100491,
-            Self::RP2022_08 => 110469,
-            Self::RP2023_01 => 120286,
-            Self::RP2025_01 => 131593,
+            Self::RP2018_01 => 40000,
+            Self::RP2018_08 => 50000,
+            Self::RP2019_01 => 60000,
+            Self::RP2019_11 => 70000,
+            Self::RP2021_08 => 80000,
+            Self::RP2021_11 => 90000,
+            Self::RP2022_05 => 100000,
+            Self::RP2022_08 => 110000,
+            Self::RP2023_01 => 120000,
+            Self::RP2025_01 => 130000,
         }
     }
 
     pub fn max_run(&self) -> RunNumber {
         match self {
-            Self::RP2014_10 => 2439,
-            Self::RP2015_01 => 2606,
-            Self::RP2015_03 => 3385,
-            Self::RP2015_06 => 3938,
-            Self::RP2015_12 => 4807,
-            Self::RP2016_02 => 12109,
-            Self::RP2016_10 => 29999,
-            Self::RP2017_01 => 49999,
-            Self::RP2018_01 => 42550,
-            Self::RP2018_08 => 51735,
-            Self::RP2019_01 => 60833,
-            Self::RP2019_11 => 79999, // TODO: get correct range
-            Self::RP2021_08 => 81704,
-            Self::RP2021_11 => 90633,
-            Self::RP2022_05 => 101622,
-            Self::RP2022_08 => 112001,
-            Self::RP2023_01 => 121207,
-            Self::RP2025_01 => 133606,
+            Self::RP2016_02 => 19999,
+            Self::RP2017_01 => 39999,
+            Self::RP2018_01 => 49999,
+            Self::RP2018_08 => 59999,
+            Self::RP2019_01 => 69999,
+            Self::RP2019_11 => 79999,
+            Self::RP2021_08 => 89999,
+            Self::RP2021_11 => 99999,
+            Self::RP2022_05 => 109999,
+            Self::RP2022_08 => 119999,
+            Self::RP2023_01 => 129999,
+            Self::RP2025_01 => 139999,
         }
     }
 
     pub fn short_name(&self) -> &str {
         match self {
-            Self::RP2014_10 => "F14",
-            Self::RP2015_01 => "S15a",
-            Self::RP2015_03 => "S15b",
-            Self::RP2015_06 => "F15",
-            Self::RP2015_12 => "S16a",
-            Self::RP2016_02 => "S16b",
-            Self::RP2016_10 => "F16",
+            Self::RP2016_02 => "S16",
             Self::RP2017_01 => "S17",
             Self::RP2018_01 => "S18",
             Self::RP2018_08 => "F18",
@@ -166,13 +136,7 @@ impl FromStr for RunPeriod {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "f14" => Ok(Self::RP2014_10),
-            "s15a" => Ok(Self::RP2015_01),
-            "s15b" => Ok(Self::RP2015_03),
-            "f15" => Ok(Self::RP2015_06),
-            "s16a" => Ok(Self::RP2015_12),
-            "s16b" => Ok(Self::RP2016_02),
-            "f16" => Ok(Self::RP2016_10),
+            "s16" => Ok(Self::RP2016_02),
             "s17" => Ok(Self::RP2017_01),
             "s18" => Ok(Self::RP2018_01),
             "f18" => Ok(Self::RP2018_08),
@@ -208,11 +172,11 @@ lazy_static! {
         // TODO: these are just some eyeballed values, we need the full table
         let mut m = HashMap::new();
         let mut m_s17 = HashMap::new();
-        m_s17.insert(52, _latest_utc(2023, 1, 28));
+        m_s17.insert(52, _latest_utc(2018, 12, 1));
         let mut m_s18 = HashMap::new();
-        m_s18.insert(19, _latest_utc(2023, 1, 28));
+        m_s18.insert(19, _latest_utc(2019, 8, 1));
         let mut m_f18 = HashMap::new();
-        m_f18.insert(19, _latest_utc(2023, 1, 28));
+        m_f18.insert(19, _latest_utc(2019, 11, 1));
         let mut m_s20 = HashMap::new();
         m_s20.insert(4, _latest_utc(2022, 6, 1));
         m.insert(RunPeriod::RP2017_01, m_s17);
