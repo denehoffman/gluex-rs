@@ -1,0 +1,96 @@
+#!/usr/bin/env uv run --script
+"""Plot helper for gluex-lumi JSON output.
+
+Usage:
+    gluex-lumi ... | python scripts/plot_gluex_lumi.py
+
+Optionally pass a file path for previously saved output:
+    python scripts/plot_gluex_lumi.py --input results.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any, Dict, Tuple
+
+# /// script
+# dependencies = [
+#     "matplotlib>=3.9",
+#     "numpy>=2.1",
+# ]
+# ///
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+HIST_ORDER = [
+    ("tagged_flux", "Tagged Flux"),
+    ("tagm_flux", "TAGM Flux"),
+    ("tagh_flux", "TAGH Flux"),
+    ("tagged_luminosity", "Tagged Luminosity"),
+]
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=None,
+        help="Path to a gluex-lumi JSON file. Omit to read from stdin.",
+    )
+    return parser.parse_args()
+
+
+def load_histograms(path: Path | None) -> Dict[str, Dict[str, Any]]:
+    if path is None:
+        data = json.load(sys.stdin)
+    else:
+        data = json.loads(path.read_text())
+    return data
+
+
+def prepare_hist(hist: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    edges = np.asarray(hist["edges"], dtype=float)
+    counts = np.asarray(hist["counts"], dtype=float)
+    errors = np.asarray(hist["errors"], dtype=float)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    if counts.size:
+        step_counts = np.concatenate([counts, counts[-1:]])
+    else:
+        step_counts = np.zeros_like(edges)
+    return edges, centers, counts, errors, step_counts
+
+
+def main() -> None:
+    args = parse_args()
+    data = load_histograms(args.input)
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=False)
+    axes = axes.flatten()
+
+    for ax, (key, title) in zip(axes, HIST_ORDER):
+        hist = data[key]
+        edges, centers, counts, errors, step_counts = prepare_hist(hist)
+        if key == "tagged_luminosity":
+            counts = counts
+            errors = errors
+            ylabel = r"Luminosity [pb$^{-1}$]"
+        else:
+            ylabel = "Counts"
+        ax.step(edges, step_counts, where="post", color="C0")
+        ax.errorbar(centers, counts, yerr=errors, fmt="none", ecolor="black", capsize=2)
+        ax.set_title(title)
+        ax.set_xlabel("Energy [GeV]")
+        ax.set_ylabel(ylabel)
+        ax.set_ylim(bottom=0.0)
+        ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()

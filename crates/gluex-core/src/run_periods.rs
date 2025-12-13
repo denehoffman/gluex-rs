@@ -61,7 +61,7 @@ impl RunPeriod {
             Self::RP2018_01 => 40856,
             Self::RP2018_08 => 50685,
             Self::RP2019_01 => 60700,
-            Self::RP2019_11 => 72761,
+            Self::RP2019_11 => 71275, // TODO: get correct range
             Self::RP2021_08 => 81262,
             Self::RP2021_11 => 90033,
             Self::RP2022_05 => 100491,
@@ -84,7 +84,7 @@ impl RunPeriod {
             Self::RP2018_01 => 42550,
             Self::RP2018_08 => 51735,
             Self::RP2019_01 => 60833,
-            Self::RP2019_11 => 73266,
+            Self::RP2019_11 => 79999, // TODO: get correct range
             Self::RP2021_08 => 81704,
             Self::RP2021_11 => 90633,
             Self::RP2022_05 => 101622,
@@ -208,11 +208,11 @@ lazy_static! {
         // TODO: these are just some eyeballed values, we need the full table
         let mut m = HashMap::new();
         let mut m_s17 = HashMap::new();
-        m_s17.insert(52, _latest_utc(2018, 12, 1));
+        m_s17.insert(52, _latest_utc(2023, 1, 28));
         let mut m_s18 = HashMap::new();
-        m_s18.insert(19, _latest_utc(2019, 8, 1));
+        m_s18.insert(19, _latest_utc(2023, 1, 28));
         let mut m_f18 = HashMap::new();
-        m_f18.insert(19, _latest_utc(2019, 11, 1));
+        m_f18.insert(19, _latest_utc(2023, 1, 28));
         let mut m_s20 = HashMap::new();
         m_s20.insert(4, _latest_utc(2022, 6, 1));
         m.insert(RunPeriod::RP2017_01, m_s17);
