@@ -11,6 +11,16 @@ repos:
         entry: cargo clippy --all-targets
         language: system
         pass_filenames: false
+      - id: maturin-gluex-rcdb-py
+        name: maturin build gluex-rcdb-py
+        entry: maturin develop --uv -r -m crates/gluex-rcdb-py/Cargo.toml
+        language: system
+        pass_filenames: false
+      - id: maturin-gluex-ccdb-py
+        name: maturin build gluex-ccdb-py
+        entry: maturin develop --uv -r -m crates/gluex-ccdb-py/Cargo.toml
+        language: system
+        pass_filenames: false
       - id: ruff
         name: ruff
         entry: ruff check

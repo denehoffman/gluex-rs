@@ -19,6 +19,7 @@ def resolve_db_path() -> Path:
         if candidate.exists():
             return candidate
     pytest.skip('CCDB test database not found. Set CCDB_TEST_SQLITE_CONNECTION or place ccdb.sqlite at the repo root.')
+    raise FileNotFoundError('CCDB test database not found')
 
 
 def _candidate_paths(raw: str) -> list[Path]:

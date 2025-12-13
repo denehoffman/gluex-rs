@@ -16,6 +16,7 @@ def _rcdb_path() -> Path:
         if candidate.exists():
             return candidate
     pytest.skip('RCDB test database not found. Set RCDB_TEST_SQLITE_CONNECTION or place rcdb.sqlite at the repo root.')
+    raise FileNotFoundError('RCDB test database not found')
 
 
 def _candidate_paths(raw: str) -> list[Path]:
@@ -35,7 +36,7 @@ def _open_db() -> rcdb.RCDB:
 
 def test_fetch_single_run_int_condition() -> None:
     db = _open_db()
-    data = db.fetch(['event_count'], run=2)
+    data = db.fetch(['event_count'], runs=[2])
     assert 2 in data
     value = data[2]['event_count']
     assert value == 2
