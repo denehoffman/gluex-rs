@@ -388,6 +388,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gluex-lumi-py"
+version = "0.1.0"
+dependencies = [
+ "gluex-core",
+ "gluex-lumi",
+ "pyo3",
+ "serde_json",
+]
+
+[[package]]
 name = "gluex-rcdb"
 version = "0.1.0"
 dependencies = [

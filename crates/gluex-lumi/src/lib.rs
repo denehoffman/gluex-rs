@@ -255,6 +255,18 @@ fn get_flux_cache(
         .collect())
 }
 
+/// FluxHistograms
+///
+/// Attributes
+/// ----------
+/// tagged_flux : Histogram
+///     Total photon flux summed over TAGM and TAGH detectors.
+/// tagm_flux : Histogram
+///     Photon flux measured by the microscope (TAGM) detector only.
+/// tagh_flux : Histogram
+///     Photon flux measured by the hodoscope (TAGH) detector only.
+/// tagged_luminosity : Histogram
+///     Tagged luminosity derived from the flux and scattering-center constants.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FluxHistograms {
     pub tagged_flux: Histogram,
@@ -282,6 +294,27 @@ fn get_timestamp(run_period: RunPeriod, rest_version: RestVersion) -> DateTime<U
         .unwrap_or(Utc::now())
 }
 
+/// get_flux_histograms(run_period_selection, edges, coherent_peak, polarized, rcdb_path, ccdb_path)
+///
+/// Parameters
+/// ----------
+/// run_period_selection : HashMap<RunPeriod, RestVersion>
+///     Mapping from run periods to the REST version that should seed CCDB lookups.
+/// edges : slice of f64
+///     Photon-energy bin edges used to construct output histograms.
+/// coherent_peak : bool
+///     When true only photons inside the per-run coherent peak contribute to the spectra.
+/// polarized : bool
+///     Selects the polarized-flux calibration set.
+/// rcdb_path : AsRef<Path>
+///     Filesystem path to the RCDB SQLite database.
+/// ccdb_path : AsRef<Path>
+///     Filesystem path to the CCDB SQLite database.
+///
+/// Returns
+/// -------
+/// FluxHistograms
+///     Histograms for flux and tagged luminosity that satisfy the requested selections.
 pub fn get_flux_histograms(
     run_period_selection: HashMap<RunPeriod, RestVersion>,
     edges: &[f64],

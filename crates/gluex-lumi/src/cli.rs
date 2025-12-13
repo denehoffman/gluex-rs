@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, env, ffi::OsString, path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use gluex_core::run_periods::RunPeriod;
@@ -66,9 +66,13 @@ fn uniform_edges(bins: usize, min: f64, max: f64) -> Vec<f64> {
     (0..=bins).map(|i| min + i as f64 * width).collect()
 }
 
-pub fn cli() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
-
+/// Execute the command-line interface with a custom argv iterator.
+pub fn run_with_args<I, T>(args: I) -> Result<(), Box<dyn std::error::Error>>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let cli = Cli::parse_from(args);
     let run_period_selection: HashMap<RunPeriod, usize> = cli.runs.into_iter().collect();
 
     let edges = uniform_edges(cli.bins, cli.min, cli.max);
@@ -84,4 +88,8 @@ pub fn cli() -> Result<(), Box<dyn std::error::Error>> {
 
     to_writer_pretty(std::io::stdout(), &histos)?;
     Ok(())
+}
+
+pub fn cli() -> Result<(), Box<dyn std::error::Error>> {
+    run_with_args(env::args_os())
 }

@@ -1,0 +1,19 @@
+[package]
+name = "gluex-lumi-py"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "gluex_lumi"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true, features = ["extension-module"] }
+gluex-core.workspace = true
+gluex-lumi.workspace = true
+serde_json.workspace = true

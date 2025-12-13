@@ -1,0 +1,28 @@
+[build-system]
+requires = ["maturin>=1.10,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "gluex-lumi"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+tests = [
+    "pytest",
+]
+plot = [
+    "matplotlib>=3.9",
+    "numpy>=2.1",
+]
+
+[project.scripts]
+"gluex-lumi" = "gluex_lumi:cli"
+
+[tool.ruff]
+target-version = "py38"
