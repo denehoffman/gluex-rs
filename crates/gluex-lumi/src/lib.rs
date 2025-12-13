@@ -89,9 +89,7 @@ fn get_flux_cache(
     rcdb_path: impl AsRef<Path>,
     ccdb_path: impl AsRef<Path>,
 ) -> Result<HashMap<RunNumber, FluxCache>, GlueXLumiError> {
-    dbg!("open");
     let rcdb = RCDB::open(rcdb_path)?;
-    dbg!("here");
     let mut rcdb_filters = gluex_rcdb::conditions::aliases::approved_production(run_period);
     if polarized {
         rcdb_filters = gluex_rcdb::conditions::all([
@@ -99,7 +97,6 @@ fn get_flux_cache(
             gluex_rcdb::conditions::aliases::is_coherent_beam(),
         ]);
     }
-    dbg!("polarimeter_converter start");
     let polarimeter_converter: HashMap<RunNumber, Converter> = rcdb
         .fetch(
             ["polarimeter_converter"],
@@ -124,7 +121,6 @@ fn get_flux_cache(
             Ok((r, converter))
         })
         .collect::<Result<HashMap<RunNumber, Converter>, ConverterParseError>>()?;
-    dbg!("polarimeter_converter");
     let ccdb = CCDB::open(ccdb_path)?;
     let ccdb_context = gluex_ccdb::context::Context::default()
         .with_run_range(run_period.min_run()..run_period.max_run())
@@ -152,7 +148,6 @@ fn get_flux_cache(
             ))
         })
         .collect();
-    dbg!("livetime_ratio");
     let pair_spectrometer_parameters: HashMap<RunNumber, (f64, f64, f64)> = ccdb
         .fetch(
             "/PHOTON_BEAM/pair_spectrometer/lumi/PS_accept",
@@ -165,13 +160,11 @@ fn get_flux_cache(
             Some((r, pars))
         })
         .collect();
-    dbg!("pair_spectrometer_parameters");
     let photon_endpoint_energy: HashMap<RunNumber, f64> = ccdb
         .fetch("/PHOTON_BEAM/endpoint_energy", &ccdb_context)?
         .into_iter()
         .filter_map(|(r, d)| Some((r, d.value(0, 0)?.as_double()?)))
         .collect();
-    dbg!("tagm_tagged_flux");
     let tagm_tagged_flux: HashMap<RunNumber, Vec<(f64, f64, f64)>> = ccdb
         .fetch(
             "/PHOTON_BEAM/pair_spectrometer/lumi/tagm/tagged",
@@ -187,7 +180,6 @@ fn get_flux_cache(
             )
         })
         .collect();
-    dbg!("tagm_scaled_energy_range");
     let tagm_scaled_energy_range: HashMap<RunNumber, Vec<(f64, f64)>> = ccdb
         .fetch("/PHOTON_BEAM/microscope/scaled_energy_range", &ccdb_context)?
         .into_iter()
@@ -200,7 +192,6 @@ fn get_flux_cache(
             )
         })
         .collect();
-    dbg!("tagh_tagged_flux");
     let tagh_tagged_flux: HashMap<RunNumber, Vec<(f64, f64, f64)>> = ccdb
         .fetch(
             "/PHOTON_BEAM/pair_spectrometer/lumi/tagh/tagged",
@@ -216,7 +207,6 @@ fn get_flux_cache(
             )
         })
         .collect();
-    dbg!("tagh_scaled_energy_range");
     let tagh_scaled_energy_range: HashMap<RunNumber, Vec<(f64, f64)>> = ccdb
         .fetch("/PHOTON_BEAM/hodoscope/scaled_energy_range", &ccdb_context)?
         .into_iter()
@@ -229,7 +219,6 @@ fn get_flux_cache(
             )
         })
         .collect();
-    dbg!("photon_endpoint_calibration");
     let photon_endpoint_calibration: HashMap<RunNumber, f64> = ccdb
         .fetch("/PHOTON_BEAM/hodoscope/endpoint_calib", &ccdb_context)?
         .into_iter()
@@ -240,7 +229,6 @@ fn get_flux_cache(
     // by 1e-24 cm^2/barn to get g/barn, and finally by Avogadro's constant to get g/(mol * barn).
     // Finally, we divide by 1 g/mol (proton molar mass) to get protons/barn
     let factor = 1e-24 * AVOGADRO_CONSTANT * 1e-3 * TARGET_LENGTH_CM;
-    dbg!("target_scattering_centers");
     let target_scattering_centers: HashMap<RunNumber, (f64, f64)> = ccdb
         .fetch("/TARGET/density", &ccdb_context)?
         .into_iter()

@@ -23,7 +23,9 @@ fn bench_polarimeter_fetch(c: &mut Criterion) {
     let end_run = start_run + 500;
     let context = gluex_rcdb::context::Context::default()
         .with_run_range(start_run..=end_run)
-        .filter(gluex_rcdb::conditions::aliases::approved_production(run_period));
+        .filter(gluex_rcdb::conditions::aliases::approved_production(
+            run_period,
+        ));
 
     c.bench_function("rcdb_fetch/polarimeter_converter_rp2018_08", |b| {
         let rcdb = rcdb.clone();

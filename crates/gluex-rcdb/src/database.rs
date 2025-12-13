@@ -22,6 +22,7 @@ pub struct RCDB {
     connection: Arc<Mutex<Connection>>,
     connection_path: String,
     condition_types: Arc<RwLock<HashMap<String, ConditionTypeMeta>>>,
+    conditions_run_number_index: Option<String>,
 }
 
 impl RCDB {
@@ -38,10 +39,12 @@ impl RCDB {
         )?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         ensure_schema_version(&connection)?;
+        let run_number_index = lookup_conditions_run_number_index(&connection)?;
         let db = Self {
             connection: Arc::new(Mutex::new(connection)),
             connection_path: path_str,
             condition_types: Arc::new(RwLock::new(HashMap::new())),
+            conditions_run_number_index: run_number_index,
         };
         db.load_condition_types()?;
         Ok(db)
@@ -143,9 +146,16 @@ impl RCDB {
         }
         let mut sql = String::from("WITH matched_runs AS (");
         sql.push_str(&matched_runs_sql);
+        let index_hint = self
+            .conditions_run_number_index
+            .as_deref()
+            .map(|name| format!("INDEXED BY {name} "))
+            .unwrap_or_default();
         sql.push_str(
-            ") SELECT matched_runs.number, c.condition_type_id, c.text_value, c.int_value, c.float_value, c.bool_value, c.time_value FROM matched_runs LEFT JOIN conditions AS c ON c.run_number = matched_runs.number",
+            ") SELECT matched_runs.number, c.condition_type_id, c.text_value, c.int_value, c.float_value, c.bool_value, c.time_value FROM matched_runs LEFT JOIN conditions AS c ",
         );
+        sql.push_str(&index_hint);
+        sql.push_str("ON c.run_number = matched_runs.number");
         let cond_placeholders = vec!["?"; requested_conditions.len()].join(", ");
         #[allow(clippy::format_push_string)]
         sql.push_str(&format!(
@@ -304,12 +314,18 @@ impl RCDB {
         }
 
         let mut sql = String::from("SELECT runs.number FROM runs ");
+        let join_hint = self
+            .conditions_run_number_index
+            .as_deref()
+            .map(|name| format!("INDEXED BY {name} "))
+            .unwrap_or_default();
         for entry in &entries {
             #[allow(clippy::format_push_string)]
             sql.push_str(&format!(
-                "LEFT JOIN conditions AS {alias} ON {alias}.run_number = runs.number AND {alias}.condition_type_id = {type_id} ",
+                "LEFT JOIN conditions AS {alias} {hint}ON {alias}.run_number = runs.number AND {alias}.condition_type_id = {type_id} ",
                 alias = entry.alias,
                 type_id = entry.meta.id(),
+                hint = join_hint,
             ));
         }
 
@@ -360,6 +376,35 @@ fn ensure_schema_version(connection: &Connection) -> RCDBResult<()> {
     } else {
         Err(RCDBError::MissingSchemaVersion)
     }
+}
+
+fn lookup_conditions_run_number_index(connection: &Connection) -> RCDBResult<Option<String>> {
+    let mut stmt = connection.prepare("PRAGMA index_list('conditions')")?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let index_name: String = row.get(1)?;
+        if index_has_column(connection, &index_name, "run_number")? {
+            return Ok(Some(index_name));
+        }
+    }
+    Ok(None)
+}
+
+fn index_has_column(
+    connection: &Connection,
+    index_name: &str,
+    column_name: &str,
+) -> RCDBResult<bool> {
+    let pragma = format!("PRAGMA index_info('{index_name}')");
+    let mut stmt = connection.prepare(&pragma)?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let col_name: String = row.get(2)?;
+        if col_name == column_name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 struct ConditionQueryEntry {
