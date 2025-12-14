@@ -4,7 +4,7 @@ use ::gluex_lumi as lumi_crate;
 use gluex_core::{histograms::Histogram, run_periods::RunPeriod, RestVersion};
 use lumi_crate::{
     get_flux_histograms as compute_flux_histograms, FluxHistograms as RustFluxHistograms,
-    GlueXLumiError,
+    GlueXLumiError, RestSelection,
 };
 use pyo3::{
     exceptions::PyRuntimeError,
@@ -142,17 +142,19 @@ fn py_lumi_error(err: GlueXLumiError) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
 }
 
-fn parse_run_periods(obj: &Bound<'_, PyAny>) -> PyResult<HashMap<RunPeriod, RestVersion>> {
-    let mapping: HashMap<String, RestVersion> = obj.extract().map_err(|_| {
-        PyRuntimeError::new_err(
-            "run_periods must be a mapping of run-period names to REST version integers",
-        )
+fn parse_run_periods(obj: &Bound<'_, PyAny>) -> PyResult<HashMap<RunPeriod, RestSelection>> {
+    let mapping: HashMap<String, Option<RestVersion>> = obj.extract().map_err(|_| {
+        PyRuntimeError::new_err("run_periods must map run-period names to REST versions or None")
     })?;
     let mut selection = HashMap::with_capacity(mapping.len());
     for (name, rest) in mapping {
         let period =
             RunPeriod::from_str(&name).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        selection.insert(period, rest);
+        let request = match rest {
+            Some(value) => RestSelection::Version(value),
+            None => RestSelection::Current,
+        };
+        selection.insert(period, request);
     }
     Ok(selection)
 }
@@ -212,7 +214,7 @@ fn plot_histograms(py: Python<'_>, data: &Bound<'_, PyDict>) -> PyResult<()> {
 }
 
 struct ParsedCliArgs {
-    run_selection: HashMap<RunPeriod, RestVersion>,
+    run_selection: HashMap<RunPeriod, RestSelection>,
     bins: usize,
     min_edge: f64,
     max_edge: f64,
@@ -222,7 +224,7 @@ struct ParsedCliArgs {
     ccdb: String,
 }
 
-fn parse_run_pair_arg(raw: &str) -> PyResult<(RunPeriod, RestVersion)> {
+fn parse_run_pair_arg(raw: &str) -> PyResult<(RunPeriod, RestSelection)> {
     let (run_str, rest) = match raw.split_once('=') {
         Some((run, rest)) => (run, Some(rest)),
         None => (raw, None),
@@ -233,16 +235,16 @@ fn parse_run_pair_arg(raw: &str) -> PyResult<(RunPeriod, RestVersion)> {
         Some(value) => value.parse::<usize>().map_err(|_| {
             PyRuntimeError::new_err(format!("REST must be an unsigned integer, got '{value}'"))
         })?,
-        None => 0,
+        None => return Ok((period, RestSelection::Current)),
     };
-    Ok((period, rest_version))
+    Ok((period, RestSelection::Version(rest_version)))
 }
 
 fn parse_plot_cli_args(argv: &[String]) -> PyResult<ParsedCliArgs> {
     if argv.is_empty() {
         return Err(PyRuntimeError::new_err("argv is empty"));
     }
-    let mut runs: HashMap<RunPeriod, RestVersion> = HashMap::new();
+    let mut runs: HashMap<RunPeriod, RestSelection> = HashMap::new();
     let mut bins: Option<usize> = None;
     let mut min_edge: Option<f64> = None;
     let mut max_edge: Option<f64> = None;
@@ -410,20 +412,25 @@ pub fn py_get_flux_histograms(
 /// Notes
 /// -----
 /// Mirrors the Rust ``gluex-lumi`` executable so that ``python -m pip install gluex-lumi``
-/// also exposes the command-line interface. Pass ``--plot`` to display the resulting
-/// histograms using matplotlib (Python-only convenience).
+/// also exposes the command-line interface. Use the ``plot`` subcommand (or legacy
+/// ``--plot`` flag) to display the resulting histograms using matplotlib (Python-only
+/// convenience).
 #[pyfunction(name = "cli")]
 pub fn py_cli(py: Python<'_>) -> PyResult<()> {
     let sys = py.import("sys")?;
     let argv: Vec<String> = sys.getattr("argv")?.extract()?;
     let mut filtered_args = Vec::with_capacity(argv.len());
     let mut plot = false;
-    for arg in argv {
+    for (index, arg) in argv.into_iter().enumerate() {
         if arg == "--plot" {
             plot = true;
-        } else {
-            filtered_args.push(arg);
+            continue;
         }
+        if index == 1 && arg == "plot" {
+            plot = true;
+            continue;
+        }
+        filtered_args.push(arg);
     }
 
     if plot {

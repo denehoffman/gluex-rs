@@ -4,16 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-
 class Histogram:
     counts: list[float]
     edges: list[float]
     errors: list[float]
 
-    def __init__(self, counts: list[float], edges: list[float], errors: list[float]) -> None: ...
-
+    def __init__(
+        self, counts: list[float], edges: list[float], errors: list[float]
+    ) -> None: ...
     def as_dict(self) -> dict[str, list[float]]: ...
-
 
 class FluxHistograms:
     tagged_flux: Histogram
@@ -28,11 +27,10 @@ class FluxHistograms:
         tagh_flux: Histogram,
         tagged_luminosity: Histogram,
     ) -> None: ...
-
     def as_dict(self) -> dict[str, dict[str, list[float]]]: ...
 
 def get_flux_histograms(
-    run_periods: Mapping[str, int],
+    run_periods: Mapping[str, int | None],
     edges: Sequence[float],
     *,
     coherent_peak: bool = False,

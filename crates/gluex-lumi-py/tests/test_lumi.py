@@ -50,7 +50,7 @@ def _ccdb_path() -> Path:
 
 def test_get_flux_histograms_smoke() -> None:
     histograms = gluex_lumi.get_flux_histograms(
-        {"f18": 19},
+        {"f18": 2},
         [8.0, 8.5, 9.0],
         rcdb=str(_rcdb_path()),
         ccdb=str(_ccdb_path()),

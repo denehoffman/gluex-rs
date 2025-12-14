@@ -5,7 +5,7 @@ use gluex_ccdb::{
 };
 use gluex_core::{
     histograms::Histogram,
-    run_periods::{RunPeriod, REST_VERSION_TIMESTAMPS},
+    run_periods::{resolve_rest_version, RestVersionError, RunPeriod},
     RestVersion, RunNumber,
 };
 use gluex_rcdb::prelude::{RCDBError, RCDB};
@@ -66,6 +66,12 @@ fn rp2019_11_override_timestamp() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2021, 4, 23, 0, 0, 1).unwrap()
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum RestSelection {
+    Current,
+    Version(RestVersion),
+}
+
 #[derive(Debug)]
 pub struct FluxCache {
     pub livetime_scaling: f64,
@@ -89,6 +95,8 @@ pub enum GlueXLumiError {
     ConverterParseError(#[from] ConverterParseError),
     #[error("Missing endpoint calibration for run {0}")]
     MissingEndpointCalibration(RunNumber),
+    #[error("{0}")]
+    RestVersionError(#[from] RestVersionError),
 }
 
 fn get_flux_cache(
@@ -157,13 +165,12 @@ fn get_flux_cache(
             ))
         })
         .collect();
-    let mut pair_spectrometer_parameters =
-        fetch_pair_spectrometer_parameters(&ccdb, &ccdb_context_restver)?;
+    let pair_spectrometer_parameters = fetch_pair_spectrometer_parameters(&ccdb, &ccdb_context)?;
     let mut photon_endpoint_energy = fetch_photon_endpoint_energy(&ccdb, &ccdb_context_restver)?;
-    let mut tagm_tagged_flux = fetch_tagm_tagged_flux(&ccdb, &ccdb_context_restver)?;
+    let tagm_tagged_flux = fetch_tagm_tagged_flux(&ccdb, &ccdb_context)?;
     let mut tagm_scaled_energy_range =
         fetch_tagm_scaled_energy_range(&ccdb, &ccdb_context_restver)?;
-    let mut tagh_tagged_flux = fetch_tagh_tagged_flux(&ccdb, &ccdb_context_restver)?;
+    let tagh_tagged_flux = fetch_tagh_tagged_flux(&ccdb, &ccdb_context)?;
     let mut tagh_scaled_energy_range =
         fetch_tagh_scaled_energy_range(&ccdb, &ccdb_context_restver)?;
     let mut photon_endpoint_calibration =
@@ -184,32 +191,14 @@ fn get_flux_cache(
             .clone()
             .with_timestamp(rp2019_11_override_timestamp());
         apply_run_override(
-            &mut pair_spectrometer_parameters,
-            fetch_pair_spectrometer_parameters(&ccdb, &override_context)?,
-            RP2019_11_OVERRIDE_START,
-            run_period.max_run(),
-        );
-        apply_run_override(
             &mut photon_endpoint_energy,
             fetch_photon_endpoint_energy(&ccdb, &override_context)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
         apply_run_override(
-            &mut tagm_tagged_flux,
-            fetch_tagm_tagged_flux(&ccdb, &override_context)?,
-            RP2019_11_OVERRIDE_START,
-            run_period.max_run(),
-        );
-        apply_run_override(
             &mut tagm_scaled_energy_range,
             fetch_tagm_scaled_energy_range(&ccdb, &override_context)?,
-            RP2019_11_OVERRIDE_START,
-            run_period.max_run(),
-        );
-        apply_run_override(
-            &mut tagh_tagged_flux,
-            fetch_tagh_tagged_flux(&ccdb, &override_context)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
@@ -409,20 +398,12 @@ fn apply_run_override<T>(
     }
 }
 
-fn get_timestamp(run_period: RunPeriod, rest_version: RestVersion) -> DateTime<Utc> {
-    REST_VERSION_TIMESTAMPS
-        .get(&run_period)
-        .and_then(|m: &HashMap<RestVersion, DateTime<Utc>>| m.get(&rest_version))
-        .copied()
-        .unwrap_or(Utc::now())
-}
-
 /// get_flux_histograms(run_period_selection, edges, coherent_peak, polarized, rcdb_path, ccdb_path)
 ///
 /// Parameters
 /// ----------
-/// run_period_selection : HashMap<RunPeriod, RestVersion>
-///     Mapping from run periods to the REST version that should seed CCDB lookups.
+/// run_period_selection : HashMap<RunPeriod, RestSelection>
+///     Mapping from run periods to either a specific REST version or the current timestamp.
 /// edges : slice of f64
 ///     Photon-energy bin edges used to construct output histograms.
 /// coherent_peak : bool
@@ -439,7 +420,7 @@ fn get_timestamp(run_period: RunPeriod, rest_version: RestVersion) -> DateTime<U
 /// FluxHistograms
 ///     Histograms for flux and tagged luminosity that satisfy the requested selections.
 pub fn get_flux_histograms(
-    run_period_selection: HashMap<RunPeriod, RestVersion>,
+    run_period_selection: HashMap<RunPeriod, RestSelection>,
     edges: &[f64],
     coherent_peak: bool,
     polarized: bool,
@@ -451,20 +432,33 @@ pub fn get_flux_histograms(
     let mut tagm_flux_hist = Histogram::empty(edges);
     let mut tagh_flux_hist = Histogram::empty(edges);
     let mut tagged_luminosity_hist = Histogram::empty(edges);
-    let mut run_periods: Vec<RunPeriod> = run_period_selection.keys().copied().collect();
-    run_periods.sort_unstable();
+    let mut run_periods: Vec<(RunPeriod, RestSelection)> = run_period_selection
+        .iter()
+        .map(|(rp, rest)| (*rp, *rest))
+        .collect();
+    run_periods.sort_unstable_by_key(|(rp, _)| *rp);
     let run_numbers: Vec<RunNumber> = run_periods
         .iter()
-        .flat_map(|rp| rp.min_run()..=rp.max_run())
+        .flat_map(|(rp, _)| rp.min_run()..=rp.max_run())
         .collect();
-    for rp in run_periods.iter() {
-        let rest_version = run_period_selection.get(rp).copied().unwrap_or_default();
+    for (rp, selection) in run_periods.iter() {
+        let timestamp = match selection {
+            RestSelection::Current => Utc::now(),
+            RestSelection::Version(rest_version) => {
+                let resolved = resolve_rest_version(*rp, *rest_version)?;
+                if resolved.requested != resolved.used {
+                    eprintln!(
+                        "Warning: REST ver{req:02} was not found for run period {} so ver{used:02} was used instead.",
+                        rp.short_name(),
+                        req = resolved.requested,
+                        used = resolved.used
+                    );
+                }
+                resolved.timestamp
+            }
+        };
         cache.extend(get_flux_cache(
-            *rp,
-            polarized,
-            get_timestamp(*rp, rest_version),
-            &rcdb_path,
-            &ccdb_path,
+            *rp, polarized, timestamp, &rcdb_path, &ccdb_path,
         )?);
     }
     for run in run_numbers {

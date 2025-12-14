@@ -163,26 +163,139 @@ impl TryFrom<RunNumber> for RunPeriod {
     }
 }
 
-fn _latest_utc(year: i32, month: u32, day: u32) -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(year, month, day, 23, 59, 59).unwrap()
-}
-
 lazy_static! {
+    /// REST version timestamps sourced from hallddb
     pub static ref REST_VERSION_TIMESTAMPS: HashMap<RunPeriod, HashMap<RestVersion, DateTime<Utc>>> = {
-        // TODO: these are just some eyeballed values, we need the full table
         let mut m = HashMap::new();
+        let mut m_s16 = HashMap::new();
+        m_s16.insert(1, Utc.with_ymd_and_hms(2016, 7, 5, 14, 20, 0).unwrap());
+        m_s16.insert(2, Utc.with_ymd_and_hms(2016, 9, 2, 14, 42, 0).unwrap());
+        m_s16.insert(3, Utc.with_ymd_and_hms(2016, 11, 4, 14, 57, 0).unwrap());
+        m_s16.insert(4, Utc.with_ymd_and_hms(2017, 5, 19, 11, 58, 0).unwrap());
+        m_s16.insert(5, Utc.with_ymd_and_hms(2018, 1, 24, 17, 10, 0).unwrap());
+        m_s16.insert(6, Utc.with_ymd_and_hms(2018, 7, 27, 17, 14, 0).unwrap());
+        m.insert(RunPeriod::RP2016_02, m_s16);
         let mut m_s17 = HashMap::new();
-        m_s17.insert(52, _latest_utc(2018, 12, 1));
-        let mut m_s18 = HashMap::new();
-        m_s18.insert(19, _latest_utc(2019, 8, 1));
-        let mut m_f18 = HashMap::new();
-        m_f18.insert(19, _latest_utc(2019, 11, 1));
-        let mut m_s20 = HashMap::new();
-        m_s20.insert(4, _latest_utc(2022, 6, 1));
+        m_s17.insert(1, Utc.with_ymd_and_hms(2017, 6, 12, 18, 2, 0).unwrap());
+        m_s17.insert(2, Utc.with_ymd_and_hms(2017, 11, 27, 19, 5, 0).unwrap());
+        m_s17.insert(3, Utc.with_ymd_and_hms(2018, 7, 27, 17, 14, 0).unwrap());
+        m_s17.insert(4, Utc.with_ymd_and_hms(2020, 7, 24, 0, 0, 1).unwrap());
         m.insert(RunPeriod::RP2017_01, m_s17);
+        let mut m_s18 = HashMap::new();
+        m_s18.insert(0, Utc.with_ymd_and_hms(2018, 12, 29, 17, 52, 0).unwrap());
+        m_s18.insert(1, Utc.with_ymd_and_hms(2018, 12, 29, 17, 52, 0).unwrap());
+        m_s18.insert(2, Utc.with_ymd_and_hms(2019, 2, 14, 12, 0, 0).unwrap());
         m.insert(RunPeriod::RP2018_01, m_s18);
+        let mut m_f18 = HashMap::new();
+        m_f18.insert(0, Utc.with_ymd_and_hms(2019, 4, 24, 17, 18, 0).unwrap());
+        m_f18.insert(1, Utc.with_ymd_and_hms(2019, 5, 16, 11, 4, 0).unwrap());
+        m_f18.insert(2, Utc.with_ymd_and_hms(2019, 7, 21, 12, 0, 0).unwrap());
         m.insert(RunPeriod::RP2018_08, m_f18);
+        let mut m_s19 = HashMap::new();
+        m_s19.insert(1, Utc.with_ymd_and_hms(2019, 9, 13, 14, 41, 0).unwrap());
+        m_s19.insert(2, Utc.with_ymd_and_hms(2019, 10, 16, 10, 55, 0).unwrap());
+        m_s19.insert(7, Utc.with_ymd_and_hms(2022, 8, 10, 12, 0, 1).unwrap());
+        m.insert(RunPeriod::RP2019_01, m_s19);
+        let mut m_s20 = HashMap::new();
+        m_s20.insert(1, Utc.with_ymd_and_hms(2020, 7, 24, 0, 0, 1).unwrap());
         m.insert(RunPeriod::RP2019_11, m_s20);
+        let mut m_src = HashMap::new();
+        m_src.insert(2, Utc.with_ymd_and_hms(2022, 12, 14, 00, 00, 01).unwrap());
+        m.insert(RunPeriod::RP2021_08, m_src);
+        let mut m_cpp_npp = HashMap::new();
+        m_cpp_npp.insert(1, Utc.with_ymd_and_hms(2022, 08, 10, 00, 00, 01).unwrap());
+        m_cpp_npp.insert(2, Utc.with_ymd_and_hms(2024, 02, 23, 00, 00, 01).unwrap());
+        m_cpp_npp.insert(3, Utc.with_ymd_and_hms(2025, 07, 18, 00, 00, 01).unwrap());
+        m_cpp_npp.insert(4, Utc.with_ymd_and_hms(2025, 07, 18, 00, 00, 01).unwrap());
+        m.insert(RunPeriod::RP2021_11, m_cpp_npp);
+        let mut m_s22 = HashMap::new();
+        m_s22.insert(1, Utc.with_ymd_and_hms(2024, 06, 24, 00, 00, 01).unwrap());
+        m.insert(RunPeriod::RP2022_05, m_s22);
+        let mut m_f22 = HashMap::new();
+        m_f22.insert(1, Utc.with_ymd_and_hms(2024, 08, 31, 16, 13, 08).unwrap());
+        m.insert(RunPeriod::RP2022_08, m_f22);
+        let mut m_s23 = HashMap::new();
+        m_s23.insert(1, Utc.with_ymd_and_hms(2023, 12, 07, 00, 00, 01).unwrap());
+        m_s23.insert(2, Utc.with_ymd_and_hms(2023, 12, 07, 00, 00, 01).unwrap());
+        m_s23.insert(3, Utc.with_ymd_and_hms(2024, 01, 21, 16, 00, 01).unwrap());
+        m.insert(RunPeriod::RP2023_01, m_s23);
+        let mut m_s25 = HashMap::new();
+        m_s25.insert(4, Utc.with_ymd_and_hms(2025, 05, 10, 00, 00, 01).unwrap());
+        m_s25.insert(1, Utc.with_ymd_and_hms(2025, 08, 27, 12, 00, 01).unwrap());
+        m_s25.insert(2, Utc.with_ymd_and_hms(2025, 10, 19, 02, 00, 01).unwrap());
+        m.insert(RunPeriod::RP2025_01, m_s25);
         m
     };
+}
+
+/// Error returned when resolving REST versions for a run period.
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestVersionError {
+    /// No REST metadata exists for the run period.
+    #[error("Run period {0:?} is missing REST version metadata")]
+    MissingRestVersions(RunPeriod),
+    /// The requested REST version is unknown and no lower version exists.
+    #[error(
+        "REST version {requested} is not defined for run period {run_period:?} and no lower REST version exists"
+    )]
+    NoLowerRestVersion {
+        /// Requested run period.
+        run_period: RunPeriod,
+        /// Requested REST version.
+        requested: RestVersion,
+    },
+}
+
+/// Resolution details for a REST version lookup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResolvedRestVersion {
+    /// Requested REST version.
+    pub requested: RestVersion,
+    /// REST version ultimately used after applying fallback rules.
+    pub used: RestVersion,
+    /// Timestamp associated with the REST version.
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Return the available REST versions and timestamps for `run_period` ordered by version.
+pub fn rest_versions_for(run_period: RunPeriod) -> Option<Vec<(RestVersion, DateTime<Utc>)>> {
+    let mut versions: Vec<(RestVersion, DateTime<Utc>)> = REST_VERSION_TIMESTAMPS
+        .get(&run_period)?
+        .iter()
+        .map(|(&version, &timestamp)| (version, timestamp))
+        .collect();
+    versions.sort_unstable_by_key(|(version, _)| *version);
+    Some(versions)
+}
+
+/// Resolve the timestamp for `requested` using the fallback rules described in the documentation.
+pub fn resolve_rest_version(
+    run_period: RunPeriod,
+    requested: RestVersion,
+) -> Result<ResolvedRestVersion, RestVersionError> {
+    let rest_versions = REST_VERSION_TIMESTAMPS
+        .get(&run_period)
+        .ok_or(RestVersionError::MissingRestVersions(run_period))?;
+
+    if let Some(timestamp) = rest_versions.get(&requested) {
+        return Ok(ResolvedRestVersion {
+            requested,
+            used: requested,
+            timestamp: *timestamp,
+        });
+    }
+
+    rest_versions
+        .iter()
+        .filter(|(version, _)| **version < requested)
+        .max_by_key(|(version, _)| *version)
+        .map(|(version, timestamp)| ResolvedRestVersion {
+            requested,
+            used: *version,
+            timestamp: *timestamp,
+        })
+        .ok_or(RestVersionError::NoLowerRestVersion {
+            run_period,
+            requested,
+        })
 }
