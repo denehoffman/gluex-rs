@@ -41,3 +41,6 @@ test-python: build-python
     pytest
 
 test: test-rust test-python
+
+docs:
+    cargo doc

@@ -84,7 +84,7 @@ impl CCDB {
         db.load_tables()?;
         Ok(db)
     }
-    /// Returns the underlying `SQLite` connection.
+    /// Returns the underlying [`rusqlite::Connection`].
     pub fn connection(&self) -> MutexGuard<'_, Connection> {
         self.connection.lock()
     }
@@ -323,7 +323,7 @@ impl CCDB {
         self.variation_chain_cache.insert(start.id, chain.clone());
         Ok(chain)
     }
-    /// Parses a request string of the form "/path:run:variation:timestamp" and fetches data.
+    /// Parses a request string of the form "/path:run:variation:timestamp" (see [`Request`]) and fetches data.
     ///
     /// # Errors
     ///
@@ -335,7 +335,7 @@ impl CCDB {
         table.fetch(&request.context)
     }
 
-    /// Fetches data for a table path using the supplied query context.
+    /// Fetches data for a table path using the supplied [`Context`].
     /// # Errors
     ///
     /// This method returns an error if the parsed table path

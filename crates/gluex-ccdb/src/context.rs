@@ -38,7 +38,7 @@ impl NamePath {
     pub fn name(&self) -> &str {
         self.0.rsplit('/').next().unwrap_or("")
     }
-    /// Returns the parent path, or `None` when this path is root.
+    /// Returns the parent path, or [`None`] when this path is root.
     #[must_use]
     pub fn parent(&self) -> Option<NamePath> {
         if self.is_root() {
@@ -54,7 +54,7 @@ impl NamePath {
         self.0 == "/"
     }
 }
-/// Errors that can occur while parsing or validating CCDB paths.
+/// Errors that can occur while parsing or validating [`NamePath`] values.
 #[derive(Error, Debug)]
 pub enum NamePathError {
     /// Path did not begin with a forward slash.
@@ -71,11 +71,11 @@ const DEFAULT_RUN_NUMBER: RunNumber = 0;
 /// Query context describing run selection, variation, and timestamp.
 #[derive(Debug, Clone)]
 pub struct Context {
-    /// Run numbers to consider when resolving assignments.
+    /// [`RunNumber`] values to consider when resolving assignments.
     pub runs: Vec<RunNumber>,
     /// Variation (branch) to resolve within CCDB.
     pub variation: String,
-    /// Timestamp used to select the newest constants not newer than this time.
+    /// [`DateTime`] in the [`Utc`] timezone used to select the newest constants not newer than this time.
     pub timestamp: DateTime<Utc>,
 }
 impl Default for Context {
@@ -160,14 +160,14 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// This method will return an error if the timestamp is not in the format allowed by CCDB.
+    /// This method returns a [`ParseTimestampError`] if the timestamp is not in the format allowed by CCDB.
     pub fn with_timestamp_string(mut self, timestamp: &str) -> Result<Self, ParseTimestampError> {
         self.timestamp = parse_timestamp(timestamp)?;
         Ok(self)
     }
 }
 
-/// Errors that can occur when parsing a request string.
+/// Errors that can occur when parsing a [`Request`] string.
 #[derive(Error, Debug)]
 pub enum ParseRequestError {
     /// Failed to parse the path portion of the request.
@@ -181,7 +181,7 @@ pub enum ParseRequestError {
     InvalidRunNumberError(String),
 }
 
-/// Parsed representation of a CCDB request string.
+/// Parsed representation of a CCDB request string, containing both the [`NamePath`] and [`Context`].
 #[derive(Debug, Clone)]
 pub struct Request {
     /// Absolute path to the requested table.

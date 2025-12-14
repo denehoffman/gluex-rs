@@ -71,7 +71,7 @@ impl Context {
         self
     }
 
-    /// Restricts the context to the inclusive range produced by `run_range`.
+    /// Restricts the context to the inclusive range described by the [`RangeBounds`] passed as `run_range`.
     #[must_use]
     pub fn with_run_range(mut self, run_range: impl RangeBounds<RunNumber>) -> Self {
         let start = match run_range.start_bound() {
@@ -105,7 +105,7 @@ impl Context {
         &self.selection
     }
 
-    /// Returns the run numbers when the context is scoped to explicit runs.
+    /// Returns the [`RunNumber`] values when the context is scoped to explicit runs.
     #[must_use]
     pub fn runs(&self) -> Option<&[RunNumber]> {
         if let RunSelection::Runs(runs) = &self.selection {
@@ -115,7 +115,7 @@ impl Context {
         }
     }
 
-    /// Return the current filters specified by this context.
+    /// Returns the current [`Expr`] filters specified by this context.
     #[must_use]
     pub fn filters(&self) -> &[Expr] {
         &self.filters

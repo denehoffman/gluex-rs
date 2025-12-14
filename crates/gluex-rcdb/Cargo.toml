@@ -1,12 +1,16 @@
 [package]
 name = "gluex-rcdb"
 version = "0.1.0"
+description = "A Rust interface to the GlueX Run Condition Database (RCDB)"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/gluex-rcdb"
+keywords = ["gluex", "rcdb", "database", "physics", "sqlite"]
 
 [lib]
 name = "gluex_rcdb"

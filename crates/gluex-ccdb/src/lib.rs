@@ -14,13 +14,13 @@ pub mod database;
 /// Lightweight structs that mirror CCDB tables.
 pub mod models;
 
-/// Convenience alias for functions that can return a `CCDBError`.
+/// Convenience alias for functions that can return a [`CCDBError`].
 pub type CCDBResult<T> = Result<T, CCDBError>;
 
 /// Errors that can occur while interacting with CCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum CCDBError {
-    /// Wrapper around `SQLite` driver errors.
+    /// Wrapper around [`rusqlite::Error`].
     #[error("{0}")]
     SqliteError(#[from] rusqlite::Error),
     /// Wrapper around data parsing or shape errors when decoding payloads.

@@ -66,7 +66,7 @@ impl Column {
         }
     }
 
-    /// Returns a clone of the underlying `i32` data, if the type matches.
+    /// Returns a clone of the underlying [`i32`] data, if the type matches.
     #[must_use]
     pub fn int(&self) -> Option<Vec<i32>> {
         match self {
@@ -74,7 +74,7 @@ impl Column {
             _ => None,
         }
     }
-    /// Returns a clone of the underlying `u32` data, if the type matches.
+    /// Returns a clone of the underlying [`u32`] data, if the type matches.
     #[must_use]
     pub fn uint(&self) -> Option<Vec<u32>> {
         match self {
@@ -82,7 +82,7 @@ impl Column {
             _ => None,
         }
     }
-    /// Returns a clone of the underlying `i64` data, if the type matches.
+    /// Returns a clone of the underlying [`i64`] data, if the type matches.
     #[must_use]
     pub fn long(&self) -> Option<Vec<i64>> {
         match self {
@@ -90,7 +90,7 @@ impl Column {
             _ => None,
         }
     }
-    /// Returns a clone of the underlying `u64` data, if the type matches.
+    /// Returns a clone of the underlying [`u64`] data, if the type matches.
     #[must_use]
     pub fn ulong(&self) -> Option<Vec<u64>> {
         match self {
@@ -98,7 +98,7 @@ impl Column {
             _ => None,
         }
     }
-    /// Returns a clone of the underlying `f64` data, if the type matches.
+    /// Returns a clone of the underlying [`f64`] data, if the type matches.
     #[must_use]
     pub fn double(&self) -> Option<Vec<f64>> {
         match self {
@@ -106,7 +106,7 @@ impl Column {
             _ => None,
         }
     }
-    /// Returns a clone of the underlying `bool` data, if the type matches.
+    /// Returns a clone of the underlying [`bool`] data, if the type matches.
     #[must_use]
     pub fn bool(&self) -> Option<Vec<bool>> {
         match self {
@@ -114,7 +114,7 @@ impl Column {
             _ => None,
         }
     }
-    /// Returns a clone of the underlying `String` data, if the type matches.
+    /// Returns a clone of the underlying [`String`] data, if the type matches.
     #[must_use]
     pub fn string(&self) -> Option<Vec<String>> {
         match self {
@@ -143,7 +143,7 @@ pub enum Value<'a> {
     String(&'a str),
 }
 impl<'a> Value<'a> {
-    /// Converts to `i32` if this is an integer cell.
+    /// Converts to [`i32`] if this is an integer cell.
     #[must_use]
     pub fn as_int(self) -> Option<i32> {
         if let Value::Int(v) = self {
@@ -153,7 +153,7 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Converts to `u32` if this is an unsigned integer cell.
+    /// Converts to [`u32`] if this is an unsigned integer cell.
     #[must_use]
     pub fn as_uint(self) -> Option<u32> {
         if let Value::UInt(v) = self {
@@ -163,7 +163,7 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Converts to `i64` if this is a 64-bit integer cell.
+    /// Converts to [`i64`] if this is a 64-bit integer cell.
     #[must_use]
     pub fn as_long(self) -> Option<i64> {
         if let Value::Long(v) = self {
@@ -173,7 +173,7 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Converts to `u64` if this is an unsigned 64-bit integer cell.
+    /// Converts to [`u64`] if this is an unsigned 64-bit integer cell.
     #[must_use]
     pub fn as_ulong(self) -> Option<u64> {
         if let Value::ULong(v) = self {
@@ -183,7 +183,7 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Converts to `f64` if this is a floating-point cell.
+    /// Converts to [`f64`] if this is a floating-point cell.
     #[must_use]
     pub fn as_double(self) -> Option<f64> {
         if let Value::Double(v) = self {
@@ -193,7 +193,7 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Converts to `bool` if this is a boolean cell.
+    /// Converts to [`bool`] if this is a boolean cell.
     #[must_use]
     pub fn as_bool(self) -> Option<bool> {
         if let Value::Bool(v) = self {
@@ -203,7 +203,7 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Converts to `&str` if this is a string cell.
+    /// Converts to [`&str`] if this is a string cell.
     #[must_use]
     pub fn as_str(self) -> Option<&'a str> {
         if let Value::String(v) = self {
@@ -214,7 +214,7 @@ impl<'a> Value<'a> {
     }
 }
 
-/// Borrowed view over a single row of a `Data` table.
+/// Borrowed view over a single row of a [`Data`] table.
 pub struct RowView<'a> {
     row: usize,
     columns: &'a [Column],
@@ -237,73 +237,73 @@ impl<'a> RowView<'a> {
             .and_then(|&idx| self.value(idx))
     }
 
-    /// Returns a positional column as `i32` if present and typed accordingly.
+    /// Returns a positional column as [`i32`] if present and typed accordingly.
     #[must_use]
     pub fn int(&self, column: usize) -> Option<i32> {
         self.value(column)?.as_int()
     }
-    /// Returns a positional column as `u32` if present and typed accordingly.
+    /// Returns a positional column as [`u32`] if present and typed accordingly.
     #[must_use]
     pub fn uint(&self, column: usize) -> Option<u32> {
         self.value(column)?.as_uint()
     }
-    /// Returns a positional column as `i64` if present and typed accordingly.
+    /// Returns a positional column as [`i64`] if present and typed accordingly.
     #[must_use]
     pub fn long(&self, column: usize) -> Option<i64> {
         self.value(column)?.as_long()
     }
-    /// Returns a positional column as `u64` if present and typed accordingly.
+    /// Returns a positional column as [`u64`] if present and typed accordingly.
     #[must_use]
     pub fn ulong(&self, column: usize) -> Option<u64> {
         self.value(column)?.as_ulong()
     }
-    /// Returns a positional column as `f64` if present and typed accordingly.
+    /// Returns a positional column as [`f64`] if present and typed accordingly.
     #[must_use]
     pub fn double(&self, column: usize) -> Option<f64> {
         self.value(column)?.as_double()
     }
-    /// Returns a positional column as `&str` if present and typed accordingly.
+    /// Returns a positional column as [`&str`] if present and typed accordingly.
     #[must_use]
     pub fn string(&self, column: usize) -> Option<&'a str> {
         self.value(column)?.as_str()
     }
-    /// Returns a positional column as `bool` if present and typed accordingly.
+    /// Returns a positional column as [`bool`] if present and typed accordingly.
     #[must_use]
     pub fn bool(&self, column: usize) -> Option<bool> {
         self.value(column)?.as_bool()
     }
 
-    /// Returns a named column as `i32` if present and typed accordingly.
+    /// Returns a named column as [`i32`] if present and typed accordingly.
     #[must_use]
     pub fn named_int(&self, name: &str) -> Option<i32> {
         self.named_value(name)?.as_int()
     }
-    /// Returns a named column as `u32` if present and typed accordingly.
+    /// Returns a named column as [`u32`] if present and typed accordingly.
     #[must_use]
     pub fn named_uint(&self, name: &str) -> Option<u32> {
         self.named_value(name)?.as_uint()
     }
-    /// Returns a named column as `i64` if present and typed accordingly.
+    /// Returns a named column as [`i64`] if present and typed accordingly.
     #[must_use]
     pub fn named_long(&self, name: &str) -> Option<i64> {
         self.named_value(name)?.as_long()
     }
-    /// Returns a named column as `u64` if present and typed accordingly.
+    /// Returns a named column as [`u64`] if present and typed accordingly.
     #[must_use]
     pub fn named_ulong(&self, name: &str) -> Option<u64> {
         self.named_value(name)?.as_ulong()
     }
-    /// Returns a named column as `f64` if present and typed accordingly.
+    /// Returns a named column as [`f64`] if present and typed accordingly.
     #[must_use]
     pub fn named_double(&self, name: &str) -> Option<f64> {
         self.named_value(name)?.as_double()
     }
-    /// Returns a named column as `&str` if present and typed accordingly.
+    /// Returns a named column as [`&str`] if present and typed accordingly.
     #[must_use]
     pub fn named_string(&self, name: &str) -> Option<&'a str> {
         self.named_value(name)?.as_str()
     }
-    /// Returns a named column as `bool` if present and typed accordingly.
+    /// Returns a named column as [`bool`] if present and typed accordingly.
     #[must_use]
     pub fn named_bool(&self, name: &str) -> Option<bool> {
         self.named_value(name)?.as_bool()
@@ -600,73 +600,73 @@ impl Data {
             Column::String(v) => Some(Value::String(&v[row])),
         }
     }
-    /// Returns a named cell as `i32` if present and typed accordingly.
+    /// Returns a named cell as [`i32`] if present and typed accordingly.
     #[must_use]
     pub fn named_int(&self, name: &str, row: usize) -> Option<i32> {
         self.named_column(name)?.row(row).as_int()
     }
-    /// Returns a named cell as `u32` if present and typed accordingly.
+    /// Returns a named cell as [`u32`] if present and typed accordingly.
     #[must_use]
     pub fn named_uint(&self, name: &str, row: usize) -> Option<u32> {
         self.named_column(name)?.row(row).as_uint()
     }
-    /// Returns a named cell as `i64` if present and typed accordingly.
+    /// Returns a named cell as [`i64`] if present and typed accordingly.
     #[must_use]
     pub fn named_long(&self, name: &str, row: usize) -> Option<i64> {
         self.named_column(name)?.row(row).as_long()
     }
-    /// Returns a named cell as `u64` if present and typed accordingly.
+    /// Returns a named cell as [`u64`] if present and typed accordingly.
     #[must_use]
     pub fn named_ulong(&self, name: &str, row: usize) -> Option<u64> {
         self.named_column(name)?.row(row).as_ulong()
     }
-    /// Returns a named cell as `f64` if present and typed accordingly.
+    /// Returns a named cell as [`f64`] if present and typed accordingly.
     #[must_use]
     pub fn named_double(&self, name: &str, row: usize) -> Option<f64> {
         self.named_column(name)?.row(row).as_double()
     }
-    /// Returns a named cell as `&str` if present and typed accordingly.
+    /// Returns a named cell as [`&str`] if present and typed accordingly.
     #[must_use]
     pub fn named_string(&self, name: &str, row: usize) -> Option<&str> {
         self.named_column(name)?.row(row).as_str()
     }
-    /// Returns a named cell as `bool` if present and typed accordingly.
+    /// Returns a named cell as [`bool`] if present and typed accordingly.
     #[must_use]
     pub fn named_bool(&self, name: &str, row: usize) -> Option<bool> {
         self.named_column(name)?.row(row).as_bool()
     }
 
-    /// Returns a positional cell as `i32` if present and typed accordingly.
+    /// Returns a positional cell as [`i32`] if present and typed accordingly.
     #[must_use]
     pub fn int(&self, column: usize, row: usize) -> Option<i32> {
         self.value(column, row)?.as_int()
     }
-    /// Returns a positional cell as `u32` if present and typed accordingly.
+    /// Returns a positional cell as [`u32`] if present and typed accordingly.
     #[must_use]
     pub fn uint(&self, column: usize, row: usize) -> Option<u32> {
         self.value(column, row)?.as_uint()
     }
-    /// Returns a positional cell as `i64` if present and typed accordingly.
+    /// Returns a positional cell as [`i64`] if present and typed accordingly.
     #[must_use]
     pub fn long(&self, column: usize, row: usize) -> Option<i64> {
         self.value(column, row)?.as_long()
     }
-    /// Returns a positional cell as `u64` if present and typed accordingly.
+    /// Returns a positional cell as [`u64`] if present and typed accordingly.
     #[must_use]
     pub fn ulong(&self, column: usize, row: usize) -> Option<u64> {
         self.value(column, row)?.as_ulong()
     }
-    /// Returns a positional cell as `f64` if present and typed accordingly.
+    /// Returns a positional cell as [`f64`] if present and typed accordingly.
     #[must_use]
     pub fn double(&self, column: usize, row: usize) -> Option<f64> {
         self.value(column, row)?.as_double()
     }
-    /// Returns a positional cell as `&str` if present and typed accordingly.
+    /// Returns a positional cell as [`&str`] if present and typed accordingly.
     #[must_use]
     pub fn string(&self, column: usize, row: usize) -> Option<&str> {
         self.value(column, row)?.as_str()
     }
-    /// Returns a positional cell as `bool` if present and typed accordingly.
+    /// Returns a positional cell as [`bool`] if present and typed accordingly.
     #[must_use]
     pub fn bool(&self, column: usize, row: usize) -> Option<bool> {
         self.value(column, row)?.as_bool()

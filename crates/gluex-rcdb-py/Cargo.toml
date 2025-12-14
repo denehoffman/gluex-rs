@@ -1,12 +1,16 @@
 [package]
 name = "gluex-rcdb-py"
 version = "0.1.0"
+description = "Python bindings for the gluex-rcdb Rust crate"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish = false
+readme = "README.md"
+keywords = ["gluex", "rcdb", "python"]
 
 [lib]
 name = "gluex_rcdb"

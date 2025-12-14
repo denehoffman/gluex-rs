@@ -1,12 +1,16 @@
 [package]
 name = "gluex-core"
 version = "0.1.0"
+description = "Core crate related to the GlueX experiment and various projects which handle GlueX data"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/gluex-core"
+keywords = ["gluex", "physics", "analysis"]
 
 [lib]
 name = "gluex_core"

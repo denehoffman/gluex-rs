@@ -35,7 +35,7 @@ impl ValueType {
         }
     }
 
-    /// Builds a `ValueType` from the identifier stored in `SQLite`.
+    /// Builds a [`ValueType`] from the identifier stored in `SQLite`.
     #[must_use]
     pub fn from_identifier(value: &str) -> Option<Self> {
         match value {
@@ -88,7 +88,7 @@ impl ConditionTypeMeta {
     pub fn name(&self) -> &str {
         &self.name
     }
-    /// Value type used to store the condition.
+    /// [`ValueType`] used to store the condition.
     #[must_use]
     pub fn value_type(&self) -> ValueType {
         self.value_type

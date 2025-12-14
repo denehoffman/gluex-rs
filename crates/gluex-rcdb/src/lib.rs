@@ -23,7 +23,7 @@ pub type RCDBResult<T> = Result<T, RCDBError>;
 /// Errors that can occur while interacting with RCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum RCDBError {
-    /// Wrapper around rusqlite errors.
+    /// Wrapper around [`rusqlite::Error`].
     #[error("{0}")]
     SqliteError(#[from] rusqlite::Error),
     /// Requested condition name does not exist.

@@ -4,8 +4,21 @@ build-backend = "maturin"
 
 [project]
 name = "gluex-rcdb"
+description = "Python bindings for the GlueX Run Condition Database"
 requires-python = ">=3.8"
+readme = "README.md"
+license = { text = "Apache-2.0 OR MIT" }
+authors = [{ name = "Nathaniel Dene Hoffman", email = "dene@cmu.edu" }]
+keywords = ["gluex", "rcdb", "sqlite", "conditions"]
 classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
@@ -15,6 +28,12 @@ dynamic = ["version"]
 tests = [
     "pytest",
 ]
+
+[project.urls]
+Homepage = "https://github.com/denehoffman/gluex-rs"
+Repository = "https://github.com/denehoffman/gluex-rs"
+Documentation = "https://github.com/denehoffman/gluex-rs/tree/main/crates/gluex-rcdb-py"
+Issues = "https://github.com/denehoffman/gluex-rs/issues"
 
 [tool.ruff]
 target-version = "py38"

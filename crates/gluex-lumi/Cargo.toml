@@ -1,12 +1,16 @@
 [package]
 name = "gluex-lumi"
 version = "0.1.0"
+description = "A Rust crate to calculate luminosity data for the GlueX experiment"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/gluex-lumi"
+keywords = ["gluex", "luminosity", "physics", "analysis"]
 
 [lib]
 name = "gluex_lumi"

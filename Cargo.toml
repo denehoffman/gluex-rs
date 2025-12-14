@@ -6,9 +6,9 @@ default-members = ["crates/gluex-rcdb", "crates/gluex-ccdb", "crates/gluex-lumi"
 [workspace.package]
 authors = ["Nathaniel Dene Hoffman <dene@cmu.edu>"]
 edition = "2021"
-homepage = "TODO"
-license = "MIT OR Apache-2.0"
-repository = "TODO"
+homepage = "https://github.com/denehoffman/gluex-rs"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/denehoffman/gluex-rs"
 rust-version = "1.88.0"
 
 [workspace.dependencies]

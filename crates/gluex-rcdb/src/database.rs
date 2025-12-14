@@ -56,7 +56,7 @@ impl RCDB {
         &self.connection_path
     }
 
-    /// Returns the underlying `SQLite` connection.
+    /// Returns the underlying [`rusqlite::Connection`].
     pub fn connection(&self) -> MutexGuard<'_, Connection> {
         self.connection.lock()
     }

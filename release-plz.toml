@@ -1,0 +1,30 @@
+[workspace]
+allow_dirty = false
+changelog_update = true
+dependencies_update = true
+git_release_enable = true
+git_release_name = "{{ package }} v{{ version }}"
+git_release_body = "{{ changelog }}"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+publish = true
+publish_allow_dirty = false
+release_always = false
+pr_branch_prefix = "release-plz/"
+pr_labels = ["release"]
+semver_check = false
+
+[[package]]
+name = "gluex-ccdb-py"
+publish = false
+release = false
+
+[[package]]
+name = "gluex-rcdb-py"
+publish = false
+release = false
+
+[[package]]
+name = "gluex-lumi-py"
+publish = false
+release = false

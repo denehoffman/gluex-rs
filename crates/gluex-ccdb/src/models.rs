@@ -23,7 +23,7 @@ pub enum ColumnType {
     Bool,
 }
 impl ColumnType {
-    /// Attempts to build a `ColumnType` from the identifier stored in CCDB.
+    /// Attempts to build a [`ColumnType`] from the identifier stored in CCDB.
     #[must_use]
     pub fn type_from_str(s: &str) -> Option<Self> {
         match s {

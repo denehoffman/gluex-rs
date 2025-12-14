@@ -244,23 +244,16 @@ fn get_flux_cache(
         .collect())
 }
 
-/// FluxHistograms
-///
-/// Attributes
-/// ----------
-/// tagged_flux : Histogram
-///     Total photon flux summed over TAGM and TAGH detectors.
-/// tagm_flux : Histogram
-///     Photon flux measured by the microscope (TAGM) detector only.
-/// tagh_flux : Histogram
-///     Photon flux measured by the hodoscope (TAGH) detector only.
-/// tagged_luminosity : Histogram
-///     Tagged luminosity derived from the flux and scattering-center constants.
+/// Photon flux and luminosity histograms aggregated across TAGM and TAGH detectors.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FluxHistograms {
+    /// Total photon flux summed over TAGM and TAGH detectors as a [`Histogram`].
     pub tagged_flux: Histogram,
+    /// Photon flux measured by the microscope (TAGM) detector only as a [`Histogram`].
     pub tagm_flux: Histogram,
+    /// Photon flux measured by the hodoscope (TAGH) detector only as a [`Histogram`].
     pub tagh_flux: Histogram,
+    /// Tagged luminosity derived from the flux and scattering-center constants as a [`Histogram`].
     pub tagged_luminosity: Histogram,
 }
 
@@ -398,27 +391,21 @@ fn apply_run_override<T>(
     }
 }
 
-/// get_flux_histograms(run_period_selection, edges, coherent_peak, polarized, rcdb_path, ccdb_path)
+/// Construct tagged photon-flux and luminosity histograms for a set of run periods.
 ///
-/// Parameters
-/// ----------
-/// run_period_selection : HashMap<RunPeriod, RestSelection>
-///     Mapping from run periods to either a specific REST version or the current timestamp.
-/// edges : slice of f64
-///     Photon-energy bin edges used to construct output histograms.
-/// coherent_peak : bool
-///     When true only photons inside the per-run coherent peak contribute to the spectra.
-/// polarized : bool
-///     Selects the polarized-flux calibration set.
-/// rcdb_path : AsRef<Path>
-///     Filesystem path to the RCDB SQLite database.
-/// ccdb_path : AsRef<Path>
-///     Filesystem path to the CCDB SQLite database.
+/// # Arguments
+/// * `run_period_selection` - [`HashMap`] mapping [`RunPeriod`] values to [`RestSelection`] entries
+///   that define the timestamp to use.
+/// * `edges` - Photon-energy bin edges used to construct output [`Histogram`]s.
+/// * `coherent_peak` - When true, only photons inside the per-run coherent peak contribute.
+/// * `polarized` - Selects the polarized-flux calibration set when true.
+/// * `rcdb_path` - Filesystem path to the RCDB SQLite database (any type implementing
+///   `AsRef<Path>`).
+/// * `ccdb_path` - Filesystem path to the CCDB SQLite database (any type implementing
+///   `AsRef<Path>`).
 ///
-/// Returns
-/// -------
-/// FluxHistograms
-///     Histograms for flux and tagged luminosity that satisfy the requested selections.
+/// # Returns
+/// [`FluxHistograms`] for flux and tagged luminosity that satisfy the requested selections.
 pub fn get_flux_histograms(
     run_period_selection: HashMap<RunPeriod, RestSelection>,
     edges: &[f64],
