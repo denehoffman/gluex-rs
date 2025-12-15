@@ -90,6 +90,14 @@ impl RunPeriod {
     pub fn iter_runs(&self) -> impl Iterator<Item = RunNumber> {
         self.min_run()..=self.max_run()
     }
+
+    pub fn run_range(&self) -> std::ops::RangeInclusive<RunNumber> {
+        self.min_run()..=self.max_run()
+    }
+
+    pub fn contains(&self, run_number: RunNumber) -> bool {
+        self.run_range().contains(&run_number)
+    }
 }
 
 pub const GLUEX_PHASE_I: [RunPeriod; 3] = [
