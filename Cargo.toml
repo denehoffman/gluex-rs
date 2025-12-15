@@ -28,9 +28,9 @@ serde_json = "1.0.145"
 strum = { version = "0.27.2", features = ["derive"] }
 thiserror = "2.0.17"
 
-gluex-core = { version = "0.1.0", path = "crates/gluex-core" }
-gluex-ccdb = { version = "0.1.0", path = "crates/gluex-ccdb" }
-gluex-rcdb = { version = "0.1.0", path = "crates/gluex-rcdb" }
+gluex-core = { version = "0.1.1", path = "crates/gluex-core" }
+gluex-ccdb = { version = "0.1.1", path = "crates/gluex-ccdb" }
+gluex-rcdb = { version = "0.1.1", path = "crates/gluex-rcdb" }
 gluex-lumi = { version = "0.1.0", path = "crates/gluex-lumi" }
 
 

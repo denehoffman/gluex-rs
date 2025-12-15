@@ -336,7 +336,7 @@ checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
 name = "gluex-ccdb"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "criterion",
@@ -361,7 +361,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "auto_ops",
  "chrono",
@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-rcdb"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "criterion",
