@@ -1,6 +1,6 @@
 [package]
 name = "gluex-rcdb"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Rust interface to the GlueX Run Condition Database (RCDB)"
 authors.workspace = true
 edition.workspace = true

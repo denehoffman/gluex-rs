@@ -30,8 +30,8 @@ thiserror = "2.0.17"
 
 gluex-core = { version = "0.1.1", path = "crates/gluex-core" }
 gluex-ccdb = { version = "0.1.1", path = "crates/gluex-ccdb" }
-gluex-rcdb = { version = "0.1.1", path = "crates/gluex-rcdb" }
-gluex-lumi = { version = "0.1.1", path = "crates/gluex-lumi" }
+gluex-rcdb = { version = "0.1.2", path = "crates/gluex-rcdb" }
+gluex-lumi = { version = "0.1.2", path = "crates/gluex-lumi" }
 
 
 [profile.profiling]

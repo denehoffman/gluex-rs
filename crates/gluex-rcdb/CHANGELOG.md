@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/denehoffman/gluex-rs/compare/gluex-rcdb-v0.1.1...gluex-rcdb-v0.1.2) - 2025-12-18
+
+### Added
+
+- add run period arguments to fetch and fix aliases type hinting
+
 ## [0.1.1](https://github.com/denehoffman/gluex-rs/compare/gluex-rcdb-v0.1.0...gluex-rcdb-v0.1.1) - 2025-12-15
 
 ### Other
