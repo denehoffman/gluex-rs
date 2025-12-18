@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/denehoffman/gluex-rs/compare/gluex-core-v0.1.0...gluex-core-v0.1.1) - 2025-12-15
+
+### Added
+
+- add run_range and contains methods to RunPeriod
+
+### Other
+
+- release v0.1.0 ([#1](https://github.com/denehoffman/gluex-rs/pull/1))
+
 ## [0.1.0](https://github.com/denehoffman/gluex-rs/releases/tag/gluex-core-v0.1.0) - 2025-12-14
 
 ### Added
