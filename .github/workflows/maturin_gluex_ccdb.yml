@@ -8,7 +8,7 @@ name: CI-gluex-ccdb
 on:
   push:
     tags:
-      - 'gluex-ccdb*'
+      - 'gluex-ccdb-py*'
   workflow_dispatch:
 
 permissions:

@@ -8,7 +8,7 @@ name: CI-gluex-rcdb
 on:
   push:
     tags:
-      - 'gluex-rcdb*'
+      - 'gluex-rcdb-py*'
   workflow_dispatch:
 
 permissions:

@@ -8,7 +8,7 @@ name: CI-gluex-lumi
 on:
   push:
     tags:
-      - 'gluex-lumi*'
+      - 'gluex-lumi-py*'
   workflow_dispatch:
 
 permissions:
