@@ -13,18 +13,3 @@ release_always = false
 pr_branch_prefix = "release-plz/"
 pr_labels = ["release"]
 semver_check = false
-
-[[package]]
-name = "gluex-ccdb-py"
-publish = false
-release = false
-
-[[package]]
-name = "gluex-rcdb-py"
-publish = false
-release = false
-
-[[package]]
-name = "gluex-lumi-py"
-publish = false
-release = false

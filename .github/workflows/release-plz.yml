@@ -26,6 +26,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
         uses: release-plz/action@v0.5
+        environment: release
         with:
           command: release
         env:
