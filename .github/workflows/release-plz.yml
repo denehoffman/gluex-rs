@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    environment: release
     steps:
       - &checkout
         name: Checkout repository
@@ -26,7 +27,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
         uses: release-plz/action@v0.5
-        environment: release
         with:
           command: release
         env:
