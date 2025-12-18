@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.1.0...gluex-lumi-v0.1.1) - 2025-12-18
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.1.0](https://github.com/denehoffman/gluex-rs/releases/tag/gluex-lumi-v0.1.0) - 2025-12-14
 
 ### Added
