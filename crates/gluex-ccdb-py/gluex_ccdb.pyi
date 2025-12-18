@@ -70,9 +70,17 @@ class TypeTableHandle:
     def fetch(
         self,
         *,
-        runs: list[int] | None = ...,
-        variation: str | None = ...,
-        timestamp: str | datetime | None = ...,
+        runs: list[int] | None = None,
+        variation: str | None = None,
+        timestamp: str | datetime | None = None,
+    ) -> dict[int, Data]: ...
+    def fetch_run_period(
+        self,
+        *,
+        run_period: str,
+        rest_version: int | None = None,
+        variation: str | None = None,
+        timestamp: str | datetime | None = None,
     ) -> dict[int, Data]: ...
 
 class DirectoryHandle:
@@ -94,9 +102,18 @@ class CCDB:
         self,
         path: str,
         *,
-        runs: list[int] | None = ...,
-        variation: str | None = ...,
-        timestamp: str | datetime | None = ...,
+        runs: list[int] | None = None,
+        variation: str | None = None,
+        timestamp: str | datetime | None = None,
+    ) -> dict[int, Data]: ...
+    def fetch_run_period(
+        self,
+        path: str,
+        *,
+        run_period: str,
+        rest_version: int | None = None,
+        variation: str | None = None,
+        timestamp: str | datetime | None = None,
     ) -> dict[int, Data]: ...
 
 __all__ = [

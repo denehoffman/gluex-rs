@@ -44,6 +44,12 @@ pub enum CCDBError {
     /// Timestamp string failed to parse.
     #[error("{0}")]
     ParseTimestampError(#[from] ParseTimestampError),
+    /// Error finding the requested REST version.
+    #[error("{0}")]
+    RestVersionError(#[from] gluex_core::run_periods::RestVersionError),
+    /// Error parsing the requested run period.
+    #[error("{0}")]
+    RunPeriodError(#[from] gluex_core::run_periods::RunPeriodError),
 }
 
 /// Re-exports of the most commonly used types and constructors.

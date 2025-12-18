@@ -6,7 +6,7 @@ use ::gluex_ccdb::{
     CCDBError,
 };
 use chrono::{DateTime, Utc};
-use gluex_core::{parsers::parse_timestamp, RunNumber};
+use gluex_core::{parsers::parse_timestamp, run_periods::RunPeriodError, RunNumber};
 use pyo3::{
     conversion::IntoPyObject,
     exceptions::PyRuntimeError,
@@ -555,7 +555,7 @@ impl PyTypeTableHandle {
     /// -------
     /// dict[int, Data]
     ///     Mapping of run number to fetched dataset.
-    #[pyo3(signature = ( *, runs=None, variation=None, timestamp=None))]
+    #[pyo3(signature = (*, runs=None, variation=None, timestamp=None))]
     pub fn fetch(
         &self,
         runs: Option<Vec<RunNumber>>,
@@ -563,6 +563,61 @@ impl PyTypeTableHandle {
         timestamp: Option<Bound<'_, PyAny>>,
     ) -> PyResult<BTreeMap<RunNumber, PyData>> {
         let ctx = build_context(runs, variation, timestamp)?;
+        Ok(self
+            .inner
+            .fetch(&ctx)
+            .map_err(py_ccdb_error)?
+            .into_iter()
+            .map(|(run, data)| {
+                (
+                    run,
+                    PyData {
+                        inner: Arc::new(data),
+                    },
+                )
+            })
+            .collect())
+    }
+
+    /// fetch_run_period(self, *, run_period, rest_version=None, variation=None, timestamp=None)
+    ///
+    /// Parameters
+    /// ----------
+    /// run_period : str
+    ///     The short string of the corresponding GlueX run period (e.g. "S17", "F18")
+    /// rest_version : int | None, optional
+    ///     The REST version to use when resolving a time stamp.
+    /// variation : str | None, optional
+    ///     Variation branch to resolve (default "default").
+    /// timestamp : datetime | str | None, optional
+    ///     Timestamp used to select historical assignments. This will override timestamp from the REST version if provided
+    ///
+    /// Returns
+    /// -------
+    /// dict[int, Data]
+    ///     Mapping of run number to fetched dataset.
+    #[pyo3(signature = (*, run_period, rest_version=None, variation=None, timestamp=None))]
+    pub fn fetch_run_period(
+        &self,
+        run_period: &str,
+        rest_version: Option<usize>,
+        variation: Option<String>,
+        timestamp: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<BTreeMap<RunNumber, PyData>> {
+        let mut ctx = Context::default()
+            .with_run_period(
+                run_period
+                    .parse()
+                    .map_err(|e: RunPeriodError| py_ccdb_error(CCDBError::RunPeriodError(e)))?,
+                rest_version,
+            )
+            .map_err(py_ccdb_error)?;
+        if let Some(variation) = variation {
+            ctx.variation = variation;
+        }
+        if let Some(ts) = parse_py_timestamp(timestamp)? {
+            ctx.timestamp = ts;
+        }
         Ok(self
             .inner
             .fetch(&ctx)
@@ -778,6 +833,65 @@ impl PyCCDB {
             })
             .collect())
     }
+
+    /// fetch_run_period(self, path, *, run_period, rest_version=None, variation=None, timestamp=None)
+    ///
+    /// Parameters
+    /// ----------
+    /// path : str
+    ///     Absolute or relative table path.
+    /// run_period : str
+    ///     The short string of the corresponding GlueX run period (e.g. "S17", "F18")
+    /// rest_version : int | None, optional
+    ///     The REST version to use when resolving a time stamp.
+    /// variation : str | None, optional
+    ///     Variation branch to resolve (default "default").
+    /// timestamp : datetime | str | None, optional
+    ///     Timestamp used to select historical assignments. This will override timestamp from the REST version if provided
+    ///
+    /// Returns
+    /// -------
+    /// dict[int, Data]
+    ///     Mapping of run number to fetched dataset.
+    #[pyo3(signature = (path, *, run_period, rest_version=None, variation=None, timestamp=None))]
+    pub fn fetch_run_period(
+        &self,
+        path: &str,
+        run_period: &str,
+        rest_version: Option<usize>,
+        variation: Option<String>,
+        timestamp: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<BTreeMap<RunNumber, PyData>> {
+        let mut ctx = Context::default()
+            .with_run_period(
+                run_period
+                    .parse()
+                    .map_err(|e: RunPeriodError| py_ccdb_error(CCDBError::RunPeriodError(e)))?,
+                rest_version,
+            )
+            .map_err(py_ccdb_error)?;
+        if let Some(variation) = variation {
+            ctx.variation = variation;
+        }
+        if let Some(ts) = parse_py_timestamp(timestamp)? {
+            ctx.timestamp = ts;
+        }
+        Ok(self
+            .inner
+            .fetch(path, &ctx)
+            .map_err(py_ccdb_error)?
+            .into_iter()
+            .map(|(run, data)| {
+                (
+                    run,
+                    PyData {
+                        inner: Arc::new(data),
+                    },
+                )
+            })
+            .collect())
+    }
+
     /// root(self)
     ///
     /// Returns

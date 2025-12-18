@@ -3,10 +3,13 @@ use gluex_core::{
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
     errors::ParseTimestampError,
     parsers::parse_timestamp,
+    run_periods::{resolve_rest_version, RunPeriod},
     RunNumber,
 };
 use std::{ops::Bound, str::FromStr};
 use thiserror::Error;
+
+use crate::CCDBResult;
 
 /// Absolute CCDB path wrapper that enforces formatting rules.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -106,6 +109,26 @@ impl Context {
             context.timestamp = timestamp;
         }
         context
+    }
+    /// Returns a context scoped to all runs associated with the given [`RunPeriod`]. Additionally,
+    /// if a REST version is provided, the timestamp will be resolved for that version. If the
+    /// given [`RunPeriod`] does not have the requested REST version, the closest REST version less
+    /// than the requested one will be used.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if the run period is not found in the [`REST_VERSION_TIMESTAMPS`] map or if no lower REST version exists when the requested one is not found.
+    pub fn with_run_period(
+        mut self,
+        run_period: RunPeriod,
+        rest_version: Option<usize>,
+    ) -> CCDBResult<Self> {
+        self.runs = run_period.run_range().collect();
+        if let Some(rest_version) = rest_version {
+            let version = resolve_rest_version(run_period, rest_version)?;
+            self.timestamp = version.timestamp;
+        }
+        Ok(self)
     }
     /// Returns a context scoped to a single run number.
     #[must_use]
