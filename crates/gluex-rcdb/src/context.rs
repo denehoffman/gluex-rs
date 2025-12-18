@@ -2,6 +2,7 @@ use std::ops::{Bound, RangeBounds};
 
 use gluex_core::{
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
+    run_periods::RunPeriod,
     RunNumber,
 };
 
@@ -52,6 +53,16 @@ impl Context {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Restricts the context to a single run period.
+    #[must_use]
+    pub fn with_run_period(mut self, run_period: RunPeriod) -> Self {
+        self.selection = RunSelection::Range {
+            start: run_period.min_run(),
+            end: run_period.max_run(),
+        };
+        self
     }
 
     /// Restricts the context to a single run number.

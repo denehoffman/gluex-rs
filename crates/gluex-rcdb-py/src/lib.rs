@@ -63,12 +63,16 @@ impl PyExpr {
 
 pub fn parse_context(
     py: Python<'_>,
+    run_period: Option<String>,
     runs: Option<Vec<RunNumber>>,
     run_min: Option<RunNumber>,
     run_max: Option<RunNumber>,
     filters: Option<Py<PyAny>>,
 ) -> PyResult<Context> {
     let mut selection_kinds = 0;
+    if run_period.is_some() {
+        selection_kinds += 1;
+    }
     if runs.is_some() {
         selection_kinds += 1;
     }
@@ -77,12 +81,18 @@ pub fn parse_context(
     }
     if selection_kinds > 1 {
         return Err(PyRuntimeError::new_err(
-            "runs and run_min/run_max arguments are mutually exclusive",
+            "run_period, runs, and run_min/run_max arguments are mutually exclusive",
         ));
     }
 
     let mut ctx = Context::default();
-    if let Some(run_list) = runs {
+    if let Some(run_period) = run_period {
+        ctx = ctx.with_run_period(
+            run_period
+                .parse()
+                .map_err(|e: RunPeriodError| PyRuntimeError::new_err(e.to_string()))?,
+        );
+    } else if let Some(run_list) = runs {
         ctx = ctx.with_runs(run_list);
     } else if run_min.is_some() || run_max.is_some() {
         let start = run_min.unwrap_or(MIN_RUN_NUMBER);
@@ -138,6 +148,8 @@ impl PyRCDB {
     /// ----------
     /// condition_names : Sequence[str]
     ///     Condition names to retrieve per run.
+    /// run_period : str, optional
+    ///     The run period to use (short name, e.g. "S17", "F18").
     /// runs : Sequence[int], optional
     ///     Explicit list of run numbers. Duplicates are ignored.
     /// run_min : int, optional
@@ -154,18 +166,24 @@ impl PyRCDB {
     /// dict[int, dict[str, object]]
     ///     Mapping of run number to dictionaries of condition values converted
     ///     into native Python scalars.
-    #[pyo3(signature = (condition_names, *, runs=None, run_min=None, run_max=None, filters=None))]
+    ///
+    /// Notes
+    /// -----
+    /// The run_period, runs, and (run_min, run_max) arguments are mutually exclusive.
+    #[pyo3(signature = (condition_names, *, run_period=None, runs=None, run_min=None, run_max=None, filters=None))]
     pub fn fetch(
         &self,
         py: Python<'_>,
         condition_names: &Bound<'_, PyAny>,
+        run_period: Option<String>,
         runs: Option<Vec<RunNumber>>,
         run_min: Option<RunNumber>,
         run_max: Option<RunNumber>,
         filters: Option<Py<PyAny>>,
     ) -> PyResult<Py<PyDict>> {
         let names = extract_name_list(condition_names)?;
-        let ctx = parse_context(py, runs, run_min, run_max, filters).unwrap_or_default();
+        let ctx =
+            parse_context(py, run_period, runs, run_min, run_max, filters).unwrap_or_default();
         let data = self.inner.fetch(names, &ctx).map_err(py_rcdb_error)?;
         let runs_dict = PyDict::new(py);
         for (run, values) in data {
@@ -183,6 +201,8 @@ impl PyRCDB {
     ///
     /// Parameters
     /// ----------
+    /// run_period : str, optional
+    ///     The run period to use (short name, e.g. "S17", "F18").
     /// runs : Sequence[int], optional
     ///     Explicit list of run numbers. Duplicates are ignored.
     /// run_min : int, optional
@@ -198,16 +218,22 @@ impl PyRCDB {
     /// -------
     /// list[int]
     ///     Sorted run numbers satisfying the run number specifications and filters.
-    #[pyo3(signature = (*, runs=None, run_min=None, run_max=None, filters=None))]
+    ///
+    /// Notes
+    /// -----
+    /// The run_period, runs, and (run_min, run_max) arguments are mutually exclusive.
+    #[pyo3(signature = (*, run_period=None, runs=None, run_min=None, run_max=None, filters=None))]
     pub fn fetch_runs(
         &self,
         py: Python<'_>,
+        run_period: Option<String>,
         runs: Option<Vec<RunNumber>>,
         run_min: Option<RunNumber>,
         run_max: Option<RunNumber>,
         filters: Option<Py<PyAny>>,
     ) -> PyResult<Vec<RunNumber>> {
-        let ctx = parse_context(py, runs, run_min, run_max, filters).unwrap_or_default();
+        let ctx =
+            parse_context(py, run_period, runs, run_min, run_max, filters).unwrap_or_default();
         self.inner.fetch_runs(&ctx).map_err(py_rcdb_error)
     }
 

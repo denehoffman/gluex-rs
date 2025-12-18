@@ -1,3 +1,4 @@
+set dotenv-load
 venv := ".venv"
 bin := ".venv/bin"
 python := ".venv/bin/python"
