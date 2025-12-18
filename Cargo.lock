@@ -373,7 +373,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-lumi"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "clap",
@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-lumi-py"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "gluex-core",
  "gluex-lumi",
@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-rcdb"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "criterion",
@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-rcdb-py"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "gluex-core",
