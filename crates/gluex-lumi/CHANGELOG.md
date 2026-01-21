@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.1.3...gluex-lumi-v0.1.4) - 2026-01-21
+
+### Fixed
+
+- correct --exclude-runs parsing in CLI
+
 ## [0.1.3](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.1.2...gluex-lumi-v0.1.3) - 2026-01-21
 
 ### Added
