@@ -14,8 +14,9 @@ use pyo3::{
 use serde_json::to_writer_pretty;
 
 const PLOT_HELPER: &str = r#"
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 
 _HIST_ORDER = [
     ("tagged_flux", "Tagged Flux"),
@@ -25,23 +26,23 @@ _HIST_ORDER = [
 ]
 
 
-def plot_histograms(data):
+def plot_histograms(data, output_path):
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=False)
     axes = axes.flatten()
 
     for ax, (key, title) in zip(axes, _HIST_ORDER):
         hist = data[key]
-        edges = np.asarray(hist["edges"], dtype=float)
-        counts = np.asarray(hist["counts"], dtype=float)
-        errors = np.asarray(hist["errors"], dtype=float)
-        centers = 0.5 * (edges[:-1] + edges[1:])
-        if counts.size:
-            step_counts = np.concatenate([counts, counts[-1:]])
+        edges = [float(x) for x in hist["edges"]]
+        counts = [float(x) for x in hist["counts"]]
+        errors = [float(x) for x in hist["errors"]]
+        centers = [0.5 * (edges[i] + edges[i + 1]) for i in range(len(edges) - 1)]
+        if counts:
+            step_counts = counts + [counts[-1]]
         else:
-            step_counts = np.zeros_like(edges)
+            step_counts = [0.0 for _ in edges]
         ylabel = r"Luminosity [pb$^{-1}$]" if key == "tagged_luminosity" else "Counts"
         ax.step(edges, step_counts, where="post", color="C0")
-        if counts.size:
+        if counts:
             ax.errorbar(centers, counts, yerr=errors, fmt="none", ecolor="black", capsize=2)
         ax.set_title(title)
         ax.set_xlabel("Energy [GeV]")
@@ -50,7 +51,8 @@ def plot_histograms(data):
         ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
-    plt.show()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
 "#;
 
 #[pyclass(module = "gluex_lumi", name = "Histogram")]
@@ -198,7 +200,12 @@ fn flux_histograms_to_py(
     )
 }
 
-fn plot_histograms(py: Python<'_>, data: &Bound<'_, PyDict>) -> PyResult<()> {
+fn plot_histograms(py: Python<'_>, data: &Bound<'_, PyDict>, output_path: &str) -> PyResult<()> {
+    if py.import("matplotlib").is_err() {
+        return Err(PyRuntimeError::new_err(
+            "matplotlib is required for --plot. Install with `pip install gluex_lumi[plot]`.",
+        ));
+    }
     let code = CString::new(PLOT_HELPER).expect("CString conversion");
     let filename = CString::new("_plot_helper.py").expect("CString conversion");
     let modulename = CString::new("_gluex_lumi_plot").expect("CString conversion");
@@ -209,7 +216,7 @@ fn plot_histograms(py: Python<'_>, data: &Bound<'_, PyDict>) -> PyResult<()> {
         modulename.as_c_str(),
     )?;
     let plot_fn = module.getattr("plot_histograms")?;
-    plot_fn.call1((data,))?;
+    plot_fn.call1((data, output_path))?;
     Ok(())
 }
 
@@ -223,6 +230,7 @@ struct ParsedCliArgs {
     rcdb: String,
     ccdb: String,
     exclude_runs: Option<Vec<RunNumber>>,
+    plot_path: String,
 }
 
 fn parse_run_pair_arg(raw: &str) -> PyResult<(RunPeriod, RestSelection)> {
@@ -243,9 +251,7 @@ fn parse_run_pair_arg(raw: &str) -> PyResult<(RunPeriod, RestSelection)> {
 
 fn parse_exclude_runs_arg(raw: &str) -> PyResult<Vec<RunNumber>> {
     if raw.trim().is_empty() {
-        return Err(PyRuntimeError::new_err(
-            "--exclude-runs cannot be empty",
-        ));
+        return Err(PyRuntimeError::new_err("--exclude-runs cannot be empty"));
     }
     raw.split(',')
         .map(|entry| {
@@ -255,14 +261,14 @@ fn parse_exclude_runs_arg(raw: &str) -> PyResult<Vec<RunNumber>> {
                     "--exclude-runs cannot contain empty entries",
                 ));
             }
-            value.parse::<RunNumber>().map_err(|_| {
-                PyRuntimeError::new_err(format!("invalid run number '{value}'"))
-            })
+            value
+                .parse::<RunNumber>()
+                .map_err(|_| PyRuntimeError::new_err(format!("invalid run number '{value}'")))
         })
         .collect()
 }
 
-fn parse_plot_cli_args(argv: &[String]) -> PyResult<ParsedCliArgs> {
+fn parse_plot_cli_args(argv: &[String], plot_path: String) -> PyResult<ParsedCliArgs> {
     if argv.is_empty() {
         return Err(PyRuntimeError::new_err("argv is empty"));
     }
@@ -277,82 +283,61 @@ fn parse_plot_cli_args(argv: &[String]) -> PyResult<ParsedCliArgs> {
     let mut polarized = false;
     let mut i = 1; // skip program name
     while i < argv.len() {
-        match argv[i].as_str() {
-            "--run" => {
-                i += 1;
-                if i >= argv.len() {
-                    return Err(PyRuntimeError::new_err("--run requires an argument"));
+        let arg = argv[i].as_str();
+        let take_value = |name: &str, i: &mut usize, argv: &[String]| -> PyResult<Option<String>> {
+            if arg == name {
+                *i += 1;
+                if *i >= argv.len() {
+                    return Err(PyRuntimeError::new_err(format!(
+                        "{name} requires an argument"
+                    )));
                 }
-                let (period, rest) = parse_run_pair_arg(&argv[i])?;
-                runs.insert(period, rest);
+                Ok(Some(argv[*i].clone()))
+            } else if let Some(value) = arg.strip_prefix(&format!("{name}=")) {
+                Ok(Some(value.to_string()))
+            } else {
+                Ok(None)
             }
-            "--bins" => {
-                i += 1;
-                if i >= argv.len() {
-                    return Err(PyRuntimeError::new_err("--bins requires an argument"));
-                }
-                bins =
-                    Some(argv[i].parse::<usize>().map_err(|_| {
-                        PyRuntimeError::new_err("--bins expects an unsigned integer")
-                    })?);
-            }
-            "--min" => {
-                i += 1;
-                if i >= argv.len() {
-                    return Err(PyRuntimeError::new_err("--min requires an argument"));
-                }
-                min_edge = Some(argv[i].parse::<f64>().map_err(|_| {
+        };
+
+        if let Some(value) = take_value("--run", &mut i, argv)? {
+            let (period, rest) = parse_run_pair_arg(&value)?;
+            runs.insert(period, rest);
+        } else if let Some(value) = take_value("--bins", &mut i, argv)? {
+            bins = Some(
+                value
+                    .parse::<usize>()
+                    .map_err(|_| PyRuntimeError::new_err("--bins expects an unsigned integer"))?,
+            );
+        } else if let Some(value) = take_value("--min", &mut i, argv)? {
+            min_edge =
+                Some(value.parse::<f64>().map_err(|_| {
                     PyRuntimeError::new_err("--min expects a floating point value")
                 })?);
-            }
-            "--max" => {
-                i += 1;
-                if i >= argv.len() {
-                    return Err(PyRuntimeError::new_err("--max requires an argument"));
-                }
-                max_edge = Some(argv[i].parse::<f64>().map_err(|_| {
+        } else if let Some(value) = take_value("--max", &mut i, argv)? {
+            max_edge =
+                Some(value.parse::<f64>().map_err(|_| {
                     PyRuntimeError::new_err("--max expects a floating point value")
                 })?);
+        } else if let Some(value) = take_value("--rcdb", &mut i, argv)? {
+            rcdb_path = Some(value);
+        } else if let Some(value) = take_value("--ccdb", &mut i, argv)? {
+            ccdb_path = Some(value);
+        } else if let Some(value) = take_value("--exclude-runs", &mut i, argv)? {
+            let parsed = parse_exclude_runs_arg(&value)?;
+            if let Some(existing) = exclude_runs.as_mut() {
+                existing.extend(parsed);
+            } else {
+                exclude_runs = Some(parsed);
             }
-            "--rcdb" => {
-                i += 1;
-                if i >= argv.len() {
-                    return Err(PyRuntimeError::new_err("--rcdb requires an argument"));
-                }
-                rcdb_path = Some(argv[i].clone());
-            }
-            "--ccdb" => {
-                i += 1;
-                if i >= argv.len() {
-                    return Err(PyRuntimeError::new_err("--ccdb requires an argument"));
-                }
-                ccdb_path = Some(argv[i].clone());
-            }
-            "--exclude-runs" => {
-                i += 1;
-                if i >= argv.len() {
-                    return Err(PyRuntimeError::new_err(
-                        "--exclude-runs requires an argument",
-                    ));
-                }
-                let parsed = parse_exclude_runs_arg(&argv[i])?;
-                if let Some(existing) = exclude_runs.as_mut() {
-                    existing.extend(parsed);
-                } else {
-                    exclude_runs = Some(parsed);
-                }
-            }
-            "--coherent-peak" => {
-                coherent_peak = true;
-            }
-            "--polarized" => {
-                polarized = true;
-            }
-            other => {
-                return Err(PyRuntimeError::new_err(format!(
-                    "unexpected argument '{other}'"
-                )));
-            }
+        } else if arg == "--coherent-peak" {
+            coherent_peak = true;
+        } else if arg == "--polarized" {
+            polarized = true;
+        } else {
+            return Err(PyRuntimeError::new_err(format!(
+                "unexpected argument '{arg}'"
+            )));
         }
         i += 1;
     }
@@ -384,6 +369,7 @@ fn parse_plot_cli_args(argv: &[String]) -> PyResult<ParsedCliArgs> {
         rcdb,
         ccdb,
         exclude_runs,
+        plot_path,
     })
 }
 
@@ -454,29 +440,33 @@ pub fn py_get_flux_histograms(
 /// Notes
 /// -----
 /// Mirrors the Rust ``gluex-lumi`` executable so that ``python -m pip install gluex-lumi``
-/// also exposes the command-line interface. Use the ``plot`` subcommand (or legacy
-/// ``--plot`` flag) to display the resulting histograms using matplotlib (Python-only
-/// convenience).
+/// also exposes the command-line interface. Use ``--plot=path`` to write a PNG plot
+/// of the histograms using matplotlib (Python-only convenience).
 #[pyfunction(name = "cli")]
 pub fn py_cli(py: Python<'_>) -> PyResult<()> {
     let sys = py.import("sys")?;
     let argv: Vec<String> = sys.getattr("argv")?.extract()?;
     let mut filtered_args = Vec::with_capacity(argv.len());
-    let mut plot = false;
-    for (index, arg) in argv.into_iter().enumerate() {
+    let mut plot_path: Option<String> = None;
+    let mut i = 0;
+    while i < argv.len() {
+        let arg = argv[i].as_str();
         if arg == "--plot" {
-            plot = true;
-            continue;
+            i += 1;
+            if i >= argv.len() {
+                return Err(PyRuntimeError::new_err("--plot requires a path"));
+            }
+            plot_path = Some(argv[i].clone());
+        } else if let Some(value) = arg.strip_prefix("--plot=") {
+            plot_path = Some(value.to_string());
+        } else {
+            filtered_args.push(argv[i].clone());
         }
-        if index == 1 && arg == "plot" {
-            plot = true;
-            continue;
-        }
-        filtered_args.push(arg);
+        i += 1;
     }
 
-    if plot {
-        let parsed = parse_plot_cli_args(&filtered_args)?;
+    if let Some(plot_path) = plot_path {
+        let parsed = parse_plot_cli_args(&filtered_args, plot_path)?;
         let edges = uniform_edges(parsed.bins, parsed.min_edge, parsed.max_edge);
         let hist = compute_flux_histograms(
             parsed.run_selection,
@@ -495,7 +485,7 @@ pub fn py_cli(py: Python<'_>) -> PyResult<()> {
         let flux_bound = py_flux.bind(py);
         let dict = flux_bound.borrow().to_dict(py)?;
         let bound = dict.bind(py);
-        plot_histograms(py, &bound)?;
+        plot_histograms(py, &bound, &parsed.plot_path)?;
         Ok(())
     } else {
         lumi_crate::cli::run_with_args(filtered_args)

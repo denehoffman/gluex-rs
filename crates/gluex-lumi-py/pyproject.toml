@@ -30,8 +30,7 @@ tests = [
     "pytest",
 ]
 plot = [
-    "matplotlib>=3.9",
-    "numpy>=2.1",
+    "matplotlib>=3",
 ]
 
 [project.scripts]
