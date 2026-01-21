@@ -1,6 +1,6 @@
 [package]
 name = "gluex-lumi"
-version = "0.1.2"
+version = "0.1.3"
 description = "A Rust crate to calculate luminosity data for the GlueX experiment"
 authors.workspace = true
 edition.workspace = true
