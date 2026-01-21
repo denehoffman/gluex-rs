@@ -64,7 +64,7 @@ struct FluxArgs {
     ccdb: Option<PathBuf>,
 
     /// Comma-separated run numbers to exclude (e.g. 10,20,30)
-    #[arg(long = "exclude-runs", value_parser = parse_run_list)]
+    #[arg(long = "exclude-runs", value_delimiter = ',')]
     exclude_runs: Option<Vec<RunNumber>>,
 }
 
@@ -97,23 +97,6 @@ fn parse_run_pair(s: &str) -> Result<(RunPeriod, RestSelection), String> {
     };
 
     Ok((run, selection))
-}
-
-fn parse_run_list(s: &str) -> Result<Vec<RunNumber>, String> {
-    if s.trim().is_empty() {
-        return Err("exclude runs list cannot be empty".to_string());
-    }
-    s.split(',')
-        .map(|raw| {
-            let value = raw.trim();
-            if value.is_empty() {
-                return Err("exclude runs list cannot contain empty entries".to_string());
-            }
-            value
-                .parse::<RunNumber>()
-                .map_err(|_| format!("invalid run number '{value}'"))
-        })
-        .collect()
 }
 
 fn print_rest_versions(run_period: RunPeriod) {
