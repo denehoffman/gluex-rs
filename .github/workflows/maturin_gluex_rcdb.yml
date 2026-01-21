@@ -1,5 +1,5 @@
 ---
-name: Build and Release
+name: Build and Release gluex_rcdb
 "on":
   push:
     branches:
@@ -29,7 +29,7 @@ jobs:
           uv venv
           . .venv/bin/activate
           echo PATH=$PATH >> $GITHUB_ENV
-          uvx maturin develop --uv
+          uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --uv --manifest-path crates/gluex-rcdb-py/Cargo.toml
       - run: |-
           uvx ruff check
           uvx ty check
