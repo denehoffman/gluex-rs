@@ -13,7 +13,6 @@ from yamloom import (
     Strategy,
     Workflow,
     WorkflowDispatchEvent,
-    action,
     script,
 )
 from yamloom.actions.github.artifacts import download_artifact, upload_artifact
@@ -221,7 +220,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
                 condition=context.github.ref.startswith('refs/tags/')
                 | (context.github.event_name == 'workflow_dispatch'),
                 needs=['linux', 'musllinux', 'windows', 'macos', 'sdist'],
-                permissions=Permissions(id_token='write', contents='write'),
+                permissions=Permissions(id_token='write', contents='write'),  # noqa: S106
                 environment=Environment('pypi'),
             ),
         },
