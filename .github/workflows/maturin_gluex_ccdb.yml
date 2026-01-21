@@ -29,7 +29,7 @@ jobs:
           uv venv
           . .venv/bin/activate
           echo PATH=$PATH >> $GITHUB_ENV
-          uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --uv --manifest-path crates/gluex-ccdb-py/Cargo.toml
+          uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --uv --manifest-path crates/gluex-ccdb-py/Cargo.toml --extras=test
       - run: |-
           uvx ruff check
           uvx ty check
