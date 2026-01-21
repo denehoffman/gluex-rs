@@ -98,9 +98,9 @@ def create_build_job(job_name: str, name: str, manifest_path: str, targets: list
     )
 
 
-def generate_release(manifest_path: str) -> Workflow:
+def generate_release(name: str, manifest_path: str) -> Workflow:
     return Workflow(
-        name='Build and Release',
+        name=f'Build and Release {name}',
         on=Events(
             push=PushEvent(branches=['main'], tags=['*']),
             pull_request=PullRequestEvent(),
@@ -229,6 +229,6 @@ def generate_release(manifest_path: str) -> Workflow:
 
 
 if __name__ == '__main__':
-    generate_release('crates/gluex-ccdb-py/Cargo.toml').dump('.github/workflows/maturin_gluex_ccdb.yml')
-    generate_release('crates/gluex-rcdb-py/Cargo.toml').dump('.github/workflows/maturin_gluex_rcdb.yml')
-    generate_release('crates/gluex-lumi-py/Cargo.toml').dump('.github/workflows/maturin_gluex_lumi.yml')
+    generate_release('gluex_ccdb', 'crates/gluex-ccdb-py/Cargo.toml').dump('.github/workflows/maturin_gluex_ccdb.yml')
+    generate_release('gluex_rcdb', 'crates/gluex-rcdb-py/Cargo.toml').dump('.github/workflows/maturin_gluex_rcdb.yml')
+    generate_release('gluex_lumi', 'crates/gluex-lumi-py/Cargo.toml').dump('.github/workflows/maturin_gluex_lumi.yml')
