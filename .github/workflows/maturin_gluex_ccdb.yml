@@ -234,6 +234,7 @@ jobs:
               - 3.13t
               - "3.14"
               - 3.14t
+              - pypy3.11
             python_arch: x64
           - runner: windows-latest
             target: x86

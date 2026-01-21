@@ -167,7 +167,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
                 'windows',
                 manifest_path,
                 [
-                    Target('windows-latest', 'x64', ['pypy3.11']),  # use generate-import-lib feature to get pypy back
+                    Target('windows-latest', 'x64'),
                     Target('windows-latest', 'x86', ['pypy3.11']),
                     Target(
                         'windows-11-arm',
