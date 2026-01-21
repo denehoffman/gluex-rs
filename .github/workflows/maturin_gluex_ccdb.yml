@@ -342,7 +342,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
-          args: "--out dist --manifest-path {manifest_path}"
+          args: "--out dist --manifest-path crates/gluex-ccdb-py/Cargo.toml"
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:

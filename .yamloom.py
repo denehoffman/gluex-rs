@@ -199,7 +199,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
             'sdist': Job(
                 [
                     checkout(),
-                    maturin(name='Build sdist', command='sdist', args='--out dist --manifest-path {manifest_path}'),
+                    maturin(name='Build sdist', command='sdist', args=f'--out dist --manifest-path {manifest_path}'),
                     upload_artifact(path='dist', artifact_name='wheels-sdist'),
                 ],
                 name='Build Source Distribution',
