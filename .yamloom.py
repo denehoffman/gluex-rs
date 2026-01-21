@@ -117,7 +117,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
                         'uv venv',
                         '. .venv/bin/activate',
                         'echo PATH=$PATH >> $GITHUB_ENV',
-                        'uv pip install pytest yamloom'
+                        'uv pip install pytest yamloom',
                         f'uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --uv --manifest-path {manifest_path}',
                     ),
                     script('uvx ruff check', 'uvx ty check'),
