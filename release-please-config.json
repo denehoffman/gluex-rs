@@ -1,0 +1,47 @@
+{
+  "plugins": [
+    { "type": "cargo-workspace", "merge": false },
+    { "type": "sentence-case" },
+    {
+      "type": "linked-versions",
+      "groupName": "CCDB",
+      "components": ["gluex-ccdb", "gluex-ccdb-py"]
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "RCDB",
+      "components": ["gluex-rcdb", "gluex-rcdb-py"]
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "LUMI",
+      "components": ["gluex-lumi", "gluex-lumi-py"]
+    }
+  ],
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "release-type": "rust",
+  "packages": {
+    "crates/gluex-core": {
+      "component": "gluex-core"
+    },
+    "crates/gluex-ccdb": {
+      "component": "gluex-ccdb"
+    },
+    "crates/gluex-ccdb-py": {
+      "component": "gluex-ccdb-py"
+    },
+    "crates/gluex-rcdb": {
+      "component": "gluex-rcdb"
+    },
+    "crates/gluex-rcdb-py": {
+      "component": "gluex-rcdb-py"
+    },
+    "crates/gluex-lumi": {
+      "component": "gluex-lumi"
+    },
+    "crates/gluex-lumi-py": {
+      "component": "gluex-lumi-py"
+    }
+  }
+}

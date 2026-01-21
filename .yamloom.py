@@ -1,4 +1,5 @@
 from __future__ import annotations
+from yamloom.actions.github.release import release_please
 
 from dataclasses import dataclass
 
@@ -50,7 +51,7 @@ def resolve_python_versions(skip: list[str] | None) -> list[str]:
     return [version for version in DEFAULT_PYTHON_VERSIONS if version not in skipped]
 
 
-def create_build_job(job_name: str, name: str, manifest_path: str, targets: list[Target], *, needs: list[str]) -> Job:
+def create_build_job(job_name: str, name: str, library_name: str, targets: list[Target], *, needs: list[str]) -> Job:
     def platform_entry(target: Target) -> dict[str, object]:
         entry = {
             'runner': target.runner,
@@ -61,6 +62,8 @@ def create_build_job(job_name: str, name: str, manifest_path: str, targets: list
         if python_arch is not None:
             entry['python_arch'] = python_arch
         return entry
+
+    manifest_path = f'crates/{library_name}-py/Cargo.toml'
 
     return Job(
         [
@@ -93,13 +96,15 @@ def create_build_job(job_name: str, name: str, manifest_path: str, targets: list
             ),
         ),
         needs=needs,
-        condition=context.github.ref.startswith('refs/tags/') | (context.github.event_name == 'workflow_dispatch'),
+        condition=context.github.ref.startswith(f'refs/tags/{library_name}')
+        | (context.github.event_name == 'workflow_dispatch'),
     )
 
 
-def generate_release(name: str, manifest_path: str) -> Workflow:
+def generate_release(library_name: str) -> Workflow:
+    manifest_path = f'crates/{library_name}-py/Cargo.toml'
     return Workflow(
-        name=f'Build and Release {name}',
+        name=f'Build and Release {library_name}',
         on=Events(
             push=PushEvent(branches=['main'], tags=['*']),
             pull_request=PullRequestEvent(),
@@ -127,7 +132,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
             'linux': create_build_job(
                 'Build Linux Wheels',
                 'linux',
-                manifest_path,
+                library_name,
                 [
                     Target(
                         'ubuntu-22.04',
@@ -147,7 +152,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
             'musllinux': create_build_job(
                 'Build (musl) Linux Wheels',
                 'musllinux',
-                manifest_path,
+                library_name,
                 [
                     Target(
                         'ubuntu-22.04',
@@ -165,7 +170,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
             'windows': create_build_job(
                 'Build Windows Wheels',
                 'windows',
-                manifest_path,
+                library_name,
                 [
                     Target('windows-latest', 'x64'),
                     Target('windows-latest', 'x86', ['pypy3.11']),
@@ -180,7 +185,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
             'macos': create_build_job(
                 'Build macOS Wheels',
                 'macos',
-                manifest_path,
+                library_name,
                 [
                     Target(
                         'macos-15-intel',
@@ -202,7 +207,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
                 name='Build Source Distribution',
                 runs_on='ubuntu-22.04',
                 needs=['build-check'],
-                condition=context.github.ref.startswith('refs/tags/')
+                condition=context.github.ref.startswith(f'refs/tags/{library_name}')
                 | (context.github.event_name == 'workflow_dispatch'),
             ),
             'release': Job(
@@ -215,7 +220,7 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
                 ],
                 name='Release',
                 runs_on='ubuntu-22.04',
-                condition=context.github.ref.startswith('refs/tags/')
+                condition=context.github.ref.startswith(f'refs/tags/{library_name}')
                 | (context.github.event_name == 'workflow_dispatch'),
                 needs=['linux', 'musllinux', 'windows', 'macos', 'sdist'],
                 permissions=Permissions(id_token='write', contents='write'),  # noqa: S106
@@ -226,6 +231,25 @@ def generate_release(name: str, manifest_path: str) -> Workflow:
 
 
 if __name__ == '__main__':
-    generate_release('gluex_ccdb', 'crates/gluex-ccdb-py/Cargo.toml').dump('.github/workflows/maturin_gluex_ccdb.yml')
-    generate_release('gluex_rcdb', 'crates/gluex-rcdb-py/Cargo.toml').dump('.github/workflows/maturin_gluex_rcdb.yml')
-    generate_release('gluex_lumi', 'crates/gluex-lumi-py/Cargo.toml').dump('.github/workflows/maturin_gluex_lumi.yml')
+    generate_release('gluex-ccdb').dump('.github/workflows/maturin_gluex_ccdb.yml')
+    generate_release('gluex-rcdb').dump('.github/workflows/maturin_gluex_rcdb.yml')
+    generate_release('gluex-lumi').dump('.github/workflows/maturin_gluex_lumi.yml')
+    Workflow(
+        name='Release Please',
+        on=Events(
+            push=PushEvent(
+                branches=['main'],
+            ),
+        ),
+        permissions=Permissions(contents='write', issues='write', pull_requests='write'),
+        jobs={
+            'release-please': Job(
+                [
+                    release_please(
+                        token=context.secrets.RELEASE_PLEASE,
+                    )
+                ],
+                runs_on='ubuntu-latest',
+            )
+        },
+    ).dump('.github/workflows/release-please.yml')
