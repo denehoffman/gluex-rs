@@ -54,6 +54,7 @@ def test_get_flux_histograms_smoke() -> None:
         [8.0, 8.5, 9.0],
         rcdb=str(_rcdb_path()),
         ccdb=str(_ccdb_path()),
+        exclude_runs=[50000],
     )
     for key in REQUIRED_KEYS:
         assert hasattr(histograms, key)

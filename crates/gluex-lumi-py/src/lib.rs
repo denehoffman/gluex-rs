@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, error::Error, ffi::CString, io, str::FromStr};
 
 use ::gluex_lumi as lumi_crate;
-use gluex_core::{histograms::Histogram, run_periods::RunPeriod, RestVersion};
+use gluex_core::{histograms::Histogram, run_periods::RunPeriod, RestVersion, RunNumber};
 use lumi_crate::{
     get_flux_histograms as compute_flux_histograms, FluxHistograms as RustFluxHistograms,
     GlueXLumiError, RestSelection,
@@ -222,6 +222,7 @@ struct ParsedCliArgs {
     polarized: bool,
     rcdb: String,
     ccdb: String,
+    exclude_runs: Option<Vec<RunNumber>>,
 }
 
 fn parse_run_pair_arg(raw: &str) -> PyResult<(RunPeriod, RestSelection)> {
@@ -240,6 +241,27 @@ fn parse_run_pair_arg(raw: &str) -> PyResult<(RunPeriod, RestSelection)> {
     Ok((period, RestSelection::Version(rest_version)))
 }
 
+fn parse_exclude_runs_arg(raw: &str) -> PyResult<Vec<RunNumber>> {
+    if raw.trim().is_empty() {
+        return Err(PyRuntimeError::new_err(
+            "--exclude-runs cannot be empty",
+        ));
+    }
+    raw.split(',')
+        .map(|entry| {
+            let value = entry.trim();
+            if value.is_empty() {
+                return Err(PyRuntimeError::new_err(
+                    "--exclude-runs cannot contain empty entries",
+                ));
+            }
+            value.parse::<RunNumber>().map_err(|_| {
+                PyRuntimeError::new_err(format!("invalid run number '{value}'"))
+            })
+        })
+        .collect()
+}
+
 fn parse_plot_cli_args(argv: &[String]) -> PyResult<ParsedCliArgs> {
     if argv.is_empty() {
         return Err(PyRuntimeError::new_err("argv is empty"));
@@ -250,6 +272,7 @@ fn parse_plot_cli_args(argv: &[String]) -> PyResult<ParsedCliArgs> {
     let mut max_edge: Option<f64> = None;
     let mut rcdb_path: Option<String> = None;
     let mut ccdb_path: Option<String> = None;
+    let mut exclude_runs: Option<Vec<RunNumber>> = None;
     let mut coherent_peak = false;
     let mut polarized = false;
     let mut i = 1; // skip program name
@@ -305,6 +328,20 @@ fn parse_plot_cli_args(argv: &[String]) -> PyResult<ParsedCliArgs> {
                 }
                 ccdb_path = Some(argv[i].clone());
             }
+            "--exclude-runs" => {
+                i += 1;
+                if i >= argv.len() {
+                    return Err(PyRuntimeError::new_err(
+                        "--exclude-runs requires an argument",
+                    ));
+                }
+                let parsed = parse_exclude_runs_arg(&argv[i])?;
+                if let Some(existing) = exclude_runs.as_mut() {
+                    existing.extend(parsed);
+                } else {
+                    exclude_runs = Some(parsed);
+                }
+            }
             "--coherent-peak" => {
                 coherent_peak = true;
             }
@@ -346,6 +383,7 @@ fn parse_plot_cli_args(argv: &[String]) -> PyResult<ParsedCliArgs> {
         polarized,
         rcdb,
         ccdb,
+        exclude_runs,
     })
 }
 
@@ -354,7 +392,7 @@ fn uniform_edges(bins: usize, min_edge: f64, max_edge: f64) -> Vec<f64> {
     (0..=bins).map(|i| min_edge + i as f64 * width).collect()
 }
 
-/// get_flux_histograms(run_periods, edges, *, coherent_peak=False, polarized=False, rcdb=None, ccdb=None)
+/// get_flux_histograms(run_periods, edges, *, coherent_peak=False, polarized=False, rcdb=None, ccdb=None, exclude_runs=None)
 ///
 /// Parameters
 /// ----------
@@ -370,6 +408,8 @@ fn uniform_edges(bins: usize, min_edge: f64, max_edge: f64) -> Vec<f64> {
 ///     Path to the RCDB SQLite database. Defaults to the ``RCDB_CONNECTION`` env var.
 /// ccdb : str, optional
 ///     Path to the CCDB SQLite database. Defaults to the ``CCDB_CONNECTION`` env var.
+/// exclude_runs : Sequence[int], optional
+///     Run numbers to skip when computing the histograms.
 ///
 /// Returns
 /// -------
@@ -377,7 +417,7 @@ fn uniform_edges(bins: usize, min_edge: f64, max_edge: f64) -> Vec<f64> {
 ///     Object exposing ``tagged_flux``, ``tagm_flux``, ``tagh_flux``, and
 ///     ``tagged_luminosity`` histograms.
 #[pyfunction(name = "get_flux_histograms")]
-#[pyo3(signature = (run_periods, edges, *, coherent_peak=false, polarized=false, rcdb=None, ccdb=None))]
+#[pyo3(signature = (run_periods, edges, *, coherent_peak=false, polarized=false, rcdb=None, ccdb=None, exclude_runs=None))]
 pub fn py_get_flux_histograms(
     py: Python<'_>,
     run_periods: Bound<'_, PyAny>,
@@ -386,6 +426,7 @@ pub fn py_get_flux_histograms(
     polarized: bool,
     rcdb: Option<String>,
     ccdb: Option<String>,
+    exclude_runs: Option<Vec<RunNumber>>,
 ) -> PyResult<Py<PyFluxHistograms>> {
     if edges.len() < 2 {
         return Err(PyRuntimeError::new_err(
@@ -402,6 +443,7 @@ pub fn py_get_flux_histograms(
         polarized,
         rcdb_path,
         ccdb_path,
+        exclude_runs,
     )
     .map_err(py_lumi_error)?;
     flux_histograms_to_py(py, &histograms)
@@ -443,6 +485,7 @@ pub fn py_cli(py: Python<'_>) -> PyResult<()> {
             parsed.polarized,
             parsed.rcdb,
             parsed.ccdb,
+            parsed.exclude_runs,
         )
         .map_err(py_lumi_error)?;
         to_writer_pretty(io::stdout(), &hist)

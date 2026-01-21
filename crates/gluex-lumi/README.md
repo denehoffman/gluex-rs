@@ -34,6 +34,7 @@ fn main() -> Result<(), gluex_lumi::GlueXLumiError> {
         false, // false -> include AMO runs
         "/path/to/rcdb.sqlite",
         "/path/to/ccdb.sqlite",
+        None,
     )?;
     println!("Tagged luminosity in pb^{-1}: {:?}", flux.tagged_luminosity.counts);
     Ok(())

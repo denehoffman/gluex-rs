@@ -37,5 +37,6 @@ def get_flux_histograms(
     polarized: bool = False,
     rcdb: str | None = None,
     ccdb: str | None = None,
+    exclude_runs: Sequence[int] | None = None,
 ) -> FluxHistograms: ...
 def cli() -> None: ...

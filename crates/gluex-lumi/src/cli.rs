@@ -1,7 +1,10 @@
 use std::{collections::HashMap, env, ffi::OsString, io, path::PathBuf, str::FromStr};
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use gluex_core::run_periods::{rest_versions_for, RunPeriod};
+use gluex_core::{
+    run_periods::{rest_versions_for, RunPeriod},
+    RunNumber,
+};
 use serde_json::to_writer_pretty;
 use strum::IntoEnumIterator;
 
@@ -59,6 +62,10 @@ struct FluxArgs {
     /// CCDB path
     #[arg(long, env = "CCDB_CONNECTION")]
     ccdb: Option<PathBuf>,
+
+    /// Comma-separated run numbers to exclude (e.g. 10,20,30)
+    #[arg(long = "exclude-runs", value_parser = parse_run_list)]
+    exclude_runs: Option<Vec<RunNumber>>,
 }
 
 struct FluxConfig {
@@ -70,6 +77,7 @@ struct FluxConfig {
     polarized: bool,
     rcdb: PathBuf,
     ccdb: PathBuf,
+    exclude_runs: Option<Vec<RunNumber>>,
 }
 
 fn parse_run_pair(s: &str) -> Result<(RunPeriod, RestSelection), String> {
@@ -89,6 +97,23 @@ fn parse_run_pair(s: &str) -> Result<(RunPeriod, RestSelection), String> {
     };
 
     Ok((run, selection))
+}
+
+fn parse_run_list(s: &str) -> Result<Vec<RunNumber>, String> {
+    if s.trim().is_empty() {
+        return Err("exclude runs list cannot be empty".to_string());
+    }
+    s.split(',')
+        .map(|raw| {
+            let value = raw.trim();
+            if value.is_empty() {
+                return Err("exclude runs list cannot contain empty entries".to_string());
+            }
+            value
+                .parse::<RunNumber>()
+                .map_err(|_| format!("invalid run number '{value}'"))
+        })
+        .collect()
 }
 
 fn print_rest_versions(run_period: RunPeriod) {
@@ -205,6 +230,7 @@ impl FluxArgs {
             polarized: self.polarized,
             rcdb,
             ccdb,
+            exclude_runs: self.exclude_runs,
         })
     }
 }
@@ -220,6 +246,7 @@ fn run_flux(args: FluxArgs) -> Result<(), Box<dyn std::error::Error>> {
         polarized,
         rcdb,
         ccdb,
+        exclude_runs,
     } = config;
 
     let edges = uniform_edges(bins, min_edge, max_edge);
@@ -231,6 +258,7 @@ fn run_flux(args: FluxArgs) -> Result<(), Box<dyn std::error::Error>> {
         polarized,
         &rcdb,
         &ccdb,
+        exclude_runs,
     )?;
 
     to_writer_pretty(std::io::stdout(), &histos)?;

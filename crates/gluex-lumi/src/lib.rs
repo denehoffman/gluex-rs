@@ -403,6 +403,7 @@ fn apply_run_override<T>(
 ///   `AsRef<Path>`).
 /// * `ccdb_path` - Filesystem path to the CCDB SQLite database (any type implementing
 ///   `AsRef<Path>`).
+/// * `exclude_runs` - Optional list of run numbers to exclude from the calculation.
 ///
 /// # Returns
 /// [`FluxHistograms`] for flux and tagged luminosity that satisfy the requested selections.
@@ -413,6 +414,7 @@ pub fn get_flux_histograms(
     polarized: bool,
     rcdb_path: impl AsRef<Path>,
     ccdb_path: impl AsRef<Path>,
+    exclude_runs: Option<Vec<RunNumber>>,
 ) -> Result<FluxHistograms, GlueXLumiError> {
     let mut cache: HashMap<RunNumber, FluxCache> = HashMap::new();
     let mut tagged_flux_hist = Histogram::empty(edges);
@@ -428,6 +430,14 @@ pub fn get_flux_histograms(
         .iter()
         .flat_map(|(rp, _)| rp.min_run()..=rp.max_run())
         .collect();
+    let run_numbers = if let Some(exclude_runs) = exclude_runs {
+        run_numbers
+            .into_iter()
+            .filter(|run| !exclude_runs.contains(run))
+            .collect()
+    } else {
+        run_numbers
+    };
     for (rp, selection) in run_periods.iter() {
         let timestamp = match selection {
             RestSelection::Current => Utc::now(),

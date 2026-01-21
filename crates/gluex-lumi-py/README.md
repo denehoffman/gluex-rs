@@ -29,6 +29,7 @@ histos = lumi.get_flux_histograms(
     coherent_peak=True,
     rcdb="/data/rcdb.sqlite",
     ccdb="/data/ccdb.sqlite",
+    exclude_runs=[50000, 50001],
 )
 
 luminosity = histos.tagged_luminosity.as_dict()
