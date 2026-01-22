@@ -14,6 +14,7 @@ from yamloom import (
     Workflow,
     WorkflowDispatchEvent,
     script,
+    Concurrency,
 )
 from yamloom.actions.github.artifacts import download_artifact, upload_artifact
 from yamloom.actions.github.release import release_please
@@ -266,12 +267,13 @@ def generate_rust_release(crate_name: str) -> Workflow:
 rust_release = Workflow(
     name='Publish Workspace',
     on=Events(push=PushEvent(tags=['*']), workflow_dispatch=WorkflowDispatchEvent()),
+    concurrency=Concurrency(group='publish', cancel_in_progress=False),
     jobs={
         'release-workspace': Job(
             [
                 checkout(),
                 setup_rust(),
-                install_rust_tool(tool=['cargo-workspaces']),
+                install_rust_tool(tool=['cargo-workspaces'], version='v2'),
                 script('cargo workspaces publish --from-git --token ${CARGO_REGISTRY_TOKEN} --yes'),
             ],
             runs_on='ubuntu-latest',
