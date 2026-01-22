@@ -274,7 +274,7 @@ rust_release = Workflow(
                 checkout(),
                 setup_rust(),
                 install_rust_tool(tool=['cargo-workspaces'], version='v2'),
-                script('cargo workspaces publish --from-git --token ${CARGO_REGISTRY_TOKEN} --yes'),
+                script(f'cargo workspaces publish --from-git --token {context.secrets.CARGO_REGISTRY_TOKEN} --yes'),
             ],
             runs_on='ubuntu-latest',
         )
