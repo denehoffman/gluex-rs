@@ -9,6 +9,7 @@ name: Publish Workspace
   workflow_dispatch: ~
 jobs:
   release-workspace:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
