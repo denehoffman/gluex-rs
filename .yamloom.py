@@ -265,7 +265,7 @@ def generate_rust_release(crate_name: str) -> Workflow:
 
 rust_release = Workflow(
     name='Publish Workspace',
-    on=Events(push=PushEvent(branches=['main'], tags=['*']), workflow_dispatch=WorkflowDispatchEvent()),
+    on=Events(push=PushEvent(tags=['*']), workflow_dispatch=WorkflowDispatchEvent()),
     jobs={
         'release-workspace': Job(
             [
