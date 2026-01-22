@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from yamloom import (
+    Concurrency,
     Environment,
     Events,
     Job,
@@ -14,7 +15,6 @@ from yamloom import (
     Workflow,
     WorkflowDispatchEvent,
     script,
-    Concurrency,
 )
 from yamloom.actions.github.artifacts import download_artifact, upload_artifact
 from yamloom.actions.github.release import release_please
