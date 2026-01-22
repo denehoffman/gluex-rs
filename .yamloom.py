@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from yamloom import (
-    Concurrency,
     Environment,
     Events,
     Job,
@@ -123,10 +122,10 @@ def generate_python_release(library_name: str) -> Workflow:
                         'uv venv',
                         '. .venv/bin/activate',
                         'echo PATH=$PATH >> $GITHUB_ENV',
-                        'uv pip install pytest yamloom',
+                        'uv pip install pytest',
                         f'uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --uv --manifest-path {manifest_path}',
                     ),
-                    script('uvx ruff check', 'uvx ty check'),
+                    script('uvx ruff check . --extend-exclude=.yamloom.py', 'uvx ty check . --exclude=.yamloom.py'),
                 ],
                 runs_on='ubuntu-latest',
             ),
@@ -264,23 +263,6 @@ def generate_rust_release(crate_name: str) -> Workflow:
     )
 
 
-rust_release = Workflow(
-    name='Publish Workspace',
-    on=Events(push=PushEvent(tags=['*']), workflow_dispatch=WorkflowDispatchEvent()),
-    concurrency=Concurrency(group='publish', cancel_in_progress=False),
-    jobs={
-        'release-workspace': Job(
-            [
-                checkout(),
-                setup_rust(),
-                install_rust_tool(tool=['cargo-workspaces'], version='v2'),
-                script(f'cargo workspaces publish --from-git --token {context.secrets.CARGO_REGISTRY_TOKEN} --yes'),
-            ],
-            runs_on='ubuntu-latest',
-        )
-    },
-)
-
 release_please_workflow = Workflow(
     name='Release Please',
     on=Events(
@@ -293,8 +275,18 @@ release_please_workflow = Workflow(
         'release-please': Job(
             [
                 release_please(
+                    id='release',
                     token=context.secrets.RELEASE_PLEASE,
-                )
+                ),
+                checkout(condition=context.steps.release.outputs.release_created.as_bool()),
+                setup_rust(condition=context.steps.release.outputs.release_created.as_bool()),
+                install_rust_tool(
+                    tool=['cargo-workspaces'], condition=context.steps.release.outputs.release_created.as_bool()
+                ),
+                script(
+                    f'cargo workspaces publish --from-git --token {context.secrets.CARGO_REGISTRY_TOKEN} --yes',
+                    condition=context.steps.release.outputs.release_created.as_bool(),
+                ),
             ],
             runs_on='ubuntu-latest',
         )
@@ -305,5 +297,4 @@ if __name__ == '__main__':
     generate_python_release('gluex-ccdb-py').dump('.github/workflows/maturin_gluex_ccdb.yml')
     generate_python_release('gluex-rcdb-py').dump('.github/workflows/maturin_gluex_rcdb.yml')
     generate_python_release('gluex-lumi-py').dump('.github/workflows/maturin_gluex_lumi.yml')
-    rust_release.dump('.github/workflows/publish_rust_crates.yml')
     release_please_workflow.dump('.github/workflows/release-please.yml')

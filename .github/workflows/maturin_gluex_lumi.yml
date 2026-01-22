@@ -29,11 +29,11 @@ jobs:
           uv venv
           . .venv/bin/activate
           echo PATH=$PATH >> $GITHUB_ENV
-          uv pip install pytest yamloom
+          uv pip install pytest
           uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --uv --manifest-path crates/gluex-lumi-py/Cargo.toml
       - run: |-
-          uvx ruff check
-          uvx ty check
+          uvx ruff check . --extend-exclude=.yamloom.py
+          uvx ty check . --exclude=.yamloom.py
   linux:
     name: Build Linux Wheels
     needs:
