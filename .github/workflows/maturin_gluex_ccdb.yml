@@ -1,11 +1,11 @@
 ---
-name: Build and Release gluex-ccdb
+name: Build and Release gluex-ccdb-py
 "on":
   push:
     branches:
       - main
     tags:
-      - "*"
+      - gluex-ccdb-py*
   pull_request: ~
   workflow_dispatch: ~
 permissions:
@@ -38,7 +38,7 @@ jobs:
     name: Build Linux Wheels
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -140,7 +140,7 @@ jobs:
     name: Build (musl) Linux Wheels
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -218,7 +218,7 @@ jobs:
     name: Build Windows Wheels
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -280,7 +280,7 @@ jobs:
     name: Build macOS Wheels
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -333,7 +333,7 @@ jobs:
     name: Build Source Distribution
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Repository
@@ -359,7 +359,7 @@ jobs:
       - windows
       - macos
       - sdist
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-ccdb-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ubuntu-22.04
     environment: pypi
     steps:

@@ -1,0 +1,21 @@
+---
+name: Publish Workspace
+"on":
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  workflow_dispatch: ~
+jobs:
+  release-workspace:
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install Rust Tool
+        uses: taiki-e/install-action@v1
+        with:
+          tool: cargo-workspaces
+      - run: "cargo workspaces publish --from-git --token ${CARGO_REGISTRY_TOKEN} --yes"

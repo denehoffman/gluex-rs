@@ -1,5 +1,4 @@
 from __future__ import annotations
-from yamloom.actions.github.release import release_please
 
 from dataclasses import dataclass
 
@@ -17,10 +16,11 @@ from yamloom import (
     script,
 )
 from yamloom.actions.github.artifacts import download_artifact, upload_artifact
+from yamloom.actions.github.release import release_please
 from yamloom.actions.github.scm import checkout
 from yamloom.actions.packaging.python import maturin
 from yamloom.actions.toolchains.python import setup_python, setup_uv
-from yamloom.actions.toolchains.rust import setup_rust
+from yamloom.actions.toolchains.rust import install_rust_tool, setup_rust
 from yamloom.expressions import context
 
 
@@ -63,7 +63,7 @@ def create_build_job(job_name: str, name: str, library_name: str, targets: list[
             entry['python_arch'] = python_arch
         return entry
 
-    manifest_path = f'crates/{library_name}-py/Cargo.toml'
+    manifest_path = f'crates/{library_name}/Cargo.toml'
 
     return Job(
         [
@@ -101,12 +101,12 @@ def create_build_job(job_name: str, name: str, library_name: str, targets: list[
     )
 
 
-def generate_release(library_name: str) -> Workflow:
-    manifest_path = f'crates/{library_name}-py/Cargo.toml'
+def generate_python_release(library_name: str) -> Workflow:
+    manifest_path = f'crates/{library_name}/Cargo.toml'
     return Workflow(
         name=f'Build and Release {library_name}',
         on=Events(
-            push=PushEvent(branches=['main'], tags=['*']),
+            push=PushEvent(branches=['main'], tags=[f'{library_name}*']),
             pull_request=PullRequestEvent(),
             workflow_dispatch=WorkflowDispatchEvent(),
         ),
@@ -230,26 +230,77 @@ def generate_release(library_name: str) -> Workflow:
     )
 
 
-if __name__ == '__main__':
-    generate_release('gluex-ccdb').dump('.github/workflows/maturin_gluex_ccdb.yml')
-    generate_release('gluex-rcdb').dump('.github/workflows/maturin_gluex_rcdb.yml')
-    generate_release('gluex-lumi').dump('.github/workflows/maturin_gluex_lumi.yml')
-    Workflow(
-        name='Release Please',
+def generate_rust_release(crate_name: str) -> Workflow:
+    return Workflow(
+        name=f'Build and Release {crate_name}',
         on=Events(
-            push=PushEvent(
-                branches=['main'],
-            ),
+            push=PushEvent(branches=['main'], tags=[f'{crate_name}*'], tags_ignore=[f'{crate_name}-py*']),
+            pull_request=PullRequestEvent(),
+            workflow_dispatch=WorkflowDispatchEvent(),
         ),
-        permissions=Permissions(contents='write', issues='write', pull_requests='write'),
         jobs={
-            'release-please': Job(
+            'build-check': Job(
                 [
-                    release_please(
-                        token=context.secrets.RELEASE_PLEASE,
-                    )
+                    checkout(),
+                    setup_rust(components=['clippy']),
+                    script('cargo check'),
+                    script('cargo clippy'),
                 ],
                 runs_on='ubuntu-latest',
-            )
+            ),
+            'release': Job(
+                [
+                    checkout(),
+                    setup_rust(),
+                    script(f'cargo publish -p {crate_name} --token {context.secrets.CARGO_REGISTRY_TOKEN}'),
+                ],
+                runs_on='ubuntu-latest',
+                needs=['build-check'],
+                condition=context.github.ref.startswith(f'refs/tags/{crate_name}')
+                | (context.github.event_name == 'workflow_dispatch'),
+            ),
         },
-    ).dump('.github/workflows/release-please.yml')
+    )
+
+
+rust_release = Workflow(
+    name='Publish Workspace',
+    on=Events(push=PushEvent(branches=['main'], tags=['*']), workflow_dispatch=WorkflowDispatchEvent()),
+    jobs={
+        'release-workspace': Job(
+            [
+                checkout(),
+                setup_rust(),
+                install_rust_tool(tool=['cargo-workspaces']),
+                script('cargo workspaces publish --from-git --token ${CARGO_REGISTRY_TOKEN} --yes'),
+            ]
+        )
+    },
+)
+
+release_please_workflow = Workflow(
+    name='Release Please',
+    on=Events(
+        push=PushEvent(
+            branches=['main'],
+        ),
+    ),
+    permissions=Permissions(contents='write', issues='write', pull_requests='write'),
+    jobs={
+        'release-please': Job(
+            [
+                release_please(
+                    token=context.secrets.RELEASE_PLEASE,
+                )
+            ],
+            runs_on='ubuntu-latest',
+        )
+    },
+)
+
+if __name__ == '__main__':
+    generate_python_release('gluex-ccdb-py').dump('.github/workflows/maturin_gluex_ccdb.yml')
+    generate_python_release('gluex-rcdb-py').dump('.github/workflows/maturin_gluex_rcdb.yml')
+    generate_python_release('gluex-lumi-py').dump('.github/workflows/maturin_gluex_lumi.yml')
+    rust_release.dump('.github/workflows/publish_rust_crates.yml')
+    release_please_workflow.dump('.github/workflows/release-please.yml')
