@@ -23,22 +23,50 @@
   "release-type": "rust",
   "packages": {
     "crates/gluex-core": {
-      "component": "gluex-core"
+      "component": "gluex-core",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies.gluex-core.version"
+        }
+      ]
     },
     "crates/gluex-ccdb": {
-      "component": "gluex-ccdb"
+      "component": "gluex-ccdb",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies.gluex-ccdb.version"
+        }
+      ]
     },
     "crates/gluex-ccdb-py": {
       "component": "gluex-ccdb-py"
     },
     "crates/gluex-rcdb": {
-      "component": "gluex-rcdb"
+      "component": "gluex-rcdb",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies.gluex-rcdb.version"
+        }
+      ]
     },
     "crates/gluex-rcdb-py": {
       "component": "gluex-rcdb-py"
     },
     "crates/gluex-lumi": {
-      "component": "gluex-lumi"
+      "component": "gluex-lumi",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies.gluex-lumi.version"
+        }
+      ]
     },
     "crates/gluex-lumi-py": {
       "component": "gluex-lumi-py"
