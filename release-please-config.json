@@ -28,7 +28,7 @@
         {
           "type": "toml",
           "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies.gluex-core.version"
+          "jsonpath": "$.workspace.dependencies['gluex-core'].version"
         }
       ]
     },
@@ -38,7 +38,7 @@
         {
           "type": "toml",
           "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies.gluex-ccdb.version"
+          "jsonpath": "$.workspace.dependencies['gluex-ccdb'].version"
         }
       ]
     },
@@ -51,7 +51,7 @@
         {
           "type": "toml",
           "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies.gluex-rcdb.version"
+          "jsonpath": "$.workspace.dependencies['gluex-rcdb'].version"
         }
       ]
     },
@@ -64,7 +64,7 @@
         {
           "type": "toml",
           "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies.gluex-lumi.version"
+          "jsonpath": "$.workspace.dependencies['gluex-lumi'].version"
         }
       ]
     },
