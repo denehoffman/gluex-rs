@@ -7,6 +7,7 @@ from yamloom import (
     Events,
     Job,
     Matrix,
+    Permissions,
     PullRequestEvent,
     PushEvent,
     Strategy,
@@ -214,6 +215,7 @@ def generate_python_release(library_name: str) -> Workflow:
                     SetupUV(),
                     script(
                         'uv publish --trusted-publishing always wheels-*/*',
+                        permissions=Permissions(id_token='write', contents='write'),  # noqa: S106
                     ),
                 ],
                 name='Release',

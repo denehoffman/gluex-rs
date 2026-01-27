@@ -360,6 +360,9 @@ jobs:
           name: wheels-sdist
   release:
     name: Release
+    permissions:
+      contents: write
+      id-token: write
     needs:
       - linux
       - musllinux
