@@ -8,6 +8,9 @@ pub struct Histogram {
     pub errors: Vec<f64>,
 }
 impl Histogram {
+    pub fn limits(&self) -> (f64, f64) {
+        (self.edges[0], self.edges[self.edges.len() - 1])
+    }
     pub fn new(counts: &[f64], edges: &[f64], errors: Option<&[f64]>) -> Self {
         assert_eq!(counts.len(), edges.len() - 1);
         let errors = errors
@@ -62,6 +65,21 @@ impl Histogram {
             Ok(i) => Some(i.saturating_sub(1).min(self.bins() - 1)),
             Err(i) => Some(i - 1),
         }
+    }
+    pub fn fill(&mut self, value: f64) {
+        if let Some(ibin) = self.get_index(value) {
+            self.counts[ibin] += 1.0;
+            self.errors[ibin] = self.errors[ibin].hypot(1.0);
+        }
+    }
+    pub fn fill_weighted(&mut self, value: f64, weight: f64) {
+        if let Some(ibin) = self.get_index(value) {
+            self.counts[ibin] += weight;
+            self.errors[ibin] = self.errors[ibin].hypot(weight);
+        }
+    }
+    pub fn integral(&self) -> f64 {
+        self.counts.iter().sum()
     }
 }
 impl_op_ex!(+ |a: &Histogram, b: &Histogram| -> Histogram {
