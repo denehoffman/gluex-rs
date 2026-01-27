@@ -7,7 +7,6 @@ from yamloom import (
     Events,
     Job,
     Matrix,
-    Permissions,
     PullRequestEvent,
     PushEvent,
     Strategy,
@@ -15,12 +14,12 @@ from yamloom import (
     WorkflowDispatchEvent,
     script,
 )
-from yamloom.actions.github.artifacts import download_artifact, upload_artifact
-from yamloom.actions.github.release import release_please
-from yamloom.actions.github.scm import checkout
-from yamloom.actions.packaging.python import maturin
-from yamloom.actions.toolchains.python import setup_python, setup_uv
-from yamloom.actions.toolchains.rust import install_rust_tool, setup_rust
+from yamloom.actions.github.artifacts import DownloadArtifact, UploadArtifact
+from yamloom.actions.github.release import ReleasePlease
+from yamloom.actions.github.scm import Checkout
+from yamloom.actions.packaging.python import Maturin
+from yamloom.actions.toolchains.python import SetupPython, SetupUV
+from yamloom.actions.toolchains.rust import InstallRustTool, SetupRust
 from yamloom.expressions import context
 
 
@@ -66,23 +65,23 @@ def create_build_job(job_name: str, name: str, library_name: str, targets: list[
     manifest_path = f'crates/{library_name}/Cargo.toml'
 
     return Job(
-        [
-            checkout(),
+        steps=[
+            Checkout(),
             script(
                 f'printf "%s\n" {context.matrix.platform.python_versions.as_array().join(" ")} >> version.txt',
             ),
-            setup_python(
+            SetupPython(
                 python_version_file='version.txt',
                 architecture=context.matrix.platform.python_arch.as_str() if name == 'windows' else None,
             ),
-            maturin(
+            Maturin(
                 name='Build wheels',
                 target=context.matrix.platform.target.as_str(),
                 args=f'--release --out dist --manifest-path {manifest_path} --interpreter {context.matrix.platform.python_versions.as_array().join(" ")}',
                 sccache=~context.github.ref.startswith('refs/tags/'),
                 manylinux='musllinux_1_2' if name == 'musllinux' else ('auto' if name == 'linux' else None),
             ),
-            upload_artifact(
+            UploadArtifact(
                 path='dist',
                 artifact_name=f'wheels-{name}-{context.matrix.platform.target}',
             ),
@@ -110,13 +109,12 @@ def generate_python_release(library_name: str) -> Workflow:
             pull_request=PullRequestEvent(),
             workflow_dispatch=WorkflowDispatchEvent(),
         ),
-        permissions=Permissions(contents='read'),
         jobs={
             'build-check': Job(
-                [
-                    checkout(),
-                    setup_rust(components=['clippy']),
-                    setup_uv(python_version='3.9'),
+                steps=[
+                    Checkout(),
+                    SetupRust(components=['clippy']),
+                    SetupUV(python_version='3.9'),
                     script('cargo clippy'),
                     script(
                         'uv venv',
@@ -199,10 +197,10 @@ def generate_python_release(library_name: str) -> Workflow:
                 needs=['build-check'],
             ),
             'sdist': Job(
-                [
-                    checkout(),
-                    maturin(name='Build sdist', command='sdist', args=f'--out dist --manifest-path {manifest_path}'),
-                    upload_artifact(path='dist', artifact_name='wheels-sdist'),
+                steps=[
+                    Checkout(),
+                    Maturin(name='Build sdist', command='sdist', args=f'--out dist --manifest-path {manifest_path}'),
+                    UploadArtifact(path='dist', artifact_name='wheels-sdist'),
                 ],
                 name='Build Source Distribution',
                 runs_on='ubuntu-22.04',
@@ -211,9 +209,9 @@ def generate_python_release(library_name: str) -> Workflow:
                 | (context.github.event_name == 'workflow_dispatch'),
             ),
             'release': Job(
-                [
-                    download_artifact(),
-                    setup_uv(),
+                steps=[
+                    DownloadArtifact(),
+                    SetupUV(),
                     script(
                         'uv publish --trusted-publishing always wheels-*/*',
                     ),
@@ -223,7 +221,6 @@ def generate_python_release(library_name: str) -> Workflow:
                 condition=context.github.ref.startswith(f'refs/tags/{library_name}')
                 | (context.github.event_name == 'workflow_dispatch'),
                 needs=['linux', 'musllinux', 'windows', 'macos', 'sdist'],
-                permissions=Permissions(id_token='write', contents='write'),  # noqa: S106
                 environment=Environment('pypi'),
             ),
         },
@@ -240,18 +237,18 @@ def generate_rust_release(crate_name: str) -> Workflow:
         ),
         jobs={
             'build-check': Job(
-                [
-                    checkout(),
-                    setup_rust(components=['clippy']),
+                steps=[
+                    Checkout(),
+                    SetupRust(components=['clippy']),
                     script('cargo check'),
                     script('cargo clippy'),
                 ],
                 runs_on='ubuntu-latest',
             ),
             'release': Job(
-                [
-                    checkout(),
-                    setup_rust(),
+                steps=[
+                    Checkout(),
+                    SetupRust(),
                     script(f'cargo publish -p {crate_name} --token {context.secrets.CARGO_REGISTRY_TOKEN}'),
                 ],
                 runs_on='ubuntu-latest',
@@ -270,22 +267,21 @@ release_please_workflow = Workflow(
             branches=['main'],
         ),
     ),
-    permissions=Permissions(contents='write', issues='write', pull_requests='write'),
     jobs={
         'release-please': Job(
-            [
-                release_please(
+            steps=[
+                ReleasePlease(
                     id='release',
                     token=context.secrets.RELEASE_PLEASE,
                 ),
-                checkout(condition=context.steps.release.outputs.release_created.as_bool()),
-                setup_rust(condition=context.steps.release.outputs.release_created.as_bool()),
-                install_rust_tool(
-                    tool=['cargo-workspaces'], condition=context.steps.release.outputs.release_created.as_bool()
+                Checkout(condition=ReleasePlease.release_created('release').as_bool()),
+                SetupRust(condition=ReleasePlease.release_created('release').as_bool()),
+                InstallRustTool(
+                    tool=['cargo-workspaces'], condition=ReleasePlease.release_created('release').as_bool()
                 ),
                 script(
                     f'cargo workspaces publish --from-git --token {context.secrets.CARGO_REGISTRY_TOKEN} --yes',
-                    condition=context.steps.release.outputs.release_created.as_bool(),
+                    condition=ReleasePlease.release_created('release').as_bool(),
                 ),
             ],
             runs_on='ubuntu-latest',

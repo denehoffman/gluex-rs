@@ -36,3 +36,12 @@ repos:
         entry: ty check
         language: system
         pass_filenames: false
+  - repo: https://github.com/denehoffman/yamloom
+    rev: yamloom-v0.5.0
+    hooks:
+      - id: yamloom-sync
+        files: ^(\.github/workflows/.*\.ya?ml|\.yamloom\.py)$
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.10
+    hooks:
+      - id: actionlint

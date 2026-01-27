@@ -8,10 +8,10 @@ name: Build and Release gluex-rcdb-py
       - gluex-rcdb-py*
   pull_request: ~
   workflow_dispatch: ~
-permissions:
-  contents: read
 jobs:
   build-check:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -36,6 +36,8 @@ jobs:
           uvx ty check . --exclude=.yamloom.py
   linux:
     name: Build Linux Wheels
+    permissions:
+      contents: read
     needs:
       - build-check
     if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rcdb-py') || (github.event_name == 'workflow_dispatch')) }}
@@ -138,6 +140,8 @@ jobs:
           name: wheels-linux-${{ matrix.platform.target }}
   musllinux:
     name: Build (musl) Linux Wheels
+    permissions:
+      contents: read
     needs:
       - build-check
     if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rcdb-py') || (github.event_name == 'workflow_dispatch')) }}
@@ -216,6 +220,8 @@ jobs:
           name: wheels-musllinux-${{ matrix.platform.target }}
   windows:
     name: Build Windows Wheels
+    permissions:
+      contents: read
     needs:
       - build-check
     if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rcdb-py') || (github.event_name == 'workflow_dispatch')) }}
@@ -278,6 +284,8 @@ jobs:
           name: wheels-windows-${{ matrix.platform.target }}
   macos:
     name: Build macOS Wheels
+    permissions:
+      contents: read
     needs:
       - build-check
     if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rcdb-py') || (github.event_name == 'workflow_dispatch')) }}
@@ -331,6 +339,8 @@ jobs:
           name: wheels-macos-${{ matrix.platform.target }}
   sdist:
     name: Build Source Distribution
+    permissions:
+      contents: read
     needs:
       - build-check
     if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rcdb-py') || (github.event_name == 'workflow_dispatch')) }}
@@ -350,9 +360,6 @@ jobs:
           name: wheels-sdist
   release:
     name: Release
-    permissions:
-      contents: write
-      id-token: write
     needs:
       - linux
       - musllinux
