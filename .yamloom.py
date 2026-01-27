@@ -274,14 +274,12 @@ release_please_workflow = Workflow(
                     id='release',
                     token=context.secrets.RELEASE_PLEASE,
                 ),
-                Checkout(condition=ReleasePlease.release_created('release').as_bool()),
-                SetupRust(condition=ReleasePlease.release_created('release').as_bool()),
-                InstallRustTool(
-                    tool=['cargo-workspaces'], condition=ReleasePlease.release_created('release').as_bool()
-                ),
+                Checkout(condition=ReleasePlease.release_created('release')),
+                SetupRust(condition=ReleasePlease.release_created('release')),
+                InstallRustTool(tool=['cargo-workspaces'], condition=ReleasePlease.release_created('release')),
                 script(
                     f'cargo workspaces publish --from-git --token {context.secrets.CARGO_REGISTRY_TOKEN} --yes',
-                    condition=ReleasePlease.release_created('release').as_bool(),
+                    condition=ReleasePlease.release_created('release'),
                 ),
             ],
             runs_on='ubuntu-latest',

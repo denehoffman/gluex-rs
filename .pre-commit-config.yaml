@@ -37,7 +37,7 @@ repos:
         language: system
         pass_filenames: false
   - repo: https://github.com/denehoffman/yamloom
-    rev: yamloom-v0.5.0
+    rev: yamloom-v0.5.1
     hooks:
       - id: yamloom-sync
         files: ^(\.github/workflows/.*\.ya?ml|\.yamloom\.py)$
