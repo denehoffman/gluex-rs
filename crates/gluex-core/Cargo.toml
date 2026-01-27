@@ -1,6 +1,6 @@
 [package]
 name = "gluex-core"
-version = "0.1.2"
+version = "0.1.3"
 description = "Core crate related to the GlueX experiment and various projects which handle GlueX data"
 authors.workspace = true
 edition.workspace = true

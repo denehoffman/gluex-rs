@@ -1,6 +1,6 @@
 [package]
 name = "gluex-lumi-py"
-version = "0.1.5"
+version = "0.1.6"
 description = "Python bindings for the gluex-lumi Rust crate"
 authors.workspace = true
 edition.workspace = true
