@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3](https://github.com/denehoffman/gluex-rs/compare/gluex-core-v0.1.2...gluex-core-v0.1.3) (2026-01-27)
+
+
+### Features
+
+* **detectors.rs:** Add enums for dealing with GlueX detectors ([1e8f2b0](https://github.com/denehoffman/gluex-rs/commit/1e8f2b0cb59d03ab8bb243b3566d54893711ea5c))
+* **histograms.rs:** Add some helper methods to the Histogram class ([ad391c7](https://github.com/denehoffman/gluex-rs/commit/ad391c757e390b7b5bc8160d3e07cf5c631740d3))
+
 ## [0.1.2](https://github.com/denehoffman/gluex-rs/compare/gluex-core-v0.1.1...gluex-core-v0.1.2) (2026-01-22)
 
 
