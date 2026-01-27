@@ -1,9 +1,10 @@
 pub mod constants;
+pub mod detectors;
 pub mod enums;
 pub mod errors;
 pub mod histograms;
 pub mod parsers;
-pub mod particle;
+pub mod particles;
 pub mod run_periods;
 
 /// Primary integer identifier type used throughout CCDB and RCDB.
