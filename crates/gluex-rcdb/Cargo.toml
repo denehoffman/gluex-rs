@@ -22,7 +22,7 @@ parking_lot.workspace = true
 rusqlite.workspace = true
 thiserror.workspace = true
 
-gluex-core.workspace = true
+gluex-core = { version = "0.1.3", path = "../gluex-core" }
 
 [dev-dependencies]
 criterion.workspace = true
