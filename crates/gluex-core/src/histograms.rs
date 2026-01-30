@@ -23,19 +23,51 @@ impl Histogram {
             errors,
         }
     }
+    pub fn new_filled(data: &[f64], edges: &[f64]) -> Self {
+        let mut hist = Self::empty(edges);
+        hist.fill_all(data);
+        hist
+    }
+    pub fn new_filled_weighted(data: &[f64], weights: &[f64], edges: &[f64]) -> Self {
+        let mut hist = Self::empty(edges);
+        hist.fill_all_weighted(data, weights);
+        hist
+    }
+    pub fn new_uniform_filled(data: &[f64], bins: usize, limits: (f64, f64)) -> Self {
+        let mut hist = Self::empty_uniform(bins, limits);
+        hist.fill_all(data);
+        hist
+    }
+    pub fn new_uniform_filled_weighted(
+        data: &[f64],
+        weights: &[f64],
+        bins: usize,
+        limits: (f64, f64),
+    ) -> Self {
+        let mut hist = Self::empty_uniform(bins, limits);
+        hist.fill_all_weighted(data, weights);
+        hist
+    }
+    pub fn new_uniform(counts: &[f64], limits: (f64, f64), errors: Option<&[f64]>) -> Self {
+        let bins = counts.len();
+        let (min, max) = limits;
+        let width = (max - min) / bins as f64;
+        let edges: Vec<f64> = (0..=bins).map(|i| min + i as f64 * width).collect();
+        Self::new(counts, &edges, errors)
+    }
     pub fn empty(edges: &[f64]) -> Self {
         let nbins = edges.len() - 1;
-        let low = edges[0];
-        let high = edges[nbins];
-        let width = (high - low) / nbins as f64;
-        let edges = (0..=nbins)
-            .map(|i| low + i as f64 * width)
-            .collect::<Vec<_>>();
         Self {
             counts: vec![0.0; nbins],
-            edges,
+            edges: edges.to_vec(),
             errors: vec![0.0; nbins],
         }
+    }
+    pub fn empty_uniform(bins: usize, limits: (f64, f64)) -> Self {
+        let (min, max) = limits;
+        let width = (max - min) / bins as f64;
+        let edges: Vec<f64> = (0..=bins).map(|i| min + i as f64 * width).collect();
+        Self::empty(&edges)
     }
     pub fn bins(&self) -> usize {
         self.edges.len() - 1
@@ -72,10 +104,21 @@ impl Histogram {
             self.errors[ibin] = self.errors[ibin].hypot(1.0);
         }
     }
+    pub fn fill_all(&mut self, values: &[f64]) {
+        for value in values {
+            self.fill(*value);
+        }
+    }
     pub fn fill_weighted(&mut self, value: f64, weight: f64) {
         if let Some(ibin) = self.get_index(value) {
             self.counts[ibin] += weight;
             self.errors[ibin] = self.errors[ibin].hypot(weight);
+        }
+    }
+    pub fn fill_all_weighted(&mut self, values: &[f64], weights: &[f64]) {
+        assert_eq!(values.len(), weights.len());
+        for (value, weight) in values.iter().zip(weights) {
+            self.fill_weighted(*value, *weight);
         }
     }
     pub fn integral(&self) -> f64 {
