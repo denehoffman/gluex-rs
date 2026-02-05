@@ -183,8 +183,8 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// This method returns a [`ParseTimestampError`] if the timestamp is not in the format allowed by CCDB.
-    pub fn with_timestamp_string(mut self, timestamp: &str) -> Result<Self, ParseTimestampError> {
+    /// This method returns a [`CCDBError`] if the timestamp is not in the format allowed by CCDB.
+    pub fn with_timestamp_string(mut self, timestamp: &str) -> CCDBResult<Self> {
         self.timestamp = parse_timestamp(timestamp)?;
         Ok(self)
     }

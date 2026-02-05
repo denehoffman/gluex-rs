@@ -14,7 +14,8 @@ uv pip install gluex-ccdb
 ```python
 import gluex_ccdb as ccdb
 
-client = ccdb.CCDB("/data/ccdb.sqlite")
+# Uses CCDB_CONNECTION by default; pass a path to override.
+client = ccdb.CCDB()
 tables = client.fetch("/PHOTON_BEAM/pair_spectrometer/lumi/trig_live", runs=[55_000, 55_005])
 
 for run, dataset in tables.items():

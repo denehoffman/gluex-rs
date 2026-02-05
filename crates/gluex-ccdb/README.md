@@ -16,7 +16,8 @@ cargo add gluex-ccdb
 use gluex_ccdb::prelude::*;
 
 fn main() -> CCDBResult<()> {
-    let ccdb = CCDB::open("/path/to/ccdb.sqlite")?;
+    // Uses CCDB_CONNECTION by default; use CCDB::open(...) for explicit paths.
+    let ccdb = CCDB::new()?;
     let ctx = Context::default().with_run_range(55_000..=55_010);
     let tables = ccdb.fetch("/PHOTON_BEAM/pair_spectrometer/lumi/trig_live", &ctx)?;
 

@@ -14,6 +14,7 @@ use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{Connection, OpenFlags};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    env,
     path::Path,
     sync::Arc,
 };
@@ -60,6 +61,17 @@ pub struct CCDB {
 }
 
 impl CCDB {
+    /// Opens a read-only handle using the `CCDB_CONNECTION` environment variable.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the environment variable is not set or the database cannot be opened.
+    pub fn new() -> CCDBResult<Self> {
+        let path = env::var("CCDB_CONNECTION")
+            .map_err(|_| CCDBError::MissingConnectionEnv("CCDB_CONNECTION".to_string()))?;
+        Self::open(path)
+    }
+
     /// Opens a read-only connection to an existing CCDB `SQLite` database file.
     ///
     /// # Errors

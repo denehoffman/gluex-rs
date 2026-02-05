@@ -50,6 +50,9 @@ pub enum CCDBError {
     /// Error parsing the requested run period.
     #[error("{0}")]
     RunPeriodError(#[from] gluex_core::run_periods::RunPeriodError),
+    /// Required environment variable is not set.
+    #[error("missing {0} environment variable for CCDB connection")]
+    MissingConnectionEnv(String),
 }
 
 /// Re-exports of the most commonly used types and constructors.

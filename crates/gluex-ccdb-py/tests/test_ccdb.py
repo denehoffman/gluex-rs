@@ -14,25 +14,10 @@ FIRST_AVAILABLE = dt.datetime(2013, 2, 22, 19, 40, 35, tzinfo=dt.timezone.utc)
 
 
 def resolve_db_path() -> Path:
-    raw = os.environ.get("CCDB_TEST_SQLITE_CONNECTION", "ccdb.sqlite")
-    for candidate in _candidate_paths(raw):
-        if candidate.exists():
-            return candidate
-    pytest.skip(
-        "CCDB test database not found. Set CCDB_TEST_SQLITE_CONNECTION or place ccdb.sqlite at the repo root."
-    )
-    raise FileNotFoundError("CCDB test database not found")
-
-
-def _candidate_paths(raw: str) -> list[Path]:
-    raw_path = Path(raw)
-    if raw_path.is_absolute():
-        return [raw_path]
-    bases = [
-        Path(__file__).resolve().parents[2],
-        Path(__file__).resolve().parents[4],
-    ]
-    return [raw_path, *(base / raw_path for base in bases)]
+    raw = os.environ.get("CCDB_CONNECTION")
+    if not raw:
+        raise RuntimeError("CCDB_CONNECTION must be set for CCDB tests")
+    return Path(raw)
 
 
 @pytest.fixture(scope="module")

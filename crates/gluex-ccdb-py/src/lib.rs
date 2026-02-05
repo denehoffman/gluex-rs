@@ -13,10 +13,19 @@ use pyo3::{
     prelude::*,
     types::{PyFloat, PyInt, PyModule, PyString},
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, env, sync::Arc};
 
 fn py_ccdb_error(err: CCDBError) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
+}
+
+fn resolve_connection_path(path: Option<String>) -> PyResult<String> {
+    match path {
+        Some(value) if !value.is_empty() => Ok(value),
+        _ => env::var("CCDB_CONNECTION").map_err(|_| {
+            PyRuntimeError::new_err("CCDB_CONNECTION is not set and no path was provided")
+        }),
+    }
 }
 
 /// Column type describing how a CCDB column is stored.
@@ -738,8 +747,9 @@ impl PyDirectoryHandle {
 ///
 /// Parameters
 /// ----------
-/// path : str
-///     Filesystem path to an existing CCDB SQLite database file.
+/// path : str, optional
+///     Filesystem path to an existing CCDB SQLite database file. Defaults to
+///     the ``CCDB_CONNECTION`` environment variable.
 #[pyclass(name = "CCDB", module = "gluex_ccdb", unsendable)]
 pub struct PyCCDB {
     inner: CCDB,
@@ -751,10 +761,13 @@ impl PyCCDB {
     ///
     /// Parameters
     /// ----------
-    /// path : str
-    ///     Filesystem path to an existing CCDB SQLite database file.
+    /// path : str, optional
+    ///     Filesystem path to an existing CCDB SQLite database file. Defaults
+    ///     to ``CCDB_CONNECTION``.
     #[new]
-    pub fn new(path: &str) -> PyResult<Self> {
+    #[pyo3(signature = (path=None))]
+    pub fn new(path: Option<String>) -> PyResult<Self> {
+        let path = resolve_connection_path(path)?;
         Ok(Self {
             inner: CCDB::open(path).map_err(py_ccdb_error)?,
         })

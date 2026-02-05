@@ -3,27 +3,12 @@
 use chrono::{Datelike, Timelike};
 use gluex_ccdb::{context::Context, database::CCDB, models::ColumnMeta, CCDBResult};
 use gluex_core::{errors::ParseTimestampError, parsers::parse_timestamp};
-use std::path::PathBuf;
-
 const TABLE_PATH: &str = "/test/demo/mytable";
 
-fn ccdb_path() -> PathBuf {
-    let raw = std::env::var("CCDB_TEST_SQLITE_CONNECTION")
-        .expect("set CCDB_TEST_SQLITE_CONNECTION to a CCDB SQLite file");
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let cwd_path = PathBuf::from(&raw);
-    if cwd_path.is_absolute() || cwd_path.exists() {
-        return cwd_path;
-    }
-    let workspace_path = manifest_dir.join("..").join("..").join(&raw);
-    if workspace_path.exists() {
-        return workspace_path;
-    }
-    cwd_path
-}
-
 fn open_db() -> CCDB {
-    CCDB::open(ccdb_path()).expect("failed to open CCDB test database")
+    let path = std::env::var("CCDB_CONNECTION")
+        .expect("CCDB_CONNECTION must be set for CCDB tests");
+    CCDB::open(path).expect("failed to open CCDB test database")
 }
 
 #[test]
