@@ -1,16 +1,21 @@
 use chrono::{DateTime, TimeZone, Utc};
 use gluex_ccdb::{
     context::Context as CCDBContext,
-    prelude::{CCDBError, CCDB},
+    prelude::{CCDB, CCDBError},
 };
 use gluex_core::{
-    histograms::Histogram,
-    run_periods::{resolve_rest_version, RestVersionError, RunPeriod},
     RestVersion, RunNumber,
+    histograms::Histogram,
+    run_periods::{RestVersionError, RunPeriod, RunPeriodError, resolve_rest_version},
 };
-use gluex_rcdb::prelude::{RCDBError, RCDB};
+use gluex_rcdb::prelude::{RCDB, RCDBError};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::Path, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use thiserror::Error;
 
 pub mod cli;
@@ -72,6 +77,164 @@ pub enum RestSelection {
     Version(RestVersion),
 }
 
+#[derive(Error, Debug)]
+pub enum ContextError {
+    #[error("at least one run number is required")]
+    EmptyRunSelection,
+}
+
+#[derive(Debug, Clone)]
+pub struct Context {
+    runs: Vec<RunNumber>,
+    rest: HashMap<RunPeriod, RestSelection>,
+    coherent_peak: bool,
+    polarized: bool,
+    exclude_runs: Vec<RunNumber>,
+}
+
+impl Context {
+    pub fn new(
+        runs: Vec<RunNumber>,
+        rest: HashMap<RunPeriod, RestSelection>,
+    ) -> Result<Self, ContextError> {
+        let mut runs = runs;
+        runs.sort_unstable();
+        runs.dedup();
+        if runs.is_empty() {
+            return Err(ContextError::EmptyRunSelection);
+        }
+        Ok(Self {
+            runs,
+            rest,
+            coherent_peak: false,
+            polarized: false,
+            exclude_runs: Vec::new(),
+        })
+    }
+
+    #[must_use]
+    pub fn runs(&self) -> &[RunNumber] {
+        &self.runs
+    }
+
+    #[must_use]
+    pub fn rest(&self) -> &HashMap<RunPeriod, RestSelection> {
+        &self.rest
+    }
+
+    #[must_use]
+    pub fn coherent_peak(&self) -> bool {
+        self.coherent_peak
+    }
+
+    #[must_use]
+    pub fn polarized(&self) -> bool {
+        self.polarized
+    }
+
+    #[must_use]
+    pub fn exclude_runs(&self) -> &[RunNumber] {
+        &self.exclude_runs
+    }
+
+    pub fn with_runs(
+        mut self,
+        runs: impl IntoIterator<Item = RunNumber>,
+    ) -> Result<Self, ContextError> {
+        let mut run_list: Vec<RunNumber> = runs.into_iter().collect();
+        run_list.sort_unstable();
+        run_list.dedup();
+        if run_list.is_empty() {
+            return Err(ContextError::EmptyRunSelection);
+        }
+        self.runs = run_list;
+        Ok(self)
+    }
+
+    #[must_use]
+    pub fn add_runs(mut self, runs: impl IntoIterator<Item = RunNumber>) -> Self {
+        self.runs.extend(runs);
+        self.runs.sort_unstable();
+        self.runs.dedup();
+        self
+    }
+
+    #[must_use]
+    pub fn with_run_period(mut self, run_period: RunPeriod) -> Self {
+        self.runs.extend(run_period.iter_runs());
+        self.runs.sort_unstable();
+        self.runs.dedup();
+        self
+    }
+
+    #[must_use]
+    pub fn with_rest(mut self, run_period: RunPeriod, selection: RestSelection) -> Self {
+        self.rest.insert(run_period, selection);
+        self
+    }
+
+    #[must_use]
+    pub fn with_coherent_peak(mut self, enabled: bool) -> Self {
+        self.coherent_peak = enabled;
+        self
+    }
+
+    #[must_use]
+    pub fn with_polarized(mut self, enabled: bool) -> Self {
+        self.polarized = enabled;
+        self
+    }
+
+    #[must_use]
+    pub fn with_exclude_runs(mut self, runs: impl IntoIterator<Item = RunNumber>) -> Self {
+        self.exclude_runs.extend(runs);
+        self.exclude_runs.sort_unstable();
+        self.exclude_runs.dedup();
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Luminosity {
+    rcdb: PathBuf,
+    ccdb: PathBuf,
+}
+
+impl Default for Luminosity {
+    fn default() -> Self {
+        let rcdb = env::var("RCDB_CONNECTION")
+            .expect("RCDB_CONNECTION is not set for Luminosity::default()");
+        let ccdb = env::var("CCDB_CONNECTION")
+            .expect("CCDB_CONNECTION is not set for Luminosity::default()");
+        Self {
+            rcdb: PathBuf::from(rcdb),
+            ccdb: PathBuf::from(ccdb),
+        }
+    }
+}
+
+impl Luminosity {
+    #[must_use]
+    pub fn new(rcdb: impl AsRef<Path>, ccdb: impl AsRef<Path>) -> Self {
+        Self {
+            rcdb: rcdb.as_ref().to_path_buf(),
+            ccdb: ccdb.as_ref().to_path_buf(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_rcdb(mut self, path: impl AsRef<Path>) -> Self {
+        self.rcdb = path.as_ref().to_path_buf();
+        self
+    }
+
+    #[must_use]
+    pub fn with_ccdb(mut self, path: impl AsRef<Path>) -> Self {
+        self.ccdb = path.as_ref().to_path_buf();
+        self
+    }
+}
+
 #[derive(Debug)]
 pub struct FluxCache {
     pub livetime_scaling: f64,
@@ -97,15 +260,23 @@ pub enum GlueXLumiError {
     MissingEndpointCalibration(RunNumber),
     #[error("{0}")]
     RestVersionError(#[from] RestVersionError),
+    #[error("{0}")]
+    RunPeriodError(#[from] RunPeriodError),
+    #[error("{0}")]
+    ContextError(#[from] ContextError),
 }
 
 fn get_flux_cache(
     run_period: RunPeriod,
+    runs: &[RunNumber],
     polarized: bool,
     timestamp: DateTime<Utc>,
-    rcdb_path: impl AsRef<Path>,
-    ccdb_path: impl AsRef<Path>,
+    rcdb_path: &Path,
+    ccdb_path: &Path,
 ) -> Result<HashMap<RunNumber, FluxCache>, GlueXLumiError> {
+    if runs.is_empty() {
+        return Ok(HashMap::new());
+    }
     let rcdb = RCDB::open(rcdb_path)?;
     let mut rcdb_filters = gluex_rcdb::conditions::aliases::approved_production(run_period);
     if polarized {
@@ -118,7 +289,7 @@ fn get_flux_cache(
         .fetch(
             ["polarimeter_converter"],
             &gluex_rcdb::context::Context::default()
-                .with_run_range(run_period.min_run()..=run_period.max_run())
+                .with_runs(runs.iter().copied())
                 .filter(rcdb_filters),
         )?
         .into_iter()
@@ -139,8 +310,7 @@ fn get_flux_cache(
         })
         .collect::<Result<HashMap<RunNumber, Converter>, ConverterParseError>>()?;
     let ccdb = CCDB::open(ccdb_path)?;
-    let ccdb_context = gluex_ccdb::context::Context::default()
-        .with_run_range(run_period.min_run()..run_period.max_run());
+    let ccdb_context = gluex_ccdb::context::Context::default().with_runs(runs.iter().copied());
     let ccdb_context_restver = ccdb_context.clone().with_timestamp(timestamp);
     let livetime_ratio: HashMap<RunNumber, f64> = ccdb
         .fetch(
@@ -391,158 +561,159 @@ fn apply_run_override<T>(
     }
 }
 
-/// Construct tagged photon-flux and luminosity histograms for a set of run periods.
-///
-/// # Arguments
-/// * `run_period_selection` - [`HashMap`] mapping [`RunPeriod`] values to [`RestSelection`] entries
-///   that define the timestamp to use.
-/// * `edges` - Photon-energy bin edges used to construct output [`Histogram`]s.
-/// * `coherent_peak` - When true, only photons inside the per-run coherent peak contribute.
-/// * `polarized` - Selects the polarized-flux calibration set when true.
-/// * `rcdb_path` - Filesystem path to the RCDB SQLite database (any type implementing
-///   `AsRef<Path>`).
-/// * `ccdb_path` - Filesystem path to the CCDB SQLite database (any type implementing
-///   `AsRef<Path>`).
-/// * `exclude_runs` - Optional list of run numbers to exclude from the calculation.
-///
-/// # Returns
-/// [`FluxHistograms`] for flux and tagged luminosity that satisfy the requested selections.
-pub fn get_flux_histograms(
-    run_period_selection: HashMap<RunPeriod, RestSelection>,
-    edges: &[f64],
-    coherent_peak: bool,
-    polarized: bool,
-    rcdb_path: impl AsRef<Path>,
-    ccdb_path: impl AsRef<Path>,
-    exclude_runs: Option<Vec<RunNumber>>,
-) -> Result<FluxHistograms, GlueXLumiError> {
-    let mut cache: HashMap<RunNumber, FluxCache> = HashMap::new();
-    let mut tagged_flux_hist = Histogram::empty(edges);
-    let mut tagm_flux_hist = Histogram::empty(edges);
-    let mut tagh_flux_hist = Histogram::empty(edges);
-    let mut tagged_luminosity_hist = Histogram::empty(edges);
-    let mut run_periods: Vec<(RunPeriod, RestSelection)> = run_period_selection
-        .iter()
-        .map(|(rp, rest)| (*rp, *rest))
-        .collect();
-    run_periods.sort_unstable_by_key(|(rp, _)| *rp);
-    let run_numbers: Vec<RunNumber> = run_periods
-        .iter()
-        .flat_map(|(rp, _)| rp.min_run()..=rp.max_run())
-        .collect();
-    let run_numbers = if let Some(exclude_runs) = exclude_runs {
-        run_numbers
-            .into_iter()
-            .filter(|run| !exclude_runs.contains(run))
-            .collect()
-    } else {
-        run_numbers
-    };
-    for (rp, selection) in run_periods.iter() {
-        let timestamp = match selection {
-            RestSelection::Current => Utc::now(),
-            RestSelection::Version(rest_version) => {
-                let resolved = resolve_rest_version(*rp, *rest_version)?;
-                if resolved.requested != resolved.used {
-                    eprintln!(
-                        "Warning: REST ver{req:02} was not found for run period {} so ver{used:02} was used instead.",
-                        rp.short_name(),
-                        req = resolved.requested,
-                        used = resolved.used
-                    );
+impl Luminosity {
+    /// Construct tagged photon-flux and luminosity histograms for a run context.
+    ///
+    /// # Arguments
+    /// * `edges` - Photon-energy bin edges used to construct output [`Histogram`]s.
+    /// * `ctx` - [`Context`] defining runs, REST versions, and selection flags.
+    ///
+    /// # Returns
+    /// [`FluxHistograms`] for flux and tagged luminosity that satisfy the requested selections.
+    pub fn fetch(&self, edges: &[f64], ctx: &Context) -> Result<FluxHistograms, GlueXLumiError> {
+        let mut cache: HashMap<RunNumber, FluxCache> = HashMap::new();
+        let coherent_peak = ctx.coherent_peak();
+        let mut tagged_flux_hist = Histogram::empty(edges);
+        let mut tagm_flux_hist = Histogram::empty(edges);
+        let mut tagh_flux_hist = Histogram::empty(edges);
+        let mut tagged_luminosity_hist = Histogram::empty(edges);
+        let mut run_numbers: Vec<RunNumber> = ctx.runs().to_vec();
+        if !ctx.exclude_runs().is_empty() {
+            let exclude_set: HashSet<RunNumber> = ctx.exclude_runs().iter().copied().collect();
+            run_numbers.retain(|run| !exclude_set.contains(run));
+        }
+        if run_numbers.is_empty() {
+            return Err(ContextError::EmptyRunSelection.into());
+        }
+        let mut runs_by_period: HashMap<RunPeriod, Vec<RunNumber>> = HashMap::new();
+        for run in &run_numbers {
+            let period = RunPeriod::try_from(*run)?;
+            runs_by_period.entry(period).or_default().push(*run);
+        }
+        let mut run_periods: Vec<RunPeriod> = runs_by_period.keys().copied().collect();
+        run_periods.sort_unstable();
+        for rp in run_periods.iter() {
+            let selection = ctx
+                .rest()
+                .get(rp)
+                .copied()
+                .unwrap_or(RestSelection::Current);
+            let timestamp = match selection {
+                RestSelection::Current => Utc::now(),
+                RestSelection::Version(rest_version) => {
+                    let resolved = resolve_rest_version(*rp, rest_version)?;
+                    if resolved.requested != resolved.used {
+                        eprintln!(
+                            "Warning: REST ver{req:02} was not found for run period {} so ver{used:02} was used instead.",
+                            rp.short_name(),
+                            req = resolved.requested,
+                            used = resolved.used
+                        );
+                    }
+                    resolved.timestamp
                 }
-                resolved.timestamp
-            }
-        };
-        cache.extend(get_flux_cache(
-            *rp, polarized, timestamp, &rcdb_path, &ccdb_path,
-        )?);
-    }
-    for run in run_numbers {
-        if let Some(data) = cache.get(&run) {
-            let delta_e = match data.photon_endpoint_calibration {
-                Some(calibration) => data.photon_endpoint_energy - calibration,
-                None if run > 60000 => {
-                    return Err(GlueXLumiError::MissingEndpointCalibration(run));
-                }
-                None => 0.0,
             };
-            // Fill microscope
-            for (tagged_flux, e_range) in data
-                .tagm_tagged_flux
-                .iter()
-                .zip(data.tagm_scaled_energy_range.iter())
-            {
-                let energy = data.photon_endpoint_energy * (e_range.0 + e_range.1) * 0.5 + delta_e;
+            cache.extend(get_flux_cache(
+                *rp,
+                runs_by_period
+                    .get(rp)
+                    .map_or(&[][..], |runs| runs.as_slice()),
+                ctx.polarized(),
+                timestamp,
+                &self.rcdb,
+                &self.ccdb,
+            )?);
+        }
+        for run in run_numbers {
+            if let Some(data) = cache.get(&run) {
+                let delta_e = match data.photon_endpoint_calibration {
+                    Some(calibration) => data.photon_endpoint_energy - calibration,
+                    None if run > 60000 => {
+                        return Err(GlueXLumiError::MissingEndpointCalibration(run));
+                    }
+                    None => 0.0,
+                };
+                // Fill microscope
+                for (tagged_flux, e_range) in data
+                    .tagm_tagged_flux
+                    .iter()
+                    .zip(data.tagm_scaled_energy_range.iter())
+                {
+                    let energy =
+                        data.photon_endpoint_energy * (e_range.0 + e_range.1) * 0.5 + delta_e;
 
-                if coherent_peak {
-                    let (coherent_peak_low, coherent_peak_high) =
-                        gluex_core::run_periods::coherent_peak(run);
-                    if energy < coherent_peak_low || energy > coherent_peak_high {
+                    if coherent_peak {
+                        let (coherent_peak_low, coherent_peak_high) =
+                            gluex_core::run_periods::coherent_peak(run);
+                        if energy < coherent_peak_low || energy > coherent_peak_high {
+                            continue;
+                        }
+                    }
+                    let acceptance =
+                        pair_spectrometer_acceptance(energy, data.pair_spectrometer_parameters);
+                    if acceptance <= 0.0 {
                         continue;
                     }
-                }
-                let acceptance =
-                    pair_spectrometer_acceptance(energy, data.pair_spectrometer_parameters);
-                if acceptance <= 0.0 {
-                    continue;
-                }
-                if let Some(ibin) = tagged_flux_hist.get_index(energy) {
-                    let count = tagged_flux.1 * data.livetime_scaling / acceptance;
-                    let error = tagged_flux.2 * data.livetime_scaling / acceptance;
-                    tagged_flux_hist.counts[ibin] += count;
-                    tagged_flux_hist.errors[ibin] = tagged_flux_hist.errors[ibin].hypot(error);
-                    tagm_flux_hist.counts[ibin] += count;
-                    tagm_flux_hist.errors[ibin] = tagm_flux_hist.errors[ibin].hypot(error);
-                }
-            }
-            // Fill hodoscope
-            for (tagged_flux, e_range) in data
-                .tagh_tagged_flux
-                .iter()
-                .zip(data.tagh_scaled_energy_range.iter())
-            {
-                let energy = data.photon_endpoint_energy * (e_range.0 + e_range.1) * 0.5 + delta_e;
-
-                if coherent_peak {
-                    let (coherent_peak_low, coherent_peak_high) =
-                        gluex_core::run_periods::coherent_peak(run);
-                    if energy < coherent_peak_low || energy > coherent_peak_high {
-                        continue;
+                    if let Some(ibin) = tagged_flux_hist.get_index(energy) {
+                        let count = tagged_flux.1 * data.livetime_scaling / acceptance;
+                        let error = tagged_flux.2 * data.livetime_scaling / acceptance;
+                        tagged_flux_hist.counts[ibin] += count;
+                        tagged_flux_hist.errors[ibin] = tagged_flux_hist.errors[ibin].hypot(error);
+                        tagm_flux_hist.counts[ibin] += count;
+                        tagm_flux_hist.errors[ibin] = tagm_flux_hist.errors[ibin].hypot(error);
                     }
                 }
-                let acceptance =
-                    pair_spectrometer_acceptance(energy, data.pair_spectrometer_parameters);
-                if acceptance <= 0.0 {
-                    continue;
+                // Fill hodoscope
+                for (tagged_flux, e_range) in data
+                    .tagh_tagged_flux
+                    .iter()
+                    .zip(data.tagh_scaled_energy_range.iter())
+                {
+                    let energy =
+                        data.photon_endpoint_energy * (e_range.0 + e_range.1) * 0.5 + delta_e;
+
+                    if coherent_peak {
+                        let (coherent_peak_low, coherent_peak_high) =
+                            gluex_core::run_periods::coherent_peak(run);
+                        if energy < coherent_peak_low || energy > coherent_peak_high {
+                            continue;
+                        }
+                    }
+                    let acceptance =
+                        pair_spectrometer_acceptance(energy, data.pair_spectrometer_parameters);
+                    if acceptance <= 0.0 {
+                        continue;
+                    }
+                    if let Some(ibin) = tagged_flux_hist.get_index(energy) {
+                        let count = tagged_flux.1 * data.livetime_scaling / acceptance;
+                        let error = tagged_flux.2 * data.livetime_scaling / acceptance;
+                        tagged_flux_hist.counts[ibin] += count;
+                        tagged_flux_hist.errors[ibin] = tagged_flux_hist.errors[ibin].hypot(error);
+                        tagh_flux_hist.counts[ibin] += count;
+                        tagh_flux_hist.errors[ibin] = tagh_flux_hist.errors[ibin].hypot(error);
+                    }
                 }
-                if let Some(ibin) = tagged_flux_hist.get_index(energy) {
-                    let count = tagged_flux.1 * data.livetime_scaling / acceptance;
-                    let error = tagged_flux.2 * data.livetime_scaling / acceptance;
-                    tagged_flux_hist.counts[ibin] += count;
-                    tagged_flux_hist.errors[ibin] = tagged_flux_hist.errors[ibin].hypot(error);
-                    tagh_flux_hist.counts[ibin] += count;
-                    tagh_flux_hist.errors[ibin] = tagh_flux_hist.errors[ibin].hypot(error);
+                let (n_scattering_centers, n_scattering_centers_error) =
+                    data.target_scattering_centers;
+                for ibin in 0..tagged_flux_hist.bins() {
+                    let count = tagged_flux_hist.counts[ibin];
+                    if count <= 0.0 {
+                        continue;
+                    }
+                    let luminosity = count * n_scattering_centers / 1e12; // pb^-1
+                    let flux_error = tagged_flux_hist.errors[ibin] / count;
+                    let target_error = n_scattering_centers_error / n_scattering_centers;
+                    tagged_luminosity_hist.counts[ibin] = luminosity;
+                    tagged_luminosity_hist.errors[ibin] =
+                        luminosity * target_error.hypot(flux_error);
                 }
-            }
-            let (n_scattering_centers, n_scattering_centers_error) = data.target_scattering_centers;
-            for ibin in 0..tagged_flux_hist.bins() {
-                let count = tagged_flux_hist.counts[ibin];
-                if count <= 0.0 {
-                    continue;
-                }
-                let luminosity = count * n_scattering_centers / 1e12; // pb^-1
-                let flux_error = tagged_flux_hist.errors[ibin] / count;
-                let target_error = n_scattering_centers_error / n_scattering_centers;
-                tagged_luminosity_hist.counts[ibin] = luminosity;
-                tagged_luminosity_hist.errors[ibin] = luminosity * target_error.hypot(flux_error);
             }
         }
+        Ok(FluxHistograms {
+            tagged_flux: tagged_flux_hist,
+            tagm_flux: tagm_flux_hist,
+            tagh_flux: tagh_flux_hist,
+            tagged_luminosity: tagged_luminosity_hist,
+        })
     }
-    Ok(FluxHistograms {
-        tagged_flux: tagged_flux_hist,
-        tagm_flux: tagm_flux_hist,
-        tagh_flux: tagh_flux_hist,
-        tagged_luminosity: tagged_luminosity_hist,
-    })
 }

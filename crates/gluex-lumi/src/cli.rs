@@ -2,13 +2,13 @@ use std::{collections::HashMap, env, ffi::OsString, io, path::PathBuf, str::From
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use gluex_core::{
-    run_periods::{rest_versions_for, RunPeriod},
     RunNumber,
+    run_periods::{RunPeriod, rest_versions_for},
 };
 use serde_json::to_writer_pretty;
 use strum::IntoEnumIterator;
 
-use crate::{get_flux_histograms, RestSelection};
+use crate::{Context, Luminosity, RestSelection};
 
 #[derive(Parser)]
 #[command(name = "gluex-lumi", version)]
@@ -24,8 +24,6 @@ struct Cli {
 enum Command {
     /// List known REST versions for one or all run periods.
     List { run_period: Option<RunPeriod> },
-    /// Run the flux calculation (alias for no subcommand).
-    Plot(FluxArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -62,10 +60,6 @@ struct FluxArgs {
     /// CCDB path
     #[arg(long, env = "CCDB_CONNECTION")]
     ccdb: Option<PathBuf>,
-
-    /// Comma-separated run numbers to exclude (e.g. 10,20,30)
-    #[arg(long = "exclude-runs", value_delimiter = ',')]
-    exclude_runs: Option<Vec<RunNumber>>,
 }
 
 struct FluxConfig {
@@ -77,7 +71,6 @@ struct FluxConfig {
     polarized: bool,
     rcdb: PathBuf,
     ccdb: PathBuf,
-    exclude_runs: Option<Vec<RunNumber>>,
 }
 
 fn parse_run_pair(s: &str) -> Result<(RunPeriod, RestSelection), String> {
@@ -149,7 +142,6 @@ where
             }
             Ok(())
         }
-        Some(Command::Plot(args)) => run_flux(args),
         None => run_flux(cli.flux),
     }
 }
@@ -213,7 +205,6 @@ impl FluxArgs {
             polarized: self.polarized,
             rcdb,
             ccdb,
-            exclude_runs: self.exclude_runs,
         })
     }
 }
@@ -229,20 +220,18 @@ fn run_flux(args: FluxArgs) -> Result<(), Box<dyn std::error::Error>> {
         polarized,
         rcdb,
         ccdb,
-        exclude_runs,
     } = config;
 
     let edges = uniform_edges(bins, min_edge, max_edge);
-
-    let histos = get_flux_histograms(
-        run_selection,
-        &edges,
-        coherent_peak,
-        polarized,
-        &rcdb,
-        &ccdb,
-        exclude_runs,
-    )?;
+    let runs: Vec<RunNumber> = run_selection
+        .keys()
+        .flat_map(|period| period.iter_runs())
+        .collect();
+    let ctx = Context::new(runs, run_selection)?
+        .with_coherent_peak(coherent_peak)
+        .with_polarized(polarized);
+    let lumi = Luminosity::new(rcdb, ccdb);
+    let histos = lumi.fetch(&edges, &ctx)?;
 
     to_writer_pretty(std::io::stdout(), &histos)?;
     Ok(())

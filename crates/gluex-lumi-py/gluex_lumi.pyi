@@ -29,14 +29,19 @@ class FluxHistograms:
     ) -> None: ...
     def as_dict(self) -> dict[str, dict[str, list[float]]]: ...
 
-def get_flux_histograms(
-    run_periods: Mapping[str, int | None],
-    edges: Sequence[float],
-    *,
-    coherent_peak: bool = False,
-    polarized: bool = False,
-    rcdb: str | None = None,
-    ccdb: str | None = None,
-    exclude_runs: Sequence[int] | None = None,
-) -> FluxHistograms: ...
+class Context:
+    def __init__(
+        self,
+        runs: Sequence[int],
+        rest: Mapping[str, int | None] | None = None,
+        *,
+        coherent_peak: bool = False,
+        polarized: bool = False,
+        exclude_runs: Sequence[int] | None = None,
+    ) -> None: ...
+
+class Luminosity:
+    def __init__(self, rcdb: str | None = None, ccdb: str | None = None) -> None: ...
+    def fetch(self, edges: Sequence[float], ctx: Context) -> FluxHistograms: ...
+
 def cli() -> None: ...
