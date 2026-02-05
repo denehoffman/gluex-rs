@@ -59,6 +59,9 @@ pub enum RCDBError {
         /// Run number missing the time value.
         run_number: RunNumber,
     },
+    /// Required environment variable is not set.
+    #[error("missing {0} environment variable for RCDB connection")]
+    MissingConnectionEnv(String),
 }
 
 /// Re-exports for the most common types.

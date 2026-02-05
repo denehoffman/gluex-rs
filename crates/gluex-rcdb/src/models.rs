@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use gluex_core::{errors::ParseTimestampError, parsers::parse_timestamp, Id, RunNumber};
+use gluex_core::{parsers::parse_timestamp, Id, RunNumber};
+
+use crate::RCDBResult;
 
 /// Typed representation of a condition value column.
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
@@ -158,16 +160,16 @@ impl ConditionMeta {
     /// # Errors
     ///
     /// Returns an error if the stored creation timestamp cannot be parsed as a UTC datetime.
-    pub fn created(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.created)
+    pub fn created(&self) -> RCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.created)?)
     }
     /// Optional timestamp value associated with the condition.
     ///
     /// # Errors
     ///
     /// Returns an error if the stored timestamp cannot be parsed as a UTC datetime.
-    pub fn time_value(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.time_value)
+    pub fn time_value(&self) -> RCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.time_value)?)
     }
 }
 
@@ -212,16 +214,16 @@ impl RunPeriodMeta {
     /// # Errors
     ///
     /// Returns an error if the stored start timestamp cannot be parsed as a UTC datetime.
-    pub fn start_date(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.start_date)
+    pub fn start_date(&self) -> RCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.start_date)?)
     }
     /// Timestamp describing when the period ended.
     ///
     /// # Errors
     ///
     /// Returns an error if the stored end timestamp cannot be parsed as a UTC datetime.
-    pub fn end_date(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.end_date)
+    pub fn end_date(&self) -> RCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.end_date)?)
     }
 }
 
@@ -242,15 +244,15 @@ impl RunMeta {
     /// # Errors
     ///
     /// Returns an error if the stored run start timestamp cannot be parsed as a UTC datetime.
-    pub fn started(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.started)
+    pub fn started(&self) -> RCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.started)?)
     }
     /// Timestamp indicating when the run finished.
     ///
     /// # Errors
     ///
     /// Returns an error if the stored run end timestamp cannot be parsed as a UTC datetime.
-    pub fn finished(&self) -> Result<DateTime<Utc>, ParseTimestampError> {
-        parse_timestamp(&self.finished)
+    pub fn finished(&self) -> RCDBResult<DateTime<Utc>> {
+        Ok(parse_timestamp(&self.finished)?)
     }
 }

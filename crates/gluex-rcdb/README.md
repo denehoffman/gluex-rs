@@ -18,7 +18,8 @@ use gluex_rcdb::{
 };
 
 fn main() -> gluex_rcdb::RCDBResult<()> {
-    let rcdb = RCDB::open("/path/to/rcdb.sqlite")?;
+    // Uses RCDB_CONNECTION by default; use RCDB::open(...) for explicit paths.
+    let rcdb = RCDB::new()?;
     let filters = conditions::aliases::approved_production(RunPeriod::RP2018_08);
     let ctx = Context::default().with_run_range(55_000..=55_050).filter(filters);
     let rows = rcdb.fetch(["polarization_angle", "polarization_direction"], &ctx)?;

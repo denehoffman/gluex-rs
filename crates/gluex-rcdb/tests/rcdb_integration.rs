@@ -1,25 +1,12 @@
 #![allow(missing_docs)]
 
-use std::path::PathBuf;
-
 use gluex_core::parsers::parse_timestamp;
 use gluex_rcdb::prelude::*;
 
-fn rcdb_path() -> PathBuf {
-    if let Ok(raw) = std::env::var("RCDB_TEST_SQLITE_CONNECTION") {
-        let supplied = PathBuf::from(&raw);
-        if supplied.is_absolute() || supplied.exists() {
-            return supplied;
-        }
-        return PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../")
-            .join(raw);
-    }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../rcdb.sqlite")
-}
-
 fn open_db() -> RCDB {
-    RCDB::open(rcdb_path()).expect("failed to open RCDB test database")
+    let path = std::env::var("RCDB_CONNECTION")
+        .expect("RCDB_CONNECTION must be set for RCDB tests");
+    RCDB::open(path).expect("failed to open RCDB test database")
 }
 
 #[test]

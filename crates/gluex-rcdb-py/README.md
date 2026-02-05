@@ -13,7 +13,8 @@ uv pip install gluex-rcdb
 ```python
 import gluex_rcdb as rcdb
 
-client = rcdb.RCDB("/data/rcdb.sqlite")
+# Uses RCDB_CONNECTION by default; pass a path to override.
+client = rcdb.RCDB()
 filters = rcdb.all(
     rcdb.float_cond("polarization_angle").gt(90.0),
     rcdb.aliases.is_production,

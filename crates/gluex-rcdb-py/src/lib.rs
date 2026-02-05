@@ -18,9 +18,19 @@ use pyo3::{
     types::{PyDict, PyFloat, PyInt, PyList, PyModule, PyString, PyTuple},
     Bound, IntoPyObject,
 };
+use std::env;
 
 fn py_rcdb_error(err: RCDBError) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
+}
+
+fn resolve_connection_path(path: Option<String>) -> PyResult<String> {
+    match path {
+        Some(value) if !value.is_empty() => Ok(value),
+        _ => env::var("RCDB_CONNECTION").map_err(|_| {
+            PyRuntimeError::new_err("RCDB_CONNECTION is not set and no path was provided")
+        }),
+    }
 }
 
 /// Boolean expression used to filter RCDB queries.
@@ -113,8 +123,9 @@ pub fn parse_context(
 ///
 /// Parameters
 /// ----------
-/// path : str
-///     Filesystem path to an RCDB SQLite database.
+/// path : str, optional
+///     Filesystem path to an RCDB SQLite database. Defaults to the
+///     ``RCDB_CONNECTION`` environment variable.
 #[pyclass(name = "RCDB", module = "gluex_rcdb", unsendable)]
 pub struct PyRCDB {
     inner: RCDB,
@@ -123,14 +134,16 @@ pub struct PyRCDB {
 #[pymethods]
 impl PyRCDB {
     #[new]
-    #[pyo3(signature = (path), text_signature = "(path)")]
+    #[pyo3(signature = (path=None), text_signature = "(path=None)")]
     /// Create a new RCDB connection.
     ///
     /// Parameters
     /// ----------
-    /// path : str
-    ///     Path to the RCDB SQLite database file.
-    fn new(path: &str) -> PyResult<Self> {
+    /// path : str, optional
+    ///     Path to the RCDB SQLite database file. Defaults to
+    ///     ``RCDB_CONNECTION``.
+    fn new(path: Option<String>) -> PyResult<Self> {
+        let path = resolve_connection_path(path)?;
         Ok(Self {
             inner: RCDB::open(path).map_err(py_rcdb_error)?,
         })

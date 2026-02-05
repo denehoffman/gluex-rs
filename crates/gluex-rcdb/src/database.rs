@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    env,
     path::Path,
     sync::Arc,
 };
@@ -26,6 +27,17 @@ pub struct RCDB {
 }
 
 impl RCDB {
+    /// Opens a read-only handle using the `RCDB_CONNECTION` environment variable.
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if the environment variable is not set or the database cannot be opened.
+    pub fn new() -> RCDBResult<Self> {
+        let path = env::var("RCDB_CONNECTION")
+            .map_err(|_| RCDBError::MissingConnectionEnv("RCDB_CONNECTION".to_string()))?;
+        Self::open(path)
+    }
+
     /// Opens a read-only handle to the supplied RCDB `SQLite` database file.
     ///
     /// # Errors

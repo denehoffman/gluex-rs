@@ -11,25 +11,10 @@ import gluex_rcdb as rcdb
 
 
 def _rcdb_path() -> Path:
-    raw = os.environ.get("RCDB_TEST_SQLITE_CONNECTION", "rcdb.sqlite")
-    for candidate in _candidate_paths(raw):
-        if candidate.exists():
-            return candidate
-    pytest.skip(
-        "RCDB test database not found. Set RCDB_TEST_SQLITE_CONNECTION or place rcdb.sqlite at the repo root."
-    )
-    raise FileNotFoundError("RCDB test database not found")
-
-
-def _candidate_paths(raw: str) -> list[Path]:
-    raw_path = Path(raw)
-    if raw_path.is_absolute():
-        return [raw_path]
-    bases = [
-        Path(__file__).resolve().parents[2],  # crate root
-        Path(__file__).resolve().parents[4],  # workspace root
-    ]
-    return [raw_path, *(base / raw_path for base in bases)]
+    raw = os.environ.get("RCDB_CONNECTION")
+    if not raw:
+        raise RuntimeError("RCDB_CONNECTION must be set for RCDB tests")
+    return Path(raw)
 
 
 def _open_db() -> rcdb.RCDB:
