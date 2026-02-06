@@ -1,6 +1,6 @@
 [package]
 name = "gluex-lumi"
-version = "0.2.0"
+version = "0.3.0"
 description = "A Rust crate to calculate luminosity data for the GlueX experiment"
 authors.workspace = true
 edition.workspace = true
@@ -24,9 +24,9 @@ serde_json.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 
-gluex-core = { version = "0.1.8", path = "../gluex-core" }
-gluex-rcdb = { version = "0.1.9", path = "../gluex-rcdb" }
-gluex-ccdb = { version = "0.1.9", path = "../gluex-ccdb" }
+gluex-core = { version = "0.2.0", path = "../gluex-core" }
+gluex-rcdb = { version = "0.2.0", path = "../gluex-rcdb" }
+gluex-ccdb = { version = "0.2.0", path = "../gluex-ccdb" }
 
 [dev-dependencies]
 criterion.workspace = true
