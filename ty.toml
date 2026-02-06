@@ -1,5 +1,0 @@
-[src]
-exclude = [
-    "crates/gluex-rcdb/python/tests",
-    "crates/gluex-ccdb/python/tests",
-]

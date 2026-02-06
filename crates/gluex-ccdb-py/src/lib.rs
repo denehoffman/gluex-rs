@@ -1,12 +1,16 @@
 use ::gluex_ccdb::{
-    context::Context,
+    context::CCDBContext,
     data::{self, Data, Value},
     database::{DirectoryHandle, TypeTableHandle, CCDB},
     models::{ColumnMeta, ColumnType, TypeTableMeta},
     CCDBError,
 };
 use chrono::{DateTime, Utc};
-use gluex_core::{parsers::parse_timestamp, run_periods::RunPeriodError, RunNumber};
+use gluex_core::{
+    parsers::parse_timestamp,
+    run_periods::{RESTVersionSelection, RunPeriodError},
+    RESTVersion, RunNumber,
+};
 use pyo3::{
     conversion::IntoPyObject,
     exceptions::PyRuntimeError,
@@ -34,7 +38,7 @@ fn resolve_connection_path(path: Option<String>) -> PyResult<String> {
 /// ----------
 /// name : str
 ///     Short lowercase identifier for the storage type (e.g. "int").
-#[pyclass(name = "ColumnType", module = "gluex_ccdb")]
+#[pyclass(name = "ColumnType", module = "gluex_ccdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyColumnType {
     kind: ColumnType,
@@ -59,7 +63,7 @@ impl From<ColumnType> for PyColumnType {
 }
 
 #[allow(missing_docs)]
-#[pyclass(name = "ColumnMeta", module = "gluex_ccdb")]
+#[pyclass(name = "ColumnMeta", module = "gluex_ccdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyColumnMeta {
     inner: ColumnMeta,
@@ -210,7 +214,7 @@ impl PyColumn {
 }
 
 #[allow(missing_docs)]
-#[pyclass(name = "TypeTableMeta", module = "gluex_ccdb")]
+#[pyclass(name = "TypeTableMeta", module = "gluex_ccdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyTypeTableMeta {
     inner: TypeTableMeta,
@@ -594,8 +598,8 @@ impl PyTypeTableHandle {
     /// ----------
     /// run_period : str
     ///     The short string of the corresponding GlueX run period (e.g. "S17", "F18")
-    /// rest_version : int | None, optional
-    ///     The REST version to use when resolving a time stamp.
+    /// rest_version : int | datetime | None, optional
+    ///     The REST version or explicit timestamp to use when resolving a time stamp.
     /// variation : str | None, optional
     ///     Variation branch to resolve (default "default").
     /// timestamp : datetime | str | None, optional
@@ -609,17 +613,16 @@ impl PyTypeTableHandle {
     pub fn fetch_run_period(
         &self,
         run_period: &str,
-        rest_version: Option<usize>,
+        rest_version: Option<Bound<'_, PyAny>>,
         variation: Option<String>,
         timestamp: Option<Bound<'_, PyAny>>,
     ) -> PyResult<BTreeMap<RunNumber, PyData>> {
-        let mut ctx = Context::default()
-            .with_run_period(
-                run_period
-                    .parse()
-                    .map_err(|e: RunPeriodError| py_ccdb_error(CCDBError::RunPeriodError(e)))?,
-                rest_version,
-            )
+        let run_period = run_period
+            .parse()
+            .map_err(|e: RunPeriodError| py_ccdb_error(CCDBError::RunPeriodError(e)))?;
+        let rest_version = parse_py_rest_version_selection(run_period, rest_version)?;
+        let mut ctx = CCDBContext::default()
+            .with_run_period(run_period, rest_version)
             .map_err(py_ccdb_error)?;
         if let Some(variation) = variation {
             ctx.variation = variation;
@@ -855,8 +858,8 @@ impl PyCCDB {
     ///     Absolute or relative table path.
     /// run_period : str
     ///     The short string of the corresponding GlueX run period (e.g. "S17", "F18")
-    /// rest_version : int | None, optional
-    ///     The REST version to use when resolving a time stamp.
+    /// rest_version : int | datetime | None, optional
+    ///     The REST version or explicit timestamp to use when resolving a time stamp.
     /// variation : str | None, optional
     ///     Variation branch to resolve (default "default").
     /// timestamp : datetime | str | None, optional
@@ -871,17 +874,16 @@ impl PyCCDB {
         &self,
         path: &str,
         run_period: &str,
-        rest_version: Option<usize>,
+        rest_version: Option<Bound<'_, PyAny>>,
         variation: Option<String>,
         timestamp: Option<Bound<'_, PyAny>>,
     ) -> PyResult<BTreeMap<RunNumber, PyData>> {
-        let mut ctx = Context::default()
-            .with_run_period(
-                run_period
-                    .parse()
-                    .map_err(|e: RunPeriodError| py_ccdb_error(CCDBError::RunPeriodError(e)))?,
-                rest_version,
-            )
+        let run_period = run_period
+            .parse()
+            .map_err(|e: RunPeriodError| py_ccdb_error(CCDBError::RunPeriodError(e)))?;
+        let rest_version = parse_py_rest_version_selection(run_period, rest_version)?;
+        let mut ctx = CCDBContext::default()
+            .with_run_period(run_period, rest_version)
             .map_err(py_ccdb_error)?;
         if let Some(variation) = variation {
             ctx.variation = variation;
@@ -961,6 +963,25 @@ fn parse_py_timestamp(ts: Option<Bound<'_, PyAny>>) -> PyResult<Option<DateTime<
     Err(PyRuntimeError::new_err("timestamp must be str or datetime"))
 }
 
+fn parse_py_rest_version_selection(
+    run_period: gluex_core::run_periods::RunPeriod,
+    rest_version: Option<Bound<'_, PyAny>>,
+) -> PyResult<RESTVersionSelection> {
+    let Some(val) = rest_version else {
+        return Ok(RESTVersionSelection::Current);
+    };
+    if let Ok(version) = val.extract::<RESTVersion>() {
+        return RESTVersionSelection::try_new(run_period, version)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()));
+    }
+    if let Ok(timestamp) = val.extract::<DateTime<Utc>>() {
+        return Ok(RESTVersionSelection::from_timestamp(timestamp));
+    }
+    Err(PyRuntimeError::new_err(
+        "rest_version must be int, datetime, or None",
+    ))
+}
+
 fn parse_column_index(data: &Data, column: Bound<'_, PyAny>) -> PyResult<usize> {
     if let Ok(idx) = column.extract::<usize>() {
         if idx < data.n_columns() {
@@ -981,8 +1002,8 @@ fn build_context(
     runs: Option<Vec<RunNumber>>,
     variation: Option<String>,
     timestamp: Option<Bound<'_, PyAny>>,
-) -> PyResult<Context> {
-    let mut ctx = Context::default();
+) -> PyResult<CCDBContext> {
+    let mut ctx = CCDBContext::default();
     if let Some(runs) = runs {
         ctx.runs = runs;
     }

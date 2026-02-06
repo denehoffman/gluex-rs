@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 
 class Histogram:
     counts: list[float]
@@ -33,7 +34,7 @@ class Context:
     def __init__(
         self,
         runs: Sequence[int],
-        rest: Mapping[str, int | None] | None = None,
+        rest_version: Mapping[str, int | datetime | None] | None = None,
         *,
         coherent_peak: bool = False,
         polarized: bool = False,
@@ -45,3 +46,5 @@ class Luminosity:
     def fetch(self, edges: Sequence[float], ctx: Context) -> FluxHistograms: ...
 
 def cli() -> None: ...
+
+__version__: str

@@ -1,6 +1,6 @@
 use ::gluex_rcdb::{
     conditions::{self, Expr},
-    context::Context,
+    context::RCDBContext,
     data::Value,
     database::RCDB,
     models::ValueType,
@@ -40,7 +40,7 @@ fn resolve_connection_path(path: Option<String>) -> PyResult<String> {
 /// >>> import gluex_rcdb as rcdb
 /// >>> expr = rcdb.int_cond("event_count").gt(1000)
 /// >>> ctx = rcdb.Context(filters=expr)
-#[pyclass(name = "Expr", module = "gluex_rcdb")]
+#[pyclass(name = "Expr", module = "gluex_rcdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyExpr {
     expr: Expr,
@@ -78,7 +78,7 @@ pub fn parse_context(
     run_min: Option<RunNumber>,
     run_max: Option<RunNumber>,
     filters: Option<Py<PyAny>>,
-) -> PyResult<Context> {
+) -> PyResult<RCDBContext> {
     let mut selection_kinds = 0;
     if run_period.is_some() {
         selection_kinds += 1;
@@ -95,7 +95,7 @@ pub fn parse_context(
         ));
     }
 
-    let mut ctx = Context::default();
+    let mut ctx = RCDBContext::default();
     if let Some(run_period) = run_period {
         ctx = ctx.with_run_period(
             run_period
@@ -183,6 +183,7 @@ impl PyRCDB {
     /// Notes
     /// -----
     /// The run_period, runs, and (run_min, run_max) arguments are mutually exclusive.
+    #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (condition_names, *, run_period=None, runs=None, run_min=None, run_max=None, filters=None))]
     pub fn fetch(
         &self,
@@ -260,7 +261,7 @@ impl PyRCDB {
 }
 
 /// Builder used to construct integer condition expressions.
-#[pyclass(name = "IntCondition", module = "gluex_rcdb")]
+#[pyclass(name = "IntCondition", module = "gluex_rcdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyIntField(conditions::IntField);
 
@@ -362,7 +363,7 @@ impl PyIntField {
 }
 
 /// Builder used to construct float condition expressions.
-#[pyclass(name = "FloatCondition", module = "gluex_rcdb")]
+#[pyclass(name = "FloatCondition", module = "gluex_rcdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyFloatField(conditions::FloatField);
 
@@ -449,7 +450,7 @@ impl PyFloatField {
 }
 
 /// Builder used to construct string condition expressions.
-#[pyclass(name = "StringCondition", module = "gluex_rcdb")]
+#[pyclass(name = "StringCondition", module = "gluex_rcdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyStringField(conditions::StringField);
 
@@ -522,7 +523,7 @@ impl PyStringField {
 }
 
 /// Builder used to construct boolean condition expressions.
-#[pyclass(name = "BoolCondition", module = "gluex_rcdb")]
+#[pyclass(name = "BoolCondition", module = "gluex_rcdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyBoolField(conditions::BoolField);
 
@@ -565,7 +566,7 @@ impl PyBoolField {
 }
 
 /// Builder used to construct timestamp condition expressions.
-#[pyclass(name = "TimeCondition", module = "gluex_rcdb")]
+#[pyclass(name = "TimeCondition", module = "gluex_rcdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyTimeField(conditions::TimeField);
 
@@ -764,7 +765,7 @@ fn any(exprs: &Bound<'_, PyTuple>) -> PyResult<PyExpr> {
 }
 
 /// Common aliases for expressions used in RCDB filters.
-#[pyclass(name = "aliases", module = "gluex_rcdb")]
+#[pyclass(name = "aliases", module = "gluex_rcdb", skip_from_py_object)]
 #[derive(Clone)]
 pub struct Aliases;
 

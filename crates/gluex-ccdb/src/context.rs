@@ -3,7 +3,7 @@ use gluex_core::{
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
     errors::ParseTimestampError,
     parsers::parse_timestamp,
-    run_periods::{resolve_rest_version, RunPeriod},
+    run_periods::{RESTVersionSelection, RunPeriod},
     RunNumber,
 };
 use std::{ops::Bound, str::FromStr};
@@ -58,7 +58,7 @@ impl NamePath {
     }
 }
 /// Errors that can occur while parsing or validating [`NamePath`] values.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum NamePathError {
     /// Path did not begin with a forward slash.
     #[error("path \"{0}\" is not absolute (must start with '/')")]
@@ -73,7 +73,7 @@ const DEFAULT_RUN_NUMBER: RunNumber = 0;
 
 /// Query context describing run selection, variation, and timestamp.
 #[derive(Debug, Clone)]
-pub struct Context {
+pub struct CCDBContext {
     /// [`RunNumber`] values to consider when resolving assignments.
     pub runs: Vec<RunNumber>,
     /// Variation (branch) to resolve within CCDB.
@@ -81,7 +81,7 @@ pub struct Context {
     /// [`DateTime`] in the [`Utc`] timezone used to select the newest constants not newer than this time.
     pub timestamp: DateTime<Utc>,
 }
-impl Default for Context {
+impl Default for CCDBContext {
     fn default() -> Self {
         Self {
             runs: vec![DEFAULT_RUN_NUMBER],
@@ -90,7 +90,7 @@ impl Default for Context {
         }
     }
 }
-impl Context {
+impl CCDBContext {
     /// Builds a new context with optional run, variation, and timestamp overrides.
     #[must_use]
     pub fn new(
@@ -111,23 +111,19 @@ impl Context {
         context
     }
     /// Returns a context scoped to all runs associated with the given [`RunPeriod`]. Additionally,
-    /// if a REST version is provided, the timestamp will be resolved for that version. If the
-    /// given [`RunPeriod`] does not have the requested REST version, the closest REST version less
-    /// than the requested one will be used.
+    /// if a REST version is provided, the timestamp will be resolved for that version.
     ///
     /// # Errors
     ///
-    /// This method will return an error if the run period is not found in the [`REST_VERSION_TIMESTAMPS`] map or if no lower REST version exists when the requested one is not found.
+    /// This method will return an error if the run period is not found in the [`REST_VERSION_TIMESTAMPS`] map
+    /// or if the requested REST version is not defined for the run period.
     pub fn with_run_period(
         mut self,
         run_period: RunPeriod,
-        rest_version: Option<usize>,
+        rest_version: RESTVersionSelection,
     ) -> CCDBResult<Self> {
         self.runs = run_period.run_range().collect();
-        if let Some(rest_version) = rest_version {
-            let version = resolve_rest_version(run_period, rest_version)?;
-            self.timestamp = version.timestamp;
-        }
+        self.timestamp = rest_version.resolve_timestamp(run_period)?;
         Ok(self)
     }
     /// Returns a context scoped to a single run number.
@@ -191,7 +187,7 @@ impl Context {
 }
 
 /// Errors that can occur when parsing a [`Request`] string.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ParseRequestError {
     /// Failed to parse the path portion of the request.
     #[error("{0}")]
@@ -204,13 +200,13 @@ pub enum ParseRequestError {
     InvalidRunNumberError(String),
 }
 
-/// Parsed representation of a CCDB request string, containing both the [`NamePath`] and [`Context`].
+/// Parsed representation of a CCDB request string, containing both the [`NamePath`] and [`CCDBContext`].
 #[derive(Debug, Clone)]
 pub struct Request {
     /// Absolute path to the requested table.
     pub path: NamePath,
     /// Context describing run/variation/timestamp selection.
-    pub context: Context,
+    pub context: CCDBContext,
 }
 impl FromStr for Request {
     type Err = ParseRequestError;
@@ -242,7 +238,7 @@ impl FromStr for Request {
         }
         Ok(Request {
             path,
-            context: Context::new(run.map(|r| vec![r]), variation, timestamp),
+            context: CCDBContext::new(run.map(|r| vec![r]), variation, timestamp),
         })
     }
 }

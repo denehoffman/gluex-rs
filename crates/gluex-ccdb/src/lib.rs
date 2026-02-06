@@ -41,12 +41,15 @@ pub enum CCDBError {
     /// Request string failed to parse.
     #[error("{0}")]
     ParseRequestError(#[from] context::ParseRequestError),
+    /// CCDB path failed validation.
+    #[error("{0}")]
+    NamePathError(#[from] context::NamePathError),
     /// Timestamp string failed to parse.
     #[error("{0}")]
     ParseTimestampError(#[from] ParseTimestampError),
     /// Error finding the requested REST version.
     #[error("{0}")]
-    RestVersionError(#[from] gluex_core::run_periods::RestVersionError),
+    RESTVersionError(#[from] gluex_core::run_periods::RESTVersionError),
     /// Error parsing the requested run period.
     #[error("{0}")]
     RunPeriodError(#[from] gluex_core::run_periods::RunPeriodError),
@@ -55,8 +58,14 @@ pub enum CCDBError {
     MissingConnectionEnv(String),
 }
 
-/// Re-exports of the most commonly used types and constructors.
-pub mod prelude {
-    pub use crate::{context::Context, database::CCDB, CCDBError, CCDBResult};
-    pub use gluex_core::RunNumber;
-}
+pub use crate::context::{CCDBContext, NamePath, NamePathError, ParseRequestError};
+pub use crate::data::{CCDBDataError, Column, ColumnDef, ColumnLayout, Data, RowView, Value};
+pub use crate::database::CCDB;
+pub use crate::models::{
+    AssignmentMeta, AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta,
+    EventRangeMeta, RunRangeMeta, TypeTableMeta, VariationMeta,
+};
+pub use gluex_core::{
+    run_periods::{RESTVersionError, RunPeriod, RunPeriodError},
+    RESTVersion, RunNumber,
+};

@@ -34,12 +34,12 @@ impl RunSelection {
 
 /// Lightweight request context describing run selection.
 #[derive(Debug, Clone)]
-pub struct Context {
+pub struct RCDBContext {
     selection: RunSelection,
     filters: Vec<Expr>,
 }
 
-impl Default for Context {
+impl Default for RCDBContext {
     fn default() -> Self {
         Self {
             selection: RunSelection::All,
@@ -48,7 +48,7 @@ impl Default for Context {
     }
 }
 
-impl Context {
+impl RCDBContext {
     /// Builds a context that selects every run.
     #[must_use]
     pub fn new() -> Self {

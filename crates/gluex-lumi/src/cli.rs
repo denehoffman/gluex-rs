@@ -2,13 +2,13 @@ use std::{collections::HashMap, env, ffi::OsString, io, path::PathBuf, str::From
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use gluex_core::{
+    run_periods::{parse_rest_version_selection, rest_versions_for, RESTVersionError, RunPeriod},
     RunNumber,
-    run_periods::{RunPeriod, rest_versions_for},
 };
 use serde_json::to_writer_pretty;
 use strum::IntoEnumIterator;
 
-use crate::{Context, Luminosity, RestSelection};
+use crate::{Luminosity, LuminosityContext, RESTVersionSelection};
 
 #[derive(Parser)]
 #[command(name = "gluex-lumi", version)]
@@ -28,10 +28,11 @@ enum Command {
 
 #[derive(Args, Debug, Clone)]
 struct FluxArgs {
-    /// Run period selection: <run>[=<rest>]
+    /// Run period selection: <run>[=<rest_version>]
     /// Example: f18=0, s19=2, s23
+    /// Unknown REST versions fall back to the current timestamp with a warning.
     #[arg(long = "run", value_parser = parse_run_pair)]
-    runs: Vec<(RunPeriod, RestSelection)>,
+    runs: Vec<(RunPeriod, RESTVersionSelection)>,
 
     /// Number of bins
     #[arg(long)]
@@ -63,7 +64,7 @@ struct FluxArgs {
 }
 
 struct FluxConfig {
-    run_selection: HashMap<RunPeriod, RestSelection>,
+    run_selection: HashMap<RunPeriod, RESTVersionSelection>,
     bins: usize,
     min_edge: f64,
     max_edge: f64,
@@ -73,20 +74,30 @@ struct FluxConfig {
     ccdb: PathBuf,
 }
 
-fn parse_run_pair(s: &str) -> Result<(RunPeriod, RestSelection), String> {
-    let (run_str, rest) = match s.split_once('=') {
+fn parse_run_pair(s: &str) -> Result<(RunPeriod, RESTVersionSelection), String> {
+    let (run_str, rest_version) = match s.split_once('=') {
         Some((r, v)) => (r, Some(v)),
         None => (s, None),
     };
 
     let run = RunPeriod::from_str(run_str).map_err(|e| format!("{e:?}"))?;
 
-    let selection = match rest {
-        Some(v) => RestSelection::Version(
+    let parsed = rest_version
+        .map(|v| {
             v.parse::<usize>()
-                .map_err(|_| format!("REST must be an unsigned integer, got '{v}'"))?,
-        ),
-        None => RestSelection::Current,
+                .map_err(|_| format!("REST must be an unsigned integer, got '{v}'"))
+        })
+        .transpose()?;
+    let selection = match parse_rest_version_selection(run, parsed) {
+        Ok(selection) => selection,
+        Err(RESTVersionError::UnknownRESTVersion { requested, .. }) => {
+            eprintln!(
+                "Warning: REST ver{requested:02} is not defined for run period {}. Using current timestamp instead.",
+                run.short_name()
+            );
+            RESTVersionSelection::Current
+        }
+        Err(err) => return Err(err.to_string()),
     };
 
     Ok((run, selection))
@@ -152,11 +163,12 @@ pub fn cli() -> Result<(), Box<dyn std::error::Error>> {
 
 impl FluxArgs {
     fn into_config(self) -> Result<FluxConfig, Box<dyn std::error::Error>> {
-        let run_selection: HashMap<RunPeriod, RestSelection> = self.runs.into_iter().collect();
+        let run_selection: HashMap<RunPeriod, RESTVersionSelection> =
+            self.runs.into_iter().collect();
         if run_selection.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "at least one --run=<period>=<rest> argument is required",
+                "at least one --run=<period>=<rest_version> argument is required",
             )
             .into());
         }
@@ -227,7 +239,7 @@ fn run_flux(args: FluxArgs) -> Result<(), Box<dyn std::error::Error>> {
         .keys()
         .flat_map(|period| period.iter_runs())
         .collect();
-    let ctx = Context::new(runs, run_selection)?
+    let ctx = LuminosityContext::new(runs, run_selection)?
         .with_coherent_peak(coherent_peak)
         .with_polarized(polarized);
     let lumi = Luminosity::new(rcdb, ccdb);

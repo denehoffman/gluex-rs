@@ -5,7 +5,7 @@ use std::{collections::HashMap, str::FromStr};
 use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
 
-use crate::{RestVersion, RunNumber};
+use crate::{RESTVersion, RunNumber};
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RunPeriod {
@@ -33,6 +33,91 @@ pub enum RunPeriod {
     RP2023_01,
     /// ECAL Commissioning/GlueX Phase II
     RP2025_01,
+}
+
+/// REST version selection for run-period queries.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
+pub enum RESTVersionSelection {
+    /// Use the current timestamp for the run period.
+    #[default]
+    Current,
+    /// Use a specific REST version.
+    Version(RESTVersion),
+    /// Use a specific timestamp directly.
+    Timestamp(DateTime<Utc>),
+}
+
+impl RESTVersionSelection {
+    /// Returns a selection for a specific REST version after validating against known metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the requested REST version is not known for the given run period.
+    pub fn try_new(
+        run_period: RunPeriod,
+        rest_version: RESTVersion,
+    ) -> Result<Self, RESTVersionError> {
+        let Some(versions) = REST_VERSION_TIMESTAMPS.get(&run_period) else {
+            return Err(RESTVersionError::MissingRESTVersions(run_period));
+        };
+        if versions.contains_key(&rest_version) {
+            Ok(Self::Version(rest_version))
+        } else {
+            Err(RESTVersionError::UnknownRESTVersion {
+                run_period,
+                requested: rest_version,
+            })
+        }
+    }
+
+    /// Returns a selection for a specific timestamp.
+    #[must_use]
+    pub fn from_timestamp(timestamp: DateTime<Utc>) -> Self {
+        Self::Timestamp(timestamp)
+    }
+
+    /// Resolve the timestamp for this selection within the given run period.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the requested REST version is not defined for the run period or
+    /// if the run period has no REST metadata.
+    pub fn resolve_timestamp(
+        self,
+        run_period: RunPeriod,
+    ) -> Result<DateTime<Utc>, RESTVersionError> {
+        match self {
+            Self::Current => Ok(Utc::now()),
+            Self::Timestamp(timestamp) => Ok(timestamp),
+            Self::Version(rest_version) => {
+                let rest_versions = REST_VERSION_TIMESTAMPS
+                    .get(&run_period)
+                    .ok_or(RESTVersionError::MissingRESTVersions(run_period))?;
+                rest_versions.get(&rest_version).copied().ok_or(
+                    RESTVersionError::UnknownRESTVersion {
+                        run_period,
+                        requested: rest_version,
+                    },
+                )
+            }
+        }
+    }
+}
+
+impl TryFrom<(RunPeriod, RESTVersion)> for RESTVersionSelection {
+    type Error = RESTVersionError;
+
+    fn try_from(value: (RunPeriod, RESTVersion)) -> Result<Self, Self::Error> {
+        RESTVersionSelection::try_new(value.0, value.1)
+    }
+}
+
+impl TryFrom<(RunPeriod, &RESTVersion)> for RESTVersionSelection {
+    type Error = RESTVersionError;
+
+    fn try_from(value: (RunPeriod, &RESTVersion)) -> Result<Self, Self::Error> {
+        RESTVersionSelection::try_new(value.0, *value.1)
+    }
 }
 
 impl RunPeriod {
@@ -131,7 +216,7 @@ pub fn coherent_peak(run: RunNumber) -> (f64, f64) {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum RunPeriodError {
     #[error("Run number {0} not in range of any known run period")]
     UnknownRunPeriodError(RunNumber),
@@ -173,7 +258,7 @@ impl TryFrom<RunNumber> for RunPeriod {
 
 lazy_static! {
     /// REST version timestamps sourced from hallddb
-    pub static ref REST_VERSION_TIMESTAMPS: HashMap<RunPeriod, HashMap<RestVersion, DateTime<Utc>>> = {
+pub static ref REST_VERSION_TIMESTAMPS: HashMap<RunPeriod, HashMap<RESTVersion, DateTime<Utc>>> = {
         let mut m = HashMap::new();
         let mut m_s16 = HashMap::new();
         m_s16.insert(1, Utc.with_ymd_and_hms(2016, 7, 5, 14, 20, 0).unwrap());
@@ -238,36 +323,23 @@ lazy_static! {
 
 /// Error returned when resolving REST versions for a run period.
 #[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RestVersionError {
+pub enum RESTVersionError {
     /// No REST metadata exists for the run period.
     #[error("Run period {0:?} is missing REST version metadata")]
-    MissingRestVersions(RunPeriod),
-    /// The requested REST version is unknown and no lower version exists.
-    #[error(
-        "REST version {requested} is not defined for run period {run_period:?} and no lower REST version exists"
-    )]
-    NoLowerRestVersion {
+    MissingRESTVersions(RunPeriod),
+    /// The requested REST version is not defined for the run period.
+    #[error("REST version {requested} is not defined for run period {run_period:?}")]
+    UnknownRESTVersion {
         /// Requested run period.
         run_period: RunPeriod,
         /// Requested REST version.
-        requested: RestVersion,
+        requested: RESTVersion,
     },
 }
 
-/// Resolution details for a REST version lookup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ResolvedRestVersion {
-    /// Requested REST version.
-    pub requested: RestVersion,
-    /// REST version ultimately used after applying fallback rules.
-    pub used: RestVersion,
-    /// Timestamp associated with the REST version.
-    pub timestamp: DateTime<Utc>,
-}
-
 /// Return the available REST versions and timestamps for `run_period` ordered by version.
-pub fn rest_versions_for(run_period: RunPeriod) -> Option<Vec<(RestVersion, DateTime<Utc>)>> {
-    let mut versions: Vec<(RestVersion, DateTime<Utc>)> = REST_VERSION_TIMESTAMPS
+pub fn rest_versions_for(run_period: RunPeriod) -> Option<Vec<(RESTVersion, DateTime<Utc>)>> {
+    let mut versions: Vec<(RESTVersion, DateTime<Utc>)> = REST_VERSION_TIMESTAMPS
         .get(&run_period)?
         .iter()
         .map(|(&version, &timestamp)| (version, timestamp))
@@ -276,34 +348,13 @@ pub fn rest_versions_for(run_period: RunPeriod) -> Option<Vec<(RestVersion, Date
     Some(versions)
 }
 
-/// Resolve the timestamp for `requested` using the fallback rules described in the documentation.
-pub fn resolve_rest_version(
+/// Parse an optional REST version for the given run period into a selection.
+pub fn parse_rest_version_selection(
     run_period: RunPeriod,
-    requested: RestVersion,
-) -> Result<ResolvedRestVersion, RestVersionError> {
-    let rest_versions = REST_VERSION_TIMESTAMPS
-        .get(&run_period)
-        .ok_or(RestVersionError::MissingRestVersions(run_period))?;
-
-    if let Some(timestamp) = rest_versions.get(&requested) {
-        return Ok(ResolvedRestVersion {
-            requested,
-            used: requested,
-            timestamp: *timestamp,
-        });
+    rest_version: Option<RESTVersion>,
+) -> Result<RESTVersionSelection, RESTVersionError> {
+    match rest_version {
+        Some(version) => RESTVersionSelection::try_new(run_period, version),
+        None => Ok(RESTVersionSelection::Current),
     }
-
-    rest_versions
-        .iter()
-        .filter(|(version, _)| **version < requested)
-        .max_by_key(|(version, _)| *version)
-        .map(|(version, timestamp)| ResolvedRestVersion {
-            requested,
-            used: *version,
-            timestamp: *timestamp,
-        })
-        .ok_or(RestVersionError::NoLowerRestVersion {
-            run_period,
-            requested,
-        })
 }

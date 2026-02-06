@@ -26,7 +26,7 @@ edges = [7.5 + 0.05 * i for i in range(21)]
 runs = [50002, 50003, 50004]
 ctx = lumi.Context(
     runs,
-    rest={"f18": None},  # uses current timestamp rather than REST version
+    rest_version={"f18": None},  # uses current timestamp rather than REST version
     coherent_peak=True,
     exclude_runs=[50003],
 )

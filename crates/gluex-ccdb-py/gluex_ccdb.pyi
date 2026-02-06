@@ -78,7 +78,7 @@ class TypeTableHandle:
         self,
         *,
         run_period: str,
-        rest_version: int | None = None,
+        rest_version: int | datetime | None = None,
         variation: str | None = None,
         timestamp: str | datetime | None = None,
     ) -> dict[int, Data]: ...
@@ -111,7 +111,7 @@ class CCDB:
         path: str,
         *,
         run_period: str,
-        rest_version: int | None = None,
+        rest_version: int | datetime | None = None,
         variation: str | None = None,
         timestamp: str | datetime | None = None,
     ) -> dict[int, Data]: ...

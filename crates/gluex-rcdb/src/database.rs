@@ -11,14 +11,14 @@ use rusqlite::types::Value as SqlValue;
 use rusqlite::{params_from_iter, Connection, OpenFlags, ToSql};
 
 use crate::{
-    context::{Context, RunSelection},
+    context::{RCDBContext, RunSelection},
     data::Value,
     models::{ConditionTypeMeta, ValueType},
     RCDBError, RCDBResult,
 };
 
 /// Primary entry point for interacting with an RCDB `SQLite` file.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RCDB {
     connection: Arc<Mutex<Connection>>,
     connection_path: String,
@@ -121,7 +121,7 @@ impl RCDB {
     pub fn fetch<S>(
         &self,
         condition_names: S,
-        context: &Context,
+        context: &RCDBContext,
     ) -> RCDBResult<BTreeMap<RunNumber, HashMap<String, Value>>>
     where
         S: IntoIterator,
@@ -254,7 +254,7 @@ impl RCDB {
     /// # Errors
     ///
     /// This method will return an error if the SQL query fails.
-    pub fn fetch_runs(&self, context: &Context) -> RCDBResult<Vec<RunNumber>> {
+    pub fn fetch_runs(&self, context: &RCDBContext) -> RCDBResult<Vec<RunNumber>> {
         if matches!(context.selection(), RunSelection::Runs(runs) if runs.is_empty()) {
             return Ok(Vec::new());
         }
@@ -310,7 +310,10 @@ impl RCDB {
         Ok(())
     }
 
-    fn build_matched_runs_query(&self, context: &Context) -> RCDBResult<(String, Vec<SqlValue>)> {
+    fn build_matched_runs_query(
+        &self,
+        context: &RCDBContext,
+    ) -> RCDBResult<(String, Vec<SqlValue>)> {
         let mut entries: Vec<ConditionQueryEntry> = Vec::new();
         let mut index_by_name: HashMap<String, usize> = HashMap::new();
         let mut predicate_refs: HashSet<String> = HashSet::new();

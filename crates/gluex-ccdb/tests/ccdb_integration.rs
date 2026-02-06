@@ -1,13 +1,13 @@
 #![allow(missing_docs)]
 
 use chrono::{Datelike, Timelike};
-use gluex_ccdb::{context::Context, database::CCDB, models::ColumnMeta, CCDBResult};
+use gluex_ccdb::{context::CCDBContext, database::CCDB, models::ColumnMeta, CCDBResult};
 use gluex_core::{errors::ParseTimestampError, parsers::parse_timestamp};
 const TABLE_PATH: &str = "/test/demo/mytable";
 
 fn open_db() -> CCDB {
-    let path = std::env::var("CCDB_CONNECTION")
-        .expect("CCDB_CONNECTION must be set for CCDB tests");
+    let path =
+        std::env::var("CCDB_CONNECTION").expect("CCDB_CONNECTION must be set for CCDB tests");
     CCDB::open(path).expect("failed to open CCDB test database")
 }
 
@@ -77,13 +77,13 @@ fn fetch_respects_runs_variations_and_timestamps() -> CCDBResult<()> {
     let first_available = parse_timestamp("2013-02-22 19:40:35")?;
     let updated = parse_timestamp("2020-02-01 00:00:00")?;
 
-    let empty_ctx = Context::default()
+    let empty_ctx = CCDBContext::default()
         .with_run_range(0..=3)
         .with_timestamp(before_first);
     let empty = db.fetch(TABLE_PATH, &empty_ctx)?;
     assert!(empty.is_empty());
 
-    let first_ctx = Context::default()
+    let first_ctx = CCDBContext::default()
         .with_run_range(0..=3)
         .with_timestamp(first_available);
     let first = db.fetch(TABLE_PATH, &first_ctx)?;
@@ -108,7 +108,7 @@ fn fetch_respects_runs_variations_and_timestamps() -> CCDBResult<()> {
         assert_eq!(data.named_double("z", 1), Some(5.0));
     }
 
-    let mc_ctx = Context::default()
+    let mc_ctx = CCDBContext::default()
         .with_run(2)
         .with_variation("mc")
         .with_timestamp(first_available);
@@ -117,7 +117,7 @@ fn fetch_respects_runs_variations_and_timestamps() -> CCDBResult<()> {
     assert_eq!(mc_data.named_double("x", 0), Some(0.0));
     assert_eq!(mc_data.named_double("z", 1), Some(5.0));
 
-    let updated_ctx = Context::default()
+    let updated_ctx = CCDBContext::default()
         .with_run_range(0..=3)
         .with_timestamp(updated);
     let updated_data = db.fetch(TABLE_PATH, &updated_ctx)?;

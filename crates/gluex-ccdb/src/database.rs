@@ -1,5 +1,5 @@
 use crate::{
-    context::{Context, Request},
+    context::{CCDBContext, Request},
     data::{ColumnLayout, Data},
     models::{
         AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta,
@@ -47,7 +47,7 @@ fn normalize_path(base: &str, path: &str) -> String {
 }
 
 /// Read-only client for the Jefferson Lab Calibration and Conditions Database.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CCDB {
     connection: Arc<Mutex<Connection>>,
     connection_path: String,
@@ -347,19 +347,19 @@ impl CCDB {
         table.fetch(&request.context)
     }
 
-    /// Fetches data for a table path using the supplied [`Context`].
+    /// Fetches data for a table path using the supplied [`CCDBContext`].
     /// # Errors
     ///
     /// This method returns an error if the parsed table path
     /// does not exist or an error occurs while fetching data.
-    pub fn fetch(&self, path: &str, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
+    pub fn fetch(&self, path: &str, ctx: &CCDBContext) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let table = self.table(path)?;
         table.fetch(ctx)
     }
 }
 
 /// Handle to a CCDB directory, allowing navigation and table discovery.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DirectoryHandle {
     db: CCDB,
     pub(crate) meta: DirectoryMeta,
@@ -466,7 +466,7 @@ impl DirectoryHandle {
 }
 
 /// Handle to a CCDB table, enabling metadata inspection and data fetches.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TypeTableHandle {
     db: CCDB,
     pub(crate) meta: TypeTableMeta,
@@ -556,7 +556,7 @@ impl TypeTableHandle {
     ///
     /// Returns an error if resolving assignments fails, if any SQL queries fail, or if vault data
     /// cannot be decoded for the requested runs.
-    pub fn fetch(&self, ctx: &Context) -> CCDBResult<BTreeMap<RunNumber, Data>> {
+    pub fn fetch(&self, ctx: &CCDBContext) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let runs: Vec<RunNumber> = if ctx.runs.is_empty() {
             vec![0]
         } else {

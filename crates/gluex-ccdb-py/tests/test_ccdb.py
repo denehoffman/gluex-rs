@@ -86,3 +86,30 @@ def test_fetch_across_runs_timestamps_and_variations(db: gluex_ccdb.CCDB):
             "double",
         ]
         assert [value for _, _, value in row_columns] == [4.0, 5.0, 6.0]
+
+
+def test_fetch_run_period_accepts_datetime_rest_version(db: gluex_ccdb.CCDB):
+    query_timestamp = dt.datetime(2017, 6, 12, 18, 2, 0, tzinfo=dt.timezone.utc)
+
+    by_rest_version = db.fetch_run_period(
+        TABLE_PATH,
+        run_period="s17",
+        rest_version=query_timestamp,
+    )
+    by_timestamp = db.fetch_run_period(
+        TABLE_PATH,
+        run_period="s17",
+        timestamp=query_timestamp,
+    )
+    assert set(by_rest_version) == set(by_timestamp)
+
+    table = db.table(TABLE_PATH)
+    table_by_rest_version = table.fetch_run_period(
+        run_period="s17",
+        rest_version=query_timestamp,
+    )
+    table_by_timestamp = table.fetch_run_period(
+        run_period="s17",
+        timestamp=query_timestamp,
+    )
+    assert set(table_by_rest_version) == set(table_by_timestamp)

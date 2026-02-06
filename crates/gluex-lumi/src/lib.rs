@@ -1,14 +1,6 @@
 use chrono::{DateTime, TimeZone, Utc};
-use gluex_ccdb::{
-    context::Context as CCDBContext,
-    prelude::{CCDB, CCDBError},
-};
-use gluex_core::{
-    RestVersion, RunNumber,
-    histograms::Histogram,
-    run_periods::{RestVersionError, RunPeriod, RunPeriodError, resolve_rest_version},
-};
-use gluex_rcdb::prelude::{RCDB, RCDBError};
+use gluex_ccdb::{CCDBContext, CCDBError, CCDB};
+use gluex_rcdb::{RCDBContext, RCDBError, RCDB};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -22,7 +14,12 @@ pub mod cli;
 
 pub const BERILLIUM_RADIATION_LENGTH_METERS: f64 = 35.28e-2;
 
-#[derive(Error, Debug)]
+pub use gluex_core::{
+    run_periods::{RESTVersionError, RunPeriod, RunPeriodError},
+    Histogram, RESTVersion, RESTVersionSelection, RunNumber,
+};
+
+#[derive(Error, Debug, Clone)]
 #[error("Unknown radiator: {0}")]
 pub struct ConverterParseError(String);
 
@@ -71,68 +68,57 @@ fn rp2019_11_override_timestamp() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2021, 4, 23, 0, 0, 1).unwrap()
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum RestSelection {
-    Current,
-    Version(RestVersion),
-}
-
-#[derive(Error, Debug)]
-pub enum ContextError {
+#[derive(Error, Debug, Clone, Copy)]
+pub enum LuminosityContextError {
     #[error("at least one run number is required")]
     EmptyRunSelection,
 }
 
 #[derive(Debug, Clone)]
-pub struct Context {
+pub struct LuminosityContext {
     runs: Vec<RunNumber>,
-    rest: HashMap<RunPeriod, RestSelection>,
+    rest_version: HashMap<RunPeriod, RESTVersionSelection>,
     coherent_peak: bool,
     polarized: bool,
     exclude_runs: Vec<RunNumber>,
 }
 
-impl Context {
+impl LuminosityContext {
     pub fn new(
         runs: Vec<RunNumber>,
-        rest: HashMap<RunPeriod, RestSelection>,
-    ) -> Result<Self, ContextError> {
+        rest_version: HashMap<RunPeriod, RESTVersionSelection>,
+    ) -> Result<Self, LuminosityContextError> {
         let mut runs = runs;
         runs.sort_unstable();
         runs.dedup();
         if runs.is_empty() {
-            return Err(ContextError::EmptyRunSelection);
+            return Err(LuminosityContextError::EmptyRunSelection);
         }
         Ok(Self {
             runs,
-            rest,
+            rest_version,
             coherent_peak: false,
             polarized: false,
             exclude_runs: Vec::new(),
         })
     }
 
-    #[must_use]
     pub fn runs(&self) -> &[RunNumber] {
         &self.runs
     }
 
-    #[must_use]
-    pub fn rest(&self) -> &HashMap<RunPeriod, RestSelection> {
-        &self.rest
+    pub fn rest_version(&self) -> &HashMap<RunPeriod, RESTVersionSelection> {
+        &self.rest_version
     }
 
-    #[must_use]
     pub fn coherent_peak(&self) -> bool {
         self.coherent_peak
     }
 
-    #[must_use]
     pub fn polarized(&self) -> bool {
         self.polarized
     }
 
-    #[must_use]
     pub fn exclude_runs(&self) -> &[RunNumber] {
         &self.exclude_runs
     }
@@ -140,12 +126,12 @@ impl Context {
     pub fn with_runs(
         mut self,
         runs: impl IntoIterator<Item = RunNumber>,
-    ) -> Result<Self, ContextError> {
+    ) -> Result<Self, LuminosityContextError> {
         let mut run_list: Vec<RunNumber> = runs.into_iter().collect();
         run_list.sort_unstable();
         run_list.dedup();
         if run_list.is_empty() {
-            return Err(ContextError::EmptyRunSelection);
+            return Err(LuminosityContextError::EmptyRunSelection);
         }
         self.runs = run_list;
         Ok(self)
@@ -168,8 +154,12 @@ impl Context {
     }
 
     #[must_use]
-    pub fn with_rest(mut self, run_period: RunPeriod, selection: RestSelection) -> Self {
-        self.rest.insert(run_period, selection);
+    pub fn with_rest_version(
+        mut self,
+        run_period: RunPeriod,
+        selection: RESTVersionSelection,
+    ) -> Self {
+        self.rest_version.insert(run_period, selection);
         self
     }
 
@@ -214,28 +204,15 @@ impl Default for Luminosity {
 }
 
 impl Luminosity {
-    #[must_use]
     pub fn new(rcdb: impl AsRef<Path>, ccdb: impl AsRef<Path>) -> Self {
         Self {
             rcdb: rcdb.as_ref().to_path_buf(),
             ccdb: ccdb.as_ref().to_path_buf(),
         }
     }
-
-    #[must_use]
-    pub fn with_rcdb(mut self, path: impl AsRef<Path>) -> Self {
-        self.rcdb = path.as_ref().to_path_buf();
-        self
-    }
-
-    #[must_use]
-    pub fn with_ccdb(mut self, path: impl AsRef<Path>) -> Self {
-        self.ccdb = path.as_ref().to_path_buf();
-        self
-    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FluxCache {
     pub livetime_scaling: f64,
     pub pair_spectrometer_parameters: (f64, f64, f64),
@@ -249,7 +226,7 @@ pub struct FluxCache {
 }
 
 #[derive(Error, Debug)]
-pub enum GlueXLumiError {
+pub enum LuminosityError {
     #[error("{0}")]
     RCDBError(#[from] RCDBError),
     #[error("{0}")]
@@ -259,11 +236,11 @@ pub enum GlueXLumiError {
     #[error("Missing endpoint calibration for run {0}")]
     MissingEndpointCalibration(RunNumber),
     #[error("{0}")]
-    RestVersionError(#[from] RestVersionError),
+    RESTVersionError(#[from] RESTVersionError),
     #[error("{0}")]
     RunPeriodError(#[from] RunPeriodError),
     #[error("{0}")]
-    ContextError(#[from] ContextError),
+    LuminosityContextError(#[from] LuminosityContextError),
 }
 
 fn get_flux_cache(
@@ -273,7 +250,7 @@ fn get_flux_cache(
     timestamp: DateTime<Utc>,
     rcdb_path: &Path,
     ccdb_path: &Path,
-) -> Result<HashMap<RunNumber, FluxCache>, GlueXLumiError> {
+) -> Result<HashMap<RunNumber, FluxCache>, LuminosityError> {
     if runs.is_empty() {
         return Ok(HashMap::new());
     }
@@ -288,7 +265,7 @@ fn get_flux_cache(
     let polarimeter_converter: HashMap<RunNumber, Converter> = rcdb
         .fetch(
             ["polarimeter_converter"],
-            &gluex_rcdb::context::Context::default()
+            &RCDBContext::default()
                 .with_runs(runs.iter().copied())
                 .filter(rcdb_filters),
         )?
@@ -310,7 +287,7 @@ fn get_flux_cache(
         })
         .collect::<Result<HashMap<RunNumber, Converter>, ConverterParseError>>()?;
     let ccdb = CCDB::open(ccdb_path)?;
-    let ccdb_context = gluex_ccdb::context::Context::default().with_runs(runs.iter().copied());
+    let ccdb_context = CCDBContext::default().with_runs(runs.iter().copied());
     let ccdb_context_restver = ccdb_context.clone().with_timestamp(timestamp);
     let livetime_ratio: HashMap<RunNumber, f64> = ccdb
         .fetch(
@@ -566,11 +543,15 @@ impl Luminosity {
     ///
     /// # Arguments
     /// * `edges` - Photon-energy bin edges used to construct output [`Histogram`]s.
-    /// * `ctx` - [`Context`] defining runs, REST versions, and selection flags.
+    /// * `ctx` - [`LuminosityContext`] defining runs, REST versions, and selection flags.
     ///
     /// # Returns
     /// [`FluxHistograms`] for flux and tagged luminosity that satisfy the requested selections.
-    pub fn fetch(&self, edges: &[f64], ctx: &Context) -> Result<FluxHistograms, GlueXLumiError> {
+    pub fn fetch(
+        &self,
+        edges: &[f64],
+        ctx: &LuminosityContext,
+    ) -> Result<FluxHistograms, LuminosityError> {
         let mut cache: HashMap<RunNumber, FluxCache> = HashMap::new();
         let coherent_peak = ctx.coherent_peak();
         let mut tagged_flux_hist = Histogram::empty(edges);
@@ -583,7 +564,7 @@ impl Luminosity {
             run_numbers.retain(|run| !exclude_set.contains(run));
         }
         if run_numbers.is_empty() {
-            return Err(ContextError::EmptyRunSelection.into());
+            return Err(LuminosityContextError::EmptyRunSelection.into());
         }
         let mut runs_by_period: HashMap<RunPeriod, Vec<RunNumber>> = HashMap::new();
         for run in &run_numbers {
@@ -594,25 +575,11 @@ impl Luminosity {
         run_periods.sort_unstable();
         for rp in run_periods.iter() {
             let selection = ctx
-                .rest()
+                .rest_version()
                 .get(rp)
                 .copied()
-                .unwrap_or(RestSelection::Current);
-            let timestamp = match selection {
-                RestSelection::Current => Utc::now(),
-                RestSelection::Version(rest_version) => {
-                    let resolved = resolve_rest_version(*rp, rest_version)?;
-                    if resolved.requested != resolved.used {
-                        eprintln!(
-                            "Warning: REST ver{req:02} was not found for run period {} so ver{used:02} was used instead.",
-                            rp.short_name(),
-                            req = resolved.requested,
-                            used = resolved.used
-                        );
-                    }
-                    resolved.timestamp
-                }
-            };
+                .unwrap_or(RESTVersionSelection::Current);
+            let timestamp = selection.resolve_timestamp(*rp)?;
             cache.extend(get_flux_cache(
                 *rp,
                 runs_by_period
@@ -629,7 +596,7 @@ impl Luminosity {
                 let delta_e = match data.photon_endpoint_calibration {
                     Some(calibration) => data.photon_endpoint_energy - calibration,
                     None if run > 60000 => {
-                        return Err(GlueXLumiError::MissingEndpointCalibration(run));
+                        return Err(LuminosityError::MissingEndpointCalibration(run));
                     }
                     None => 0.0,
                 };

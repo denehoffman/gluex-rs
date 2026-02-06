@@ -13,12 +13,12 @@ cargo add gluex-ccdb
 ## Example
 
 ```rust
-use gluex_ccdb::prelude::*;
+use gluex_ccdb::{CCDB, CCDBContext, CCDBResult};
 
 fn main() -> CCDBResult<()> {
     // Uses CCDB_CONNECTION by default; use CCDB::open(...) for explicit paths.
     let ccdb = CCDB::new()?;
-    let ctx = Context::default().with_run_range(55_000..=55_010);
+    let ctx = CCDBContext::default().with_run_range(55_000..=55_010);
     let tables = ccdb.fetch("/PHOTON_BEAM/pair_spectrometer/lumi/trig_live", &ctx)?;
 
     for (run, dataset) in tables {

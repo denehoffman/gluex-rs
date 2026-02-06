@@ -12,10 +12,10 @@ pub mod database;
 pub mod models;
 
 use gluex_core::errors::ParseTimestampError;
-use gluex_core::RunNumber;
 use thiserror::Error;
 
-use crate::models::ValueType;
+use crate::models::ValueType as LocalValueType;
+use gluex_core::RunNumber as LocalRunNumber;
 
 /// Convenience alias for results returned from RCDB operations.
 pub type RCDBResult<T> = Result<T, RCDBError>;
@@ -47,9 +47,9 @@ pub enum RCDBError {
         /// Name of the offending condition.
         condition_name: String,
         /// Type requested by the predicate builder.
-        expected: ValueType,
+        expected: LocalValueType,
         /// Type stored in the database schema.
-        actual: ValueType,
+        actual: LocalValueType,
     },
     /// `time` condition row was missing a `time_value` entry.
     #[error("missing time_value for condition {condition_name} at run {run_number}")]
@@ -57,22 +57,17 @@ pub enum RCDBError {
         /// Name of the time-valued condition.
         condition_name: String,
         /// Run number missing the time value.
-        run_number: RunNumber,
+        run_number: LocalRunNumber,
     },
     /// Required environment variable is not set.
     #[error("missing {0} environment variable for RCDB connection")]
     MissingConnectionEnv(String),
 }
 
-/// Re-exports for the most common types.
-pub mod prelude {
-    pub use crate::{
-        conditions,
-        context::{Context, RunSelection},
-        data::Value,
-        database::RCDB,
-        models::ValueType,
-        RCDBError, RCDBResult,
-    };
-    pub use gluex_core::RunNumber;
-}
+pub use crate::conditions::{BoolField, Expr, FloatField, IntField, StringField, TimeField};
+pub use crate::context::{RCDBContext, RunSelection};
+pub use crate::data::Value;
+pub use crate::database::RCDB;
+pub use crate::models::ValueType;
+pub use gluex_core::run_periods::RunPeriod;
+pub use gluex_core::RunNumber;

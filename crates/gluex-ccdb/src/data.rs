@@ -215,6 +215,7 @@ impl<'a> Value<'a> {
 }
 
 /// Borrowed view over a single row of a [`Data`] table.
+#[derive(Debug, Clone, Copy)]
 pub struct RowView<'a> {
     row: usize,
     columns: &'a [Column],
@@ -420,6 +421,7 @@ impl ColumnLayout {
 }
 
 /// Column-major table returned from CCDB fetch operations.
+#[derive(Debug, Clone)]
 pub struct Data {
     n_rows: usize,
     layout: Arc<ColumnLayout>,

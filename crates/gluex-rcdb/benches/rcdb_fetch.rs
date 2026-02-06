@@ -3,7 +3,7 @@ use std::{hint::black_box, path::PathBuf, time::Duration};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use gluex_core::run_periods::RunPeriod;
-use gluex_rcdb::prelude::*;
+use gluex_rcdb::{conditions::aliases::approved_production, context::RCDBContext, RCDB};
 
 fn rcdb_path() -> PathBuf {
     if let Ok(path) = std::env::var("RCDB_BENCH_CONNECTION") {
@@ -21,11 +21,9 @@ fn bench_polarimeter_fetch(c: &mut Criterion) {
     let run_period = RunPeriod::RP2018_08;
     let start_run = run_period.min_run();
     let end_run = start_run + 500;
-    let context = gluex_rcdb::context::Context::default()
+    let context = RCDBContext::default()
         .with_run_range(start_run..=end_run)
-        .filter(gluex_rcdb::conditions::aliases::approved_production(
-            run_period,
-        ));
+        .filter(approved_production(run_period));
 
     c.bench_function("rcdb_fetch/polarimeter_converter_rp2018_08", |b| {
         let rcdb = rcdb.clone();

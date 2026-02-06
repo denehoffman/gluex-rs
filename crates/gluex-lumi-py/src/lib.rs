@@ -1,10 +1,11 @@
 use std::{collections::HashMap, env, error::Error, str::FromStr};
 
 use ::gluex_lumi as lumi_crate;
-use gluex_core::{histograms::Histogram, run_periods::RunPeriod, RestVersion, RunNumber};
+use chrono::{DateTime, Utc};
+use gluex_core::{histograms::Histogram, run_periods::RunPeriod, RESTVersion, RunNumber};
 use lumi_crate::{
-    Context as RustContext, FluxHistograms as RustFluxHistograms, GlueXLumiError,
-    Luminosity as RustLuminosity, RestSelection,
+    FluxHistograms as RustFluxHistograms, Luminosity as RustLuminosity,
+    LuminosityContext as RustContext, LuminosityError, RESTVersionSelection,
 };
 use pyo3::{
     exceptions::PyRuntimeError,
@@ -97,21 +98,34 @@ impl PyFluxHistograms {
     }
 }
 
-fn py_lumi_error(err: GlueXLumiError) -> PyErr {
+fn py_lumi_error(err: LuminosityError) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
 }
 
-fn parse_run_periods(obj: &Bound<'_, PyAny>) -> PyResult<HashMap<RunPeriod, RestSelection>> {
-    let mapping: HashMap<String, Option<RestVersion>> = obj.extract().map_err(|_| {
-        PyRuntimeError::new_err("run_periods must map run-period names to REST versions or None")
+fn parse_run_periods(obj: &Bound<'_, PyAny>) -> PyResult<HashMap<RunPeriod, RESTVersionSelection>> {
+    let mapping = obj.cast::<PyDict>().map_err(|_| {
+        PyRuntimeError::new_err(
+            "run_periods must map run-period names to REST versions (int), datetime, or None",
+        )
     })?;
     let mut selection = HashMap::with_capacity(mapping.len());
-    for (name, rest) in mapping {
+    for (name, rest_version) in mapping.iter() {
+        let name = name
+            .extract::<String>()
+            .map_err(|_| PyRuntimeError::new_err("run_period names must be strings"))?;
         let period =
             RunPeriod::from_str(&name).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        let request = match rest {
-            Some(value) => RestSelection::Version(value),
-            None => RestSelection::Current,
+        let request = if rest_version.is_none() {
+            RESTVersionSelection::Current
+        } else if let Ok(version) = rest_version.extract::<RESTVersion>() {
+            RESTVersionSelection::try_new(period, version)
+                .map_err(|err| PyRuntimeError::new_err(err.to_string()))?
+        } else if let Ok(timestamp) = rest_version.extract::<DateTime<Utc>>() {
+            RESTVersionSelection::from_timestamp(timestamp)
+        } else {
+            return Err(PyRuntimeError::new_err(
+                "run_periods must map run-period names to REST versions (int), datetime, or None",
+            ));
         };
         selection.insert(period, request);
     }
@@ -133,8 +147,8 @@ fn resolve_connection_path(value: Option<String>, env_var: &str) -> PyResult<Str
 /// ----------
 /// runs : Sequence[int]
 ///     Explicit run numbers to include in the calculation.
-/// rest : Mapping[str, int | None], optional
-///     Mapping from run-period short names (e.g. "f18") to REST versions or None.
+/// rest_version : Mapping[str, int | datetime | None], optional
+///     Mapping from run-period short names (e.g. "f18") to REST versions, timestamps, or None.
 /// coherent_peak : bool, optional
 ///     If true, only retain photons in the coherent peak for each run.
 /// polarized : bool, optional
@@ -149,19 +163,19 @@ pub struct PyContext {
 #[pymethods]
 impl PyContext {
     #[new]
-    #[pyo3(signature = (runs, rest=None, *, coherent_peak=false, polarized=false, exclude_runs=None))]
+    #[pyo3(signature = (runs, rest_version=None, *, coherent_peak=false, polarized=false, exclude_runs=None))]
     fn new(
         runs: Vec<RunNumber>,
-        rest: Option<Bound<'_, PyAny>>,
+        rest_version: Option<Bound<'_, PyAny>>,
         coherent_peak: bool,
         polarized: bool,
         exclude_runs: Option<Vec<RunNumber>>,
     ) -> PyResult<Self> {
-        let rest_map = match rest {
+        let rest_version_map = match rest_version {
             Some(value) => parse_run_periods(&value)?,
             None => HashMap::new(),
         };
-        let mut ctx = RustContext::new(runs, rest_map)
+        let mut ctx = RustContext::new(runs, rest_version_map)
             .map_err(|err| PyRuntimeError::new_err(err.to_string()))?
             .with_coherent_peak(coherent_peak)
             .with_polarized(polarized);
@@ -221,7 +235,10 @@ impl PyLuminosity {
                 "edges must contain at least two values",
             ));
         }
-        let histograms = self.inner.fetch(&edges, &ctx.inner).map_err(py_lumi_error)?;
+        let histograms = self
+            .inner
+            .fetch(&edges, &ctx.inner)
+            .map_err(py_lumi_error)?;
         flux_histograms_to_py(py, &histograms)
     }
 }

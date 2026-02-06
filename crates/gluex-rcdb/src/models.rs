@@ -108,6 +108,7 @@ impl ConditionTypeMeta {
 }
 
 /// Raw metadata row for an individual condition value.
+#[derive(Debug, Clone)]
 pub struct ConditionMeta {
     pub(crate) id: Id,
     pub(crate) text_value: String,
@@ -174,6 +175,7 @@ impl ConditionMeta {
 }
 
 /// Metadata describing a named RCDB run period.
+#[derive(Debug, Clone)]
 pub struct RunPeriodMeta {
     pub(crate) id: Id,
     pub(crate) name: String,
@@ -228,6 +230,7 @@ impl RunPeriodMeta {
 }
 
 /// Metadata describing a single run record.
+#[derive(Debug, Clone)]
 pub struct RunMeta {
     pub(crate) number: RunNumber,
     pub(crate) started: String,

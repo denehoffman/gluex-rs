@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// Errors that can occur while parsing a timestamp string.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ParseTimestampError {
     /// Input contained no digits from which to form a timestamp.
     #[error("timestamp \"{0}\" has no digits")]

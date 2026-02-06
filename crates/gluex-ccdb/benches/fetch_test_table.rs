@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use gluex_ccdb::{context::Context, database::CCDB};
+use gluex_ccdb::{context::CCDBContext, database::CCDB};
 
 const TABLE_PATH: &str = "/test/demo/mytable";
 const DEFAULT_DB: &str = "ccdb.sqlite";
@@ -17,7 +17,7 @@ fn open_table() -> gluex_ccdb::database::TypeTableHandle {
 
 fn bench_fetch_range(c: &mut Criterion) {
     let table = open_table();
-    let ctx = Context::default().with_run_range(0..=30_000);
+    let ctx = CCDBContext::default().with_run_range(0..=30_000);
 
     let mut group = c.benchmark_group("fetch_test_table_range");
     group.sample_size(20);
@@ -33,7 +33,7 @@ fn bench_fetch_range(c: &mut Criterion) {
 
 fn bench_fetch_single_run(c: &mut Criterion) {
     let table = open_table();
-    let ctx = Context::default().with_run(2);
+    let ctx = CCDBContext::default().with_run(2);
 
     let mut group = c.benchmark_group("fetch_test_table_single_run");
     group.sample_size(20);

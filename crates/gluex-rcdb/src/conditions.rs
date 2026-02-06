@@ -357,7 +357,7 @@ where
 }
 
 /// Builder used to create integer comparison expressions.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct IntField {
     field: String,
 }
@@ -419,7 +419,7 @@ impl IntField {
 }
 
 /// Builder used to create floating-point comparison expressions.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FloatField {
     field: String,
 }
@@ -472,7 +472,7 @@ impl FloatField {
 }
 
 /// Builder used to create string comparison expressions.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct StringField {
     field: String,
 }
@@ -517,7 +517,7 @@ impl StringField {
 }
 
 /// Builder used to create boolean comparison expressions.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BoolField {
     field: String,
 }
@@ -552,7 +552,7 @@ impl BoolField {
 }
 
 /// Builder used to create timestamp comparison expressions.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TimeField {
     field: String,
 }

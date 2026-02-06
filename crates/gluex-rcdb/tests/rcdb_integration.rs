@@ -1,18 +1,18 @@
 #![allow(missing_docs)]
 
 use gluex_core::parsers::parse_timestamp;
-use gluex_rcdb::prelude::*;
+use gluex_rcdb::{conditions, RCDBContext, RCDBResult, Value, ValueType, RCDB};
 
 fn open_db() -> RCDB {
-    let path = std::env::var("RCDB_CONNECTION")
-        .expect("RCDB_CONNECTION must be set for RCDB tests");
+    let path =
+        std::env::var("RCDB_CONNECTION").expect("RCDB_CONNECTION must be set for RCDB tests");
     RCDB::open(path).expect("failed to open RCDB test database")
 }
 
 #[test]
 fn fetch_single_run_int_condition() -> RCDBResult<()> {
     let db = open_db();
-    let values = db.fetch(["event_count"], &Context::default().with_run(2))?;
+    let values = db.fetch(["event_count"], &RCDBContext::default().with_run(2))?;
     let run_entry = values.get(&2).expect("missing run 2");
     let value = run_entry
         .get("event_count")
@@ -25,7 +25,7 @@ fn fetch_single_run_int_condition() -> RCDBResult<()> {
 #[test]
 fn fetch_run_range_collects_multiple_rows() -> RCDBResult<()> {
     let db = open_db();
-    let ctx = Context::default().with_run_range(2..=5);
+    let ctx = RCDBContext::default().with_run_range(2..=5);
     let values = db.fetch(["event_count"], &ctx)?;
     assert_eq!(values.len(), 4);
     assert_eq!(
@@ -42,7 +42,7 @@ fn fetch_run_range_collects_multiple_rows() -> RCDBResult<()> {
 #[test]
 fn fetch_bool_condition() -> RCDBResult<()> {
     let db = open_db();
-    let ctx = Context::default().with_runs([2, 3, 4]);
+    let ctx = RCDBContext::default().with_runs([2, 3, 4]);
     let values = db.fetch(["is_valid_run_end"], &ctx)?;
     assert_eq!(
         values
@@ -64,7 +64,7 @@ fn fetch_bool_condition() -> RCDBResult<()> {
 #[test]
 fn fetch_time_condition() -> RCDBResult<()> {
     let db = open_db();
-    let ctx = Context::default().with_run(2);
+    let ctx = RCDBContext::default().with_run(2);
     let values = db.fetch(["run_start_time"], &ctx)?;
     let run_entry = values.get(&2).expect("missing run");
     let value = run_entry
@@ -79,7 +79,7 @@ fn fetch_time_condition() -> RCDBResult<()> {
 #[test]
 fn fetch_with_predicates() -> RCDBResult<()> {
     let db = open_db();
-    let ctx = Context::default()
+    let ctx = RCDBContext::default()
         .with_run_range(1000..=1100)
         .filter(conditions::all([
             conditions::string_cond("run_type").isin([
@@ -113,7 +113,7 @@ fn fetch_with_predicates() -> RCDBResult<()> {
 #[test]
 fn fetch_runs_with_filters() -> RCDBResult<()> {
     let db = open_db();
-    let ctx = Context::default()
+    let ctx = RCDBContext::default()
         .with_run_range(1000..=1100)
         .filter(conditions::all([
             conditions::float_cond("beam_current").gt(0.1),
@@ -129,7 +129,7 @@ fn fetch_runs_with_filters() -> RCDBResult<()> {
 fn fetch_runs_with_alias() -> RCDBResult<()> {
     let db = open_db();
     let alias_expr = conditions::aliases::is_production();
-    let ctx = Context::default()
+    let ctx = RCDBContext::default()
         .with_run_range(10_000..=10_300)
         .filter(alias_expr);
     let runs = db.fetch_runs(&ctx)?;
