@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9](https://github.com/denehoffman/gluex-rs/compare/gluex-rcdb-py-v0.1.8...gluex-rcdb-py-v0.1.9) (2026-02-06)
+
+
+### Features
+
+* **gluex-rcdb:** Add RCDB_CONNECTION default constructor and align docs/tests ([00265a3](https://github.com/denehoffman/gluex-rs/commit/00265a39f35ed0674972bbc61702479911b6ca98))
+
+
+### Bug Fixes
+
+* Correct pytest imports ([b39ab19](https://github.com/denehoffman/gluex-rs/commit/b39ab19284a87f4bd21363b231199f82d78fb602))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * gluex-rcdb bumped from 0.1.8 to 0.1.9
+
 ## [0.1.8](https://github.com/denehoffman/gluex-rs/compare/gluex-rcdb-py-v0.1.7...gluex-rcdb-py-v0.1.8) (2026-01-30)
 
 

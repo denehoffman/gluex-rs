@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.1.8...gluex-lumi-v0.2.0) (2026-02-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **gluex-lumi:** introduce Context/Luminosity API and update CLI
+
+### Code Refactoring
+
+* **gluex-lumi:** Introduce Context/Luminosity API and update CLI ([396c04f](https://github.com/denehoffman/gluex-rs/commit/396c04f755879de6a627a58481ae8ae492a32eb0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * gluex-rcdb bumped from 0.1.8 to 0.1.9
+    * gluex-ccdb bumped from 0.1.8 to 0.1.9
+
 ## [0.1.8](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.1.7...gluex-lumi-v0.1.8) (2026-01-30)
 
 
