@@ -171,7 +171,7 @@ def generate_python_release(library_name: str) -> Workflow:
                 'windows',
                 library_name,
                 [
-                    Target('windows-latest', 'x64'),
+                    Target('windows-latest', 'x64', ['pypy3.11']),
                     Target('windows-latest', 'x86', ['pypy3.11']),
                     Target(
                         'windows-11-arm',
