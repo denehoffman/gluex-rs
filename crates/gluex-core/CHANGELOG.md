@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/denehoffman/gluex-rs/compare/gluex-core-v0.1.8...gluex-core-v0.2.0) (2026-02-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* align REST/timestamp APIs across crates and Python bindings
+
+### Features
+
+* Align REST/timestamp APIs across crates and Python bindings ([ce01c18](https://github.com/denehoffman/gluex-rs/commit/ce01c1835c8761c374c29db580e9805dd97c7f56))
+
 ## [0.1.8](https://github.com/denehoffman/gluex-rs/compare/gluex-core-v0.1.7...gluex-core-v0.1.8) (2026-01-30)
 
 
