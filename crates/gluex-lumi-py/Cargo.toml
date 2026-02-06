@@ -16,7 +16,8 @@ name = "gluex_lumi"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { workspace = true, features = ["extension-module"] }
+chrono.workspace = true
+pyo3 = { workspace = true, features = ["extension-module", "chrono"] }
 gluex-core = { version = "0.1.8", path = "../gluex-core" }
 gluex-lumi = { version = "0.2.0", path = "../gluex-lumi" }
 serde_json.workspace = true

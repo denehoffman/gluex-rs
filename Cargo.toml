@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-default-members = ["crates/gluex-rcdb", "crates/gluex-ccdb", "crates/gluex-lumi"]
+default-members = ["crates/gluex-rcdb", "crates/gluex-ccdb", "crates/gluex-lumi", "crates/gluex-core", "crates/gluex-ccdb-py", "crates/gluex-rcdb-py", "crates/gluex-lumi-py"]
 
 [workspace.package]
 authors = ["Nathaniel Dene Hoffman <dene@cmu.edu>"]
@@ -21,7 +21,7 @@ itertools = "0.14.0"
 lazy_static = "1.5.0"
 memchr = "2.7.6"
 parking_lot = "0.12.5"
-pyo3 = { version = "0.27.2", features = ["abi3", "generate-import-lib"] }
+pyo3 = { version = "0.28.0", features = ["abi3", "generate-import-lib"] }
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 serde = {version = "1.0.228", features = ["derive"]}
 serde_json = "1.0.145"
