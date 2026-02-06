@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9](https://github.com/denehoffman/gluex-rs/compare/gluex-ccdb-v0.1.8...gluex-ccdb-v0.1.9) (2026-02-06)
+
+
+### Features
+
+* **gluex-ccdb:** Add CCDB_CONNECTION default constructor and align docs/tests ([025ea46](https://github.com/denehoffman/gluex-rs/commit/025ea46da3edf39419b406628416d2e22dbbd571))
+
 ## [0.1.8](https://github.com/denehoffman/gluex-rs/compare/gluex-ccdb-v0.1.7...gluex-ccdb-v0.1.8) (2026-01-30)
 
 

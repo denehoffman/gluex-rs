@@ -1,6 +1,6 @@
 [package]
 name = "gluex-lumi-py"
-version = "0.1.8"
+version = "0.2.0"
 description = "Python bindings for the gluex-lumi Rust crate"
 authors.workspace = true
 edition.workspace = true
@@ -18,5 +18,5 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { workspace = true, features = ["extension-module"] }
 gluex-core = { version = "0.1.8", path = "../gluex-core" }
-gluex-lumi = { version = "0.1.8", path = "../gluex-lumi" }
+gluex-lumi = { version = "0.2.0", path = "../gluex-lumi" }
 serde_json.workspace = true
