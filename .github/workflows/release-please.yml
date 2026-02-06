@@ -15,6 +15,14 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PLEASE }}
         id: release
+      - name: Debug releases_created output
+        id: debug-releases-created
+        run: |
+          echo "raw=|${{ steps.release.outputs.releases_created }}|"
+          echo "toJSON=${{ toJSON(steps.release.outputs.releases_created) }}"
+          echo "== 'true'  -> ${{ steps.release.outputs.releases_created == 'true' }}"
+          echo "== 'false' -> ${{ steps.release.outputs.releases_created == 'false' }}"
+          echo "== true    -> ${{ steps.release.outputs.releases_created == true }}"
       - name: Checkout Repository
         if: ${{ steps.release.outputs.releases_created }}
         uses: actions/checkout@v6
