@@ -3,7 +3,10 @@ use std::{collections::HashMap, env, error::Error, str::FromStr};
 use ::gluex_lumi as lumi_crate;
 use chrono::{DateTime, Utc};
 use gluex_core::{
-    histograms::Histogram, run_periods::RunPeriod, utils::resolve_path, RESTVersion, RunNumber,
+    histograms::{validate_edges, Histogram},
+    run_periods::RunPeriod,
+    utils::resolve_path,
+    RESTVersion, RunNumber,
 };
 use lumi_crate::{
     FluxHistograms as RustFluxHistograms, Luminosity as RustLuminosity,
@@ -235,11 +238,7 @@ impl PyLuminosity {
         edges: Vec<f64>,
         ctx: &PyContext,
     ) -> PyResult<Py<PyFluxHistograms>> {
-        if edges.len() < 2 {
-            return Err(PyRuntimeError::new_err(
-                "edges must contain at least two values",
-            ));
-        }
+        validate_edges(&edges).map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
         let histograms = self
             .inner
             .fetch(&edges, &ctx.inner)

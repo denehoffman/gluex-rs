@@ -20,7 +20,7 @@ pub type RESTVersion = usize;
 
 pub use crate::detectors::DetectorSystem;
 pub use crate::enums::Polarization;
-pub use crate::errors::ParseTimestampError;
+pub use crate::errors::{HistogramError, ParseTimestampError};
 pub use crate::histograms::Histogram;
 pub use crate::particles::{Charge, Particle};
 pub use crate::run_periods::{RESTVersionError, RESTVersionSelection, RunPeriod, RunPeriodError};

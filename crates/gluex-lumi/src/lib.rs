@@ -23,7 +23,7 @@ pub const BERILLIUM_RADIATION_LENGTH_METERS: f64 = 35.28e-2;
 
 pub use gluex_core::{
     run_periods::{RESTVersionError, RunPeriod, RunPeriodError},
-    Histogram, RESTVersion, RESTVersionSelection, RunNumber,
+    Histogram, HistogramError, RESTVersion, RESTVersionSelection, RunNumber,
 };
 
 #[derive(Error, Debug)]
@@ -47,6 +47,9 @@ pub enum LuminosityError {
     /// Wrapper around [`RunPeriodError`].
     #[error(transparent)]
     RunPeriodError(#[from] RunPeriodError),
+    /// Wrapper around [`HistogramError`].
+    #[error(transparent)]
+    HistogramError(#[from] HistogramError),
     /// No runs remained after selection and exclusions.
     #[error("at least one run number is required")]
     EmptyRunSelection,
@@ -611,10 +614,10 @@ impl Luminosity {
     ) -> Result<FluxHistograms, LuminosityError> {
         let mut cache: HashMap<RunNumber, FluxCache> = HashMap::new();
         let coherent_peak = ctx.coherent_peak();
-        let mut tagged_flux_hist = Histogram::empty(edges);
-        let mut tagm_flux_hist = Histogram::empty(edges);
-        let mut tagh_flux_hist = Histogram::empty(edges);
-        let mut tagged_luminosity_hist = Histogram::empty(edges);
+        let mut tagged_flux_hist = Histogram::empty(edges)?;
+        let mut tagm_flux_hist = Histogram::empty(edges)?;
+        let mut tagh_flux_hist = Histogram::empty(edges)?;
+        let mut tagged_luminosity_hist = Histogram::empty(edges)?;
         let mut run_numbers: Vec<RunNumber> = ctx.runs().to_vec();
         if !ctx.exclude_runs().is_empty() {
             let exclude_set: HashSet<RunNumber> = ctx.exclude_runs().iter().copied().collect();
