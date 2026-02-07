@@ -10,6 +10,7 @@ use chrono::{DateTime, Utc};
 use gluex_core::{
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
     run_periods::RunPeriodError,
+    utils::resolve_path,
     RunNumber,
 };
 use pyo3::{
@@ -25,12 +26,15 @@ fn py_rcdb_error(err: RCDBError) -> PyErr {
 }
 
 fn resolve_connection_path(path: Option<String>) -> PyResult<String> {
-    match path {
-        Some(value) if !value.is_empty() => Ok(value),
+    let raw_path = match path {
+        Some(value) if !value.is_empty() => value,
         _ => env::var("RCDB_CONNECTION").map_err(|_| {
             PyRuntimeError::new_err("RCDB_CONNECTION is not set and no path was provided")
-        }),
-    }
+        })?,
+    };
+    resolve_path(raw_path)
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|err| PyRuntimeError::new_err(err.to_string()))
 }
 
 /// Boolean expression used to filter RCDB queries.

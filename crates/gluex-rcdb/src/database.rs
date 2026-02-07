@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use gluex_core::{parsers::parse_timestamp, Id, RunNumber};
+use gluex_core::{parsers::parse_timestamp, utils::resolve_path, Id, RunNumber};
 use parking_lot::{Mutex, MutexGuard, RwLock};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{params_from_iter, Connection, OpenFlags, ToSql};
@@ -44,9 +44,10 @@ impl RCDB {
     ///
     /// This method returns an error if the database cannot be opened.
     pub fn open(path: impl AsRef<Path>) -> RCDBResult<Self> {
-        let path_str = path.as_ref().to_string_lossy().to_string();
+        let resolved_path = resolve_path(path)?;
+        let path_str = resolved_path.to_string_lossy().to_string();
         let connection = Connection::open_with_flags(
-            path,
+            resolved_path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         connection.pragma_update(None, "foreign_keys", "ON")?;

@@ -6,6 +6,8 @@ pub mod histograms;
 pub mod parsers;
 pub mod particles;
 pub mod run_periods;
+/// Filesystem and other shared utility helpers.
+pub mod utils;
 
 /// Primary integer identifier type used throughout CCDB and RCDB.
 pub type Id = i64;

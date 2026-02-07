@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use gluex_core::{
     parsers::parse_timestamp,
     run_periods::{RESTVersionSelection, RunPeriodError},
+    utils::resolve_path,
     RESTVersion, RunNumber,
 };
 use pyo3::{
@@ -24,12 +25,15 @@ fn py_ccdb_error(err: CCDBError) -> PyErr {
 }
 
 fn resolve_connection_path(path: Option<String>) -> PyResult<String> {
-    match path {
-        Some(value) if !value.is_empty() => Ok(value),
+    let raw_path = match path {
+        Some(value) if !value.is_empty() => value,
         _ => env::var("CCDB_CONNECTION").map_err(|_| {
             PyRuntimeError::new_err("CCDB_CONNECTION is not set and no path was provided")
-        }),
-    }
+        })?,
+    };
+    resolve_path(raw_path)
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|err| PyRuntimeError::new_err(err.to_string()))
 }
 
 /// Column type describing how a CCDB column is stored.
@@ -345,9 +349,7 @@ impl PyData {
     /// RuntimeError
     ///     If the row index is out of range.
     pub fn row(&self, row: usize) -> PyResult<PyRowView> {
-        self.inner
-            .row(row)
-            .map_err(|e| py_ccdb_error(CCDBError::from(e)))?;
+        self.inner.row(row).map_err(py_ccdb_error)?;
         Ok(PyRowView {
             data: Arc::clone(&self.inner),
             row,
@@ -473,10 +475,7 @@ impl PyRowView {
     /// list[tuple[str, ColumnType, object]]
     ///     Column name, type, and value for each column in the row.
     pub fn columns(&self, py: Python<'_>) -> PyResult<Vec<(String, PyColumnType, Py<PyAny>)>> {
-        let row = self
-            .data
-            .row(self.row)
-            .map_err(|e| py_ccdb_error(CCDBError::from(e)))?;
+        let row = self.data.row(self.row).map_err(py_ccdb_error)?;
         row.iter_columns()
             .map(|(name, ty, v)| {
                 Ok((

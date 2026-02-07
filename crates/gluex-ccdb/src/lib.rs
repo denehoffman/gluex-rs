@@ -29,6 +29,9 @@ pub enum CCDBError {
     /// Requested table path could not be resolved.
     #[error("table not found: {0}")]
     TableNotFoundError(String),
+    /// Failed to resolve or canonicalize a filesystem path.
+    #[error(transparent)]
+    PathResolutionError(#[from] std::io::Error),
     /// Path was malformed or missing a required component.
     #[error("invalid path: {0}")]
     InvalidPathError(String),

@@ -9,7 +9,7 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use gluex_core::{Id, RunNumber};
+use gluex_core::{utils::resolve_path, Id, RunNumber};
 use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{Connection, OpenFlags};
 use std::{
@@ -78,8 +78,9 @@ impl CCDB {
     ///
     /// This method returns an error if the database cannot be opened.
     pub fn open(path: impl AsRef<Path>) -> CCDBResult<Self> {
-        let path_str = path.as_ref().to_string_lossy().to_string();
-        let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let resolved_path = resolve_path(path)?;
+        let path_str = resolved_path.to_string_lossy().to_string();
+        let conn = Connection::open_with_flags(&resolved_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
         let db = CCDB {
             connection: Arc::new(Mutex::new(conn)),

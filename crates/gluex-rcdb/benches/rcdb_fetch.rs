@@ -2,17 +2,17 @@
 use std::{hint::black_box, path::PathBuf, time::Duration};
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use gluex_core::run_periods::RunPeriod;
+use gluex_core::{run_periods::RunPeriod, utils::resolve_path};
 use gluex_rcdb::{conditions::aliases::approved_production, context::RCDBContext, RCDB};
 
 fn rcdb_path() -> PathBuf {
     if let Ok(path) = std::env::var("RCDB_BENCH_CONNECTION") {
-        let candidate = PathBuf::from(&path);
-        if candidate.is_absolute() || candidate.exists() {
+        if let Ok(candidate) = resolve_path(&path) {
             return candidate;
         }
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../rcdb.sqlite")
+    resolve_path(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../rcdb.sqlite"))
+        .expect("failed to resolve default RCDB benchmark path")
 }
 
 fn bench_polarimeter_fetch(c: &mut Criterion) {

@@ -2,7 +2,9 @@ use std::{collections::HashMap, env, error::Error, str::FromStr};
 
 use ::gluex_lumi as lumi_crate;
 use chrono::{DateTime, Utc};
-use gluex_core::{histograms::Histogram, run_periods::RunPeriod, RESTVersion, RunNumber};
+use gluex_core::{
+    histograms::Histogram, run_periods::RunPeriod, utils::resolve_path, RESTVersion, RunNumber,
+};
 use lumi_crate::{
     FluxHistograms as RustFluxHistograms, Luminosity as RustLuminosity,
     LuminosityContext as RustContext, LuminosityError, RESTVersionSelection,
@@ -133,12 +135,15 @@ fn parse_run_periods(obj: &Bound<'_, PyAny>) -> PyResult<HashMap<RunPeriod, REST
 }
 
 fn resolve_connection_path(value: Option<String>, env_var: &str) -> PyResult<String> {
-    match value {
-        Some(path) if !path.is_empty() => Ok(path),
+    let raw_path = match value {
+        Some(path) if !path.is_empty() => path,
         _ => env::var(env_var).map_err(|_| {
             PyRuntimeError::new_err(format!("{env_var} is not set and no path was provided"))
-        }),
-    }
+        })?,
+    };
+    resolve_path(raw_path)
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|err| PyRuntimeError::new_err(err.to_string()))
 }
 
 /// Luminosity query context.

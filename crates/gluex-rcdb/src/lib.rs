@@ -35,6 +35,9 @@ pub enum RCDBError {
     /// Fetch API requires at least one condition name.
     #[error("fetch requires at least one condition name")]
     EmptyConditionList,
+    /// Failed to resolve or canonicalize a filesystem path.
+    #[error(transparent)]
+    PathResolutionError(#[from] std::io::Error),
     /// Timestamp parsing failed while decoding a `time` condition.
     #[error(transparent)]
     ParseTimestampError(#[from] ParseTimestampError),
