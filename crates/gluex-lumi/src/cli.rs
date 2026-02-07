@@ -35,16 +35,16 @@ struct FluxArgs {
     runs: Vec<(RunPeriod, RESTVersionSelection)>,
 
     /// Number of bins
-    #[arg(long)]
-    bins: Option<usize>,
+    #[arg(long, default_value_t = 60)]
+    bins: usize,
 
     /// Minimum bin edge
-    #[arg(long)]
-    min: Option<f64>,
+    #[arg(long, default_value_t = 6.0)]
+    min: f64,
 
     /// Maximum bin edge
-    #[arg(long)]
-    max: Option<f64>,
+    #[arg(long, default_value_t = 12.0)]
+    max: f64,
 
     /// Enable coherent peak
     #[arg(long)]
@@ -180,9 +180,7 @@ impl FluxArgs {
             )
             .into());
         }
-        let bins = self
-            .bins
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "--bins is required"))?;
+        let bins = self.bins;
         if bins == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -197,12 +195,8 @@ impl FluxArgs {
             )
             .into());
         }
-        let min_edge = self
-            .min
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "--min is required"))?;
-        let max_edge = self
-            .max
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "--max is required"))?;
+        let min_edge = self.min;
+        let max_edge = self.max;
         if max_edge <= min_edge {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
