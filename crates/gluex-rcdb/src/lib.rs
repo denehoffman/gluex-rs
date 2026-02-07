@@ -24,7 +24,7 @@ pub type RCDBResult<T> = Result<T, RCDBError>;
 #[derive(Error, Debug)]
 pub enum RCDBError {
     /// Wrapper around [`rusqlite::Error`].
-    #[error("{0}")]
+    #[error(transparent)]
     SqliteError(#[from] rusqlite::Error),
     /// Requested condition name does not exist.
     #[error("condition type not found: {0}")]
@@ -36,7 +36,7 @@ pub enum RCDBError {
     #[error("fetch requires at least one condition name")]
     EmptyConditionList,
     /// Timestamp parsing failed while decoding a `time` condition.
-    #[error("{0}")]
+    #[error(transparent)]
     ParseTimestampError(#[from] ParseTimestampError),
     /// Encountered a value type identifier we do not understand.
     #[error("unknown RCDB value type identifier: {0}")]

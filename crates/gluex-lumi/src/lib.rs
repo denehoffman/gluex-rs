@@ -19,9 +19,23 @@ pub use gluex_core::{
     Histogram, RESTVersion, RESTVersionSelection, RunNumber,
 };
 
-#[derive(Error, Debug, Clone)]
-#[error("Unknown radiator: {0}")]
-pub struct ConverterParseError(String);
+#[derive(Error, Debug)]
+pub enum LuminosityError {
+    #[error(transparent)]
+    RCDBError(#[from] RCDBError),
+    #[error(transparent)]
+    CCDBError(#[from] CCDBError),
+    #[error("unknown radiator: {0}")]
+    UnknownRadiator(String),
+    #[error("Missing endpoint calibration for run {0}")]
+    MissingEndpointCalibration(RunNumber),
+    #[error(transparent)]
+    RESTVersionError(#[from] RESTVersionError),
+    #[error(transparent)]
+    RunPeriodError(#[from] RunPeriodError),
+    #[error("at least one run number is required")]
+    EmptyRunSelection,
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum Converter {
@@ -32,7 +46,7 @@ pub enum Converter {
     Be50um,
 }
 impl FromStr for Converter {
-    type Err = ConverterParseError;
+    type Err = LuminosityError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -41,7 +55,7 @@ impl FromStr for Converter {
             "Be 750um" => Ok(Self::Be750um),
             "Be 75um" => Ok(Self::Be75um),
             "Be 50um" => Ok(Self::Be50um),
-            _ => Err(ConverterParseError(s.to_string())),
+            _ => Err(LuminosityError::UnknownRadiator(s.to_string())),
         }
     }
 }
@@ -68,12 +82,6 @@ fn rp2019_11_override_timestamp() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2021, 4, 23, 0, 0, 1).unwrap()
 }
 
-#[derive(Error, Debug, Clone, Copy)]
-pub enum LuminosityContextError {
-    #[error("at least one run number is required")]
-    EmptyRunSelection,
-}
-
 #[derive(Debug, Clone)]
 pub struct LuminosityContext {
     runs: Vec<RunNumber>,
@@ -87,12 +95,12 @@ impl LuminosityContext {
     pub fn new(
         runs: Vec<RunNumber>,
         rest_version: HashMap<RunPeriod, RESTVersionSelection>,
-    ) -> Result<Self, LuminosityContextError> {
+    ) -> Result<Self, LuminosityError> {
         let mut runs = runs;
         runs.sort_unstable();
         runs.dedup();
         if runs.is_empty() {
-            return Err(LuminosityContextError::EmptyRunSelection);
+            return Err(LuminosityError::EmptyRunSelection);
         }
         Ok(Self {
             runs,
@@ -126,12 +134,12 @@ impl LuminosityContext {
     pub fn with_runs(
         mut self,
         runs: impl IntoIterator<Item = RunNumber>,
-    ) -> Result<Self, LuminosityContextError> {
+    ) -> Result<Self, LuminosityError> {
         let mut run_list: Vec<RunNumber> = runs.into_iter().collect();
         run_list.sort_unstable();
         run_list.dedup();
         if run_list.is_empty() {
-            return Err(LuminosityContextError::EmptyRunSelection);
+            return Err(LuminosityError::EmptyRunSelection);
         }
         self.runs = run_list;
         Ok(self)
@@ -225,24 +233,6 @@ pub struct FluxCache {
     pub target_scattering_centers: (f64, f64),
 }
 
-#[derive(Error, Debug)]
-pub enum LuminosityError {
-    #[error("{0}")]
-    RCDBError(#[from] RCDBError),
-    #[error("{0}")]
-    CCDBError(#[from] CCDBError),
-    #[error("{0}")]
-    ConverterParseError(#[from] ConverterParseError),
-    #[error("Missing endpoint calibration for run {0}")]
-    MissingEndpointCalibration(RunNumber),
-    #[error("{0}")]
-    RESTVersionError(#[from] RESTVersionError),
-    #[error("{0}")]
-    RunPeriodError(#[from] RunPeriodError),
-    #[error("{0}")]
-    LuminosityContextError(#[from] LuminosityContextError),
-}
-
 fn get_flux_cache(
     run_period: RunPeriod,
     runs: &[RunNumber],
@@ -285,7 +275,7 @@ fn get_flux_cache(
             }
             Ok((r, converter))
         })
-        .collect::<Result<HashMap<RunNumber, Converter>, ConverterParseError>>()?;
+        .collect::<Result<HashMap<RunNumber, Converter>, LuminosityError>>()?;
     let ccdb = CCDB::open(ccdb_path)?;
     let ccdb_context = CCDBContext::default().with_runs(runs.iter().copied());
     let ccdb_context_restver = ccdb_context.clone().with_timestamp(timestamp);
@@ -564,7 +554,7 @@ impl Luminosity {
             run_numbers.retain(|run| !exclude_set.contains(run));
         }
         if run_numbers.is_empty() {
-            return Err(LuminosityContextError::EmptyRunSelection.into());
+            return Err(LuminosityError::EmptyRunSelection);
         }
         let mut runs_by_period: HashMap<RunPeriod, Vec<RunNumber>> = HashMap::new();
         for run in &run_numbers {

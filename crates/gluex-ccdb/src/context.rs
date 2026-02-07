@@ -1,31 +1,29 @@
 use chrono::{DateTime, Utc};
 use gluex_core::{
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
-    errors::ParseTimestampError,
     parsers::parse_timestamp,
     run_periods::{RESTVersionSelection, RunPeriod},
     RunNumber,
 };
 use std::{ops::Bound, str::FromStr};
-use thiserror::Error;
 
-use crate::CCDBResult;
+use crate::{CCDBError, CCDBResult};
 
 /// Absolute CCDB path wrapper that enforces formatting rules.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NamePath(pub String);
 impl FromStr for NamePath {
-    type Err = NamePathError;
+    type Err = CCDBError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if !s.starts_with('/') {
-            return Err(NamePathError::NotAbsolutePath(s.to_string()));
+            return Err(CCDBError::NotAbsolutePath(s.to_string()));
         }
         if !s
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '-')
         {
-            return Err(NamePathError::IllegalCharacter(s.to_string()));
+            return Err(CCDBError::IllegalCharacter(s.to_string()));
         }
         Ok(Self(s.to_string()))
     }
@@ -57,17 +55,6 @@ impl NamePath {
         self.0 == "/"
     }
 }
-/// Errors that can occur while parsing or validating [`NamePath`] values.
-#[derive(Error, Debug, Clone)]
-pub enum NamePathError {
-    /// Path did not begin with a forward slash.
-    #[error("path \"{0}\" is not absolute (must start with '/')")]
-    NotAbsolutePath(String),
-    /// Path contained a character outside the allowed set.
-    #[error("illegal character encountered in path \"{0}\"")]
-    IllegalCharacter(String),
-}
-
 const DEFAULT_VARIATION: &str = "default";
 const DEFAULT_RUN_NUMBER: RunNumber = 0;
 
@@ -186,20 +173,6 @@ impl CCDBContext {
     }
 }
 
-/// Errors that can occur when parsing a [`Request`] string.
-#[derive(Error, Debug, Clone)]
-pub enum ParseRequestError {
-    /// Failed to parse the path portion of the request.
-    #[error("{0}")]
-    NamePathError(#[from] NamePathError),
-    /// Failed to parse the timestamp portion of the request.
-    #[error("{0}")]
-    TimestampParseError(#[from] ParseTimestampError),
-    /// Run number was not a valid integer.
-    #[error("invalid run number: {0}")]
-    InvalidRunNumberError(String),
-}
-
 /// Parsed representation of a CCDB request string, containing both the [`NamePath`] and [`CCDBContext`].
 #[derive(Debug, Clone)]
 pub struct Request {
@@ -209,7 +182,7 @@ pub struct Request {
     pub context: CCDBContext,
 }
 impl FromStr for Request {
-    type Err = ParseRequestError;
+    type Err = CCDBError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (path_str, rest) = s.split_once(':').map_or((s, None), |(p, r)| (p, Some(r)));
@@ -224,10 +197,11 @@ impl FromStr for Request {
             }
             let (run_s, var_s, time_s) = (parts[0], parts[1], parts[2]);
             if !run_s.is_empty() {
-                run =
-                    Some(run_s.parse::<RunNumber>().map_err(|_| {
-                        ParseRequestError::InvalidRunNumberError(run_s.to_string())
-                    })?);
+                run = Some(
+                    run_s
+                        .parse::<RunNumber>()
+                        .map_err(|_| CCDBError::InvalidRunNumberError(run_s.to_string()))?,
+                );
             }
             if !var_s.is_empty() {
                 variation = Some(var_s.to_string());

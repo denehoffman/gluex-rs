@@ -1,8 +1,10 @@
-use crate::models::{ColumnMeta, ColumnType};
+use crate::{
+    models::{ColumnMeta, ColumnType},
+    CCDBError, CCDBResult,
+};
 use itertools::izip;
 use memchr::memchr;
 use std::{collections::HashMap, sync::Arc};
-use thiserror::Error;
 
 /// Column-oriented storage for a single CCDB field.
 #[derive(Debug, Clone)]
@@ -436,11 +438,7 @@ impl Data {
     /// This method will return an error if the parsed number of columns does not equal the
     /// expected number from the database or if any of the column contents cannot be parsed into
     /// their respective data types.
-    pub fn from_vault(
-        vault: &str,
-        layout: Arc<ColumnLayout>,
-        n_rows: usize,
-    ) -> Result<Self, CCDBDataError> {
+    pub fn from_vault(vault: &str, layout: Arc<ColumnLayout>, n_rows: usize) -> CCDBResult<Self> {
         let n_columns = layout.column_count();
         let expected_cells = n_rows * n_columns;
         let column_types = layout.column_types();
@@ -459,7 +457,7 @@ impl Data {
         let mut raw_iter = VaultFieldIter::new(vault);
         for idx in 0..expected_cells {
             let Some(raw) = raw_iter.next() else {
-                return Err(CCDBDataError::ColumnCountMismatch {
+                return Err(CCDBError::ColumnCountMismatch {
                     expected: expected_cells,
                     found: idx,
                 });
@@ -470,7 +468,7 @@ impl Data {
 
             match (&mut column_vecs[col], column_type) {
                 (Column::Int(vec), ColumnType::Int) => {
-                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                    vec.push(raw.parse().map_err(|_| CCDBError::ParseError {
                         column: col,
                         row,
                         column_type,
@@ -478,7 +476,7 @@ impl Data {
                     })?);
                 }
                 (Column::UInt(vec), ColumnType::UInt) => {
-                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                    vec.push(raw.parse().map_err(|_| CCDBError::ParseError {
                         column: col,
                         row,
                         column_type,
@@ -486,7 +484,7 @@ impl Data {
                     })?);
                 }
                 (Column::Long(vec), ColumnType::Long) => {
-                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                    vec.push(raw.parse().map_err(|_| CCDBError::ParseError {
                         column: col,
                         row,
                         column_type,
@@ -494,7 +492,7 @@ impl Data {
                     })?);
                 }
                 (Column::ULong(vec), ColumnType::ULong) => {
-                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                    vec.push(raw.parse().map_err(|_| CCDBError::ParseError {
                         column: col,
                         row,
                         column_type,
@@ -502,7 +500,7 @@ impl Data {
                     })?);
                 }
                 (Column::Double(vec), ColumnType::Double) => {
-                    vec.push(raw.parse().map_err(|_| CCDBDataError::ParseError {
+                    vec.push(raw.parse().map_err(|_| CCDBError::ParseError {
                         column: col,
                         row,
                         column_type,
@@ -521,7 +519,7 @@ impl Data {
         }
         if raw_iter.next().is_some() {
             let found = expected_cells + 1 + raw_iter.count();
-            return Err(CCDBDataError::ColumnCountMismatch {
+            return Err(CCDBError::ColumnCountMismatch {
                 expected: expected_cells,
                 found,
             });
@@ -679,9 +677,9 @@ impl Data {
     /// # Errors
     ///
     /// This method will return an error if `row` is out of bounds.
-    pub fn row(&self, row: usize) -> Result<RowView<'_>, CCDBDataError> {
+    pub fn row(&self, row: usize) -> CCDBResult<RowView<'_>> {
         if row >= self.n_rows {
-            return Err(CCDBDataError::RowOutOfBounds {
+            return Err(CCDBError::RowOutOfBounds {
                 requested: row,
                 n_rows: self.n_rows,
             });
@@ -781,37 +779,4 @@ fn parse_bool(s: &str) -> bool {
         return false;
     }
     s.parse::<i32>().unwrap_or(0) != 0
-}
-
-/// Errors that can occur when decoding CCDB vault payloads.
-#[derive(Error, Debug)]
-pub enum CCDBDataError {
-    /// Failed to parse data because the number of cells was not divisible by the number of columns.
-    #[error("column count mismatch (expected {expected}, found {found})")]
-    ColumnCountMismatch {
-        /// The total expected number of cells.
-        expected: usize,
-        /// The number of cells found while parsing.
-        found: usize,
-    },
-    /// Failed to parse a cell to the given type.
-    #[error("parse error at row {row}, column {column} ({column_type}): {text:?}")]
-    ParseError {
-        /// The column index of the cell.
-        column: usize,
-        /// The row index of the cell.
-        row: usize,
-        /// The expected column type for the cell.
-        column_type: ColumnType,
-        /// The unparsed contents of the cell.
-        text: String,
-    },
-    /// Failed to retrieve a row due to an out-of-bounds index.
-    #[error("row index {requested} out of bounds (n_rows={n_rows})")]
-    RowOutOfBounds {
-        /// The requested index.
-        requested: usize,
-        /// The available number of rows.
-        n_rows: usize,
-    },
 }
