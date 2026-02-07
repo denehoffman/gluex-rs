@@ -1,6 +1,6 @@
 [package]
 name = "gluex-ccdb-py"
-version = "0.2.1"
+version = "0.2.2"
 description = "Python bindings for the gluex-ccdb Rust crate"
 authors.workspace = true
 edition.workspace = true
@@ -18,5 +18,5 @@ crate-type = ["cdylib"]
 [dependencies]
 chrono.workspace = true
 pyo3 = { workspace = true, features = ["extension-module", "chrono"] }
-gluex-core = { version = "0.2.1", path = "../gluex-core" }
-gluex-ccdb = { version = "0.2.1", path = "../gluex-ccdb" }
+gluex-core = { version = "0.2.2", path = "../gluex-core" }
+gluex-ccdb = { version = "0.2.2", path = "../gluex-ccdb" }

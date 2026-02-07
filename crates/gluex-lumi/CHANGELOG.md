@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.3.1...gluex-lumi-v0.3.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* **gluex-core:** Consolidate error types for gluex-core ([4c69615](https://github.com/denehoffman/gluex-rs/commit/4c6961585f0281ac0dbf2f2cc48b7034dc9842e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * gluex-core bumped from 0.2.1 to 0.2.2
+    * gluex-rcdb bumped from 0.2.1 to 0.2.2
+    * gluex-ccdb bumped from 0.2.1 to 0.2.2
+
 ## [0.3.1](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.3.0...gluex-lumi-v0.3.1) (2026-02-07)
 
 
