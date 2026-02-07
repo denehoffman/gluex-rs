@@ -1,6 +1,6 @@
 [package]
 name = "gluex-ccdb"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Rust interface to the GlueX Calibration and Conditions Database (CCDB)"
 authors.workspace = true
 edition.workspace = true
@@ -25,7 +25,7 @@ parking_lot.workspace = true
 rusqlite.workspace = true
 thiserror.workspace = true
 
-gluex-core = { version = "0.2.0", path = "../gluex-core" }
+gluex-core = { version = "0.2.1", path = "../gluex-core" }
 
 [dev-dependencies]
 criterion.workspace = true

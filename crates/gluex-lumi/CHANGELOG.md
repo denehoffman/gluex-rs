@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.3.0...gluex-lumi-v0.3.1) (2026-02-07)
+
+
+### Features
+
+* **histograms:** Consolidate histogram errors into a single error type rather than asserts ([8c4ae68](https://github.com/denehoffman/gluex-rs/commit/8c4ae684f572f8422a6555275ff5f284ec0d4614))
+
+
+### Bug Fixes
+
+* Flatten error types and fix some CI issues ([ff4f71f](https://github.com/denehoffman/gluex-rs/commit/ff4f71fd103bf2741aa36f7205c40d2f5a0c037d))
+* **gluex-lumi:** Add defaults for bins/min/max in CLI ([4eea103](https://github.com/denehoffman/gluex-rs/commit/4eea1031d4aed2504c9faece60cb4a45bb4549dd))
+* **gluex-lumi:** Clippy lints ([123b44a](https://github.com/denehoffman/gluex-rs/commit/123b44ad43401b9e003fb225ec9858d1334a57da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * gluex-core bumped from 0.2.0 to 0.2.1
+    * gluex-rcdb bumped from 0.2.0 to 0.2.1
+    * gluex-ccdb bumped from 0.2.0 to 0.2.1
+
 ## [0.3.0](https://github.com/denehoffman/gluex-rs/compare/gluex-lumi-v0.2.0...gluex-lumi-v0.3.0) (2026-02-06)
 
 
