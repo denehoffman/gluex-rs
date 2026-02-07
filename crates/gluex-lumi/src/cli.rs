@@ -28,7 +28,7 @@ enum Command {
 
 #[derive(Args, Debug, Clone)]
 struct FluxArgs {
-    /// Run period selection: <run>[=<rest_version>]
+    /// Run period selection: <run>[=<`rest_version`>]
     /// Example: f18=0, s19=2, s23
     /// Unknown REST versions fall back to the current timestamp with a warning.
     #[arg(long = "run", value_parser = parse_run_pair)]
@@ -121,11 +121,15 @@ fn print_rest_versions(run_period: RunPeriod) {
 }
 
 fn uniform_edges(bins: usize, min: f64, max: f64) -> Vec<f64> {
-    let width = (max - min) / bins as f64;
-    (0..=bins).map(|i| min + i as f64 * width).collect()
+    let bins_u32 = u32::try_from(bins).expect("bins validated by FluxArgs::into_config");
+    let width = (max - min) / f64::from(bins_u32);
+    (0..=bins_u32).map(|i| min + f64::from(i) * width).collect()
 }
 
 /// Execute the command-line interface with a custom argv iterator.
+///
+/// # Errors
+/// Returns an error if argument parsing fails or if command execution fails.
 pub fn run_with_args<I, T>(args: I) -> Result<(), Box<dyn std::error::Error>>
 where
     I: IntoIterator<Item = T>,
@@ -157,6 +161,10 @@ where
     }
 }
 
+/// Execute the `gluex-lumi` command-line interface using process arguments.
+///
+/// # Errors
+/// Returns an error if argument parsing fails or if command execution fails.
 pub fn cli() -> Result<(), Box<dyn std::error::Error>> {
     run_with_args(env::args_os())
 }
@@ -179,6 +187,13 @@ impl FluxArgs {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "--bins must be greater than zero",
+            )
+            .into());
+        }
+        if bins > u32::MAX as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--bins must be <= 4294967295",
             )
             .into());
         }
@@ -237,7 +252,7 @@ fn run_flux(args: FluxArgs) -> Result<(), Box<dyn std::error::Error>> {
     let edges = uniform_edges(bins, min_edge, max_edge);
     let runs: Vec<RunNumber> = run_selection
         .keys()
-        .flat_map(|period| period.iter_runs())
+        .flat_map(RunPeriod::iter_runs)
         .collect();
     let ctx = LuminosityContext::new(runs, run_selection)?
         .with_coherent_peak(coherent_peak)

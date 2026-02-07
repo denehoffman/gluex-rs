@@ -1,3 +1,8 @@
+//! `GlueX` photon-flux and tagged-luminosity utilities.
+//!
+//! This crate builds run-dependent flux and luminosity histograms from RCDB and
+//! CCDB calibration sources.
+
 use chrono::{DateTime, TimeZone, Utc};
 use gluex_ccdb::{CCDBContext, CCDBError, CCDB};
 use gluex_rcdb::{RCDBContext, RCDBError, RCDB};
@@ -10,8 +15,10 @@ use std::{
 };
 use thiserror::Error;
 
+/// Command-line entry points for the `gluex-lumi` executable.
 pub mod cli;
 
+/// Radiation length of beryllium in meters.
 pub const BERILLIUM_RADIATION_LENGTH_METERS: f64 = 35.28e-2;
 
 pub use gluex_core::{
@@ -20,29 +27,43 @@ pub use gluex_core::{
 };
 
 #[derive(Error, Debug)]
+/// Errors returned by luminosity context construction and histogram generation.
 pub enum LuminosityError {
+    /// Wrapper around [`RCDBError`].
     #[error(transparent)]
     RCDBError(#[from] RCDBError),
+    /// Wrapper around [`CCDBError`].
     #[error(transparent)]
     CCDBError(#[from] CCDBError),
+    /// Failed to parse or map a converter description from RCDB.
     #[error("unknown radiator: {0}")]
     UnknownRadiator(String),
+    /// Endpoint calibration was required but unavailable for this run.
     #[error("Missing endpoint calibration for run {0}")]
     MissingEndpointCalibration(RunNumber),
+    /// Wrapper around [`RESTVersionError`].
     #[error(transparent)]
     RESTVersionError(#[from] RESTVersionError),
+    /// Wrapper around [`RunPeriodError`].
     #[error(transparent)]
     RunPeriodError(#[from] RunPeriodError),
+    /// No runs remained after selection and exclusions.
     #[error("at least one run number is required")]
     EmptyRunSelection,
 }
 
 #[derive(Debug, Copy, Clone)]
+/// Polarimeter converter configuration used to compute radiation-length scaling.
 pub enum Converter {
+    /// No converter in beam.
     Retracted,
+    /// Unknown converter state.
     Unknown,
+    /// 750 um beryllium converter.
     Be750um,
+    /// 75 um beryllium converter.
     Be75um,
+    /// 50 um beryllium converter.
     Be50um,
 }
 impl FromStr for Converter {
@@ -60,29 +81,35 @@ impl FromStr for Converter {
     }
 }
 impl Converter {
+    /// Converter thickness in meters.
+    #[must_use]
     pub fn thickness(&self) -> Option<f64> {
         match self {
-            Converter::Retracted => None,
-            Converter::Unknown => None,
+            Converter::Retracted | Converter::Unknown => None,
             Converter::Be750um => Some(750e-6),
             Converter::Be75um => Some(75e-6),
             Converter::Be50um => Some(50e-6),
         }
     }
+    /// Converter thickness in units of radiation length.
+    #[must_use]
     pub fn radiation_lengths(&self) -> Option<f64> {
         self.thickness()
             .map(|t| t / BERILLIUM_RADIATION_LENGTH_METERS)
     }
 }
 
+/// Nominal liquid-hydrogen target length in centimeters.
 pub const TARGET_LENGTH_CM: f64 = 29.5;
-pub const AVOGADRO_CONSTANT: f64 = 6.02214076e23;
+/// Avogadro constant in mol^-1.
+pub const AVOGADRO_CONSTANT: f64 = 6.022_140_76e23;
 const RP2019_11_OVERRIDE_START: RunNumber = 72436;
 fn rp2019_11_override_timestamp() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2021, 4, 23, 0, 0, 1).unwrap()
 }
 
 #[derive(Debug, Clone)]
+/// Selection options used when computing flux and luminosity histograms.
 pub struct LuminosityContext {
     runs: Vec<RunNumber>,
     rest_version: HashMap<RunPeriod, RESTVersionSelection>,
@@ -92,6 +119,10 @@ pub struct LuminosityContext {
 }
 
 impl LuminosityContext {
+    /// Create a context from explicit runs and per-period REST version selection.
+    ///
+    /// # Errors
+    /// Returns [`LuminosityError::EmptyRunSelection`] if `runs` is empty.
     pub fn new(
         runs: Vec<RunNumber>,
         rest_version: HashMap<RunPeriod, RESTVersionSelection>,
@@ -111,26 +142,40 @@ impl LuminosityContext {
         })
     }
 
+    /// Sorted unique runs to include in the calculation.
+    #[must_use]
     pub fn runs(&self) -> &[RunNumber] {
         &self.runs
     }
 
+    /// Per-run-period REST version selection map.
+    #[must_use]
     pub fn rest_version(&self) -> &HashMap<RunPeriod, RESTVersionSelection> {
         &self.rest_version
     }
 
+    /// Whether coherent-peak-only flux should be used.
+    #[must_use]
     pub fn coherent_peak(&self) -> bool {
         self.coherent_peak
     }
 
+    /// Whether polarized beam constraints and constants should be used.
+    #[must_use]
     pub fn polarized(&self) -> bool {
         self.polarized
     }
 
+    /// Runs excluded after the primary run selection.
+    #[must_use]
     pub fn exclude_runs(&self) -> &[RunNumber] {
         &self.exclude_runs
     }
 
+    /// Replace the run list with a new sorted unique run set.
+    ///
+    /// # Errors
+    /// Returns [`LuminosityError::EmptyRunSelection`] if `runs` is empty.
     pub fn with_runs(
         mut self,
         runs: impl IntoIterator<Item = RunNumber>,
@@ -145,6 +190,7 @@ impl LuminosityContext {
         Ok(self)
     }
 
+    /// Add runs to the existing run set.
     #[must_use]
     pub fn add_runs(mut self, runs: impl IntoIterator<Item = RunNumber>) -> Self {
         self.runs.extend(runs);
@@ -153,6 +199,7 @@ impl LuminosityContext {
         self
     }
 
+    /// Add all runs from a run period to the existing run set.
     #[must_use]
     pub fn with_run_period(mut self, run_period: RunPeriod) -> Self {
         self.runs.extend(run_period.iter_runs());
@@ -161,6 +208,7 @@ impl LuminosityContext {
         self
     }
 
+    /// Override REST version selection for a run period.
     #[must_use]
     pub fn with_rest_version(
         mut self,
@@ -171,18 +219,21 @@ impl LuminosityContext {
         self
     }
 
+    /// Enable or disable coherent-peak-only flux selection.
     #[must_use]
     pub fn with_coherent_peak(mut self, enabled: bool) -> Self {
         self.coherent_peak = enabled;
         self
     }
 
+    /// Enable or disable polarized beam selection.
     #[must_use]
     pub fn with_polarized(mut self, enabled: bool) -> Self {
         self.polarized = enabled;
         self
     }
 
+    /// Add runs that should be excluded from processing.
     #[must_use]
     pub fn with_exclude_runs(mut self, runs: impl IntoIterator<Item = RunNumber>) -> Self {
         self.exclude_runs.extend(runs);
@@ -193,6 +244,7 @@ impl LuminosityContext {
 }
 
 #[derive(Debug, Clone)]
+/// Entry point for tagged flux and luminosity calculations.
 pub struct Luminosity {
     rcdb: PathBuf,
     ccdb: PathBuf,
@@ -212,6 +264,7 @@ impl Default for Luminosity {
 }
 
 impl Luminosity {
+    /// Create a calculator from RCDB and CCDB SQLite paths.
     pub fn new(rcdb: impl AsRef<Path>, ccdb: impl AsRef<Path>) -> Self {
         Self {
             rcdb: rcdb.as_ref().to_path_buf(),
@@ -221,15 +274,25 @@ impl Luminosity {
 }
 
 #[derive(Debug, Clone)]
+/// Cached per-run CCDB/RCDB calibration data used to build histograms.
 pub struct FluxCache {
+    /// Combined livetime and converter scaling factor.
     pub livetime_scaling: f64,
+    /// Pair-spectrometer acceptance parameters `(p0, p1, p2)`.
     pub pair_spectrometer_parameters: (f64, f64, f64),
+    /// Photon endpoint energy in GeV.
     pub photon_endpoint_energy: f64,
+    /// TAGM tagged flux rows `(column, flux, error)`.
     pub tagm_tagged_flux: Vec<(f64, f64, f64)>,
+    /// TAGM scaled-energy ranges `(emin, emax)`.
     pub tagm_scaled_energy_range: Vec<(f64, f64)>,
+    /// TAGH tagged flux rows `(counter, flux, error)`.
     pub tagh_tagged_flux: Vec<(f64, f64, f64)>,
+    /// TAGH scaled-energy ranges `(emin, emax)`.
     pub tagh_scaled_energy_range: Vec<(f64, f64)>,
+    /// Optional endpoint calibration correction in GeV.
     pub photon_endpoint_calibration: Option<f64>,
+    /// Number of target scattering centers and uncertainty `(value, error)`.
     pub target_scattering_centers: (f64, f64),
 }
 
@@ -357,10 +420,10 @@ fn get_flux_cache(
         .filter_map(|(r, livetime_scaling)| {
             let pair_spectrometer_parameters = *pair_spectrometer_parameters.get(&r)?;
             let photon_endpoint_energy = *photon_endpoint_energy.get(&r)?;
-            let tagm_tagged_flux = tagm_tagged_flux.get(&r)?.to_vec();
-            let tagm_scaled_energy_range = tagm_scaled_energy_range.get(&r)?.to_vec();
-            let tagh_tagged_flux = tagh_tagged_flux.get(&r)?.to_vec();
-            let tagh_scaled_energy_range = tagh_scaled_energy_range.get(&r)?.to_vec();
+            let tagm_tagged_flux = tagm_tagged_flux.get(&r)?.clone();
+            let tagm_scaled_energy_range = tagm_scaled_energy_range.get(&r)?.clone();
+            let tagh_tagged_flux = tagh_tagged_flux.get(&r)?.clone();
+            let tagh_scaled_energy_range = tagh_scaled_energy_range.get(&r)?.clone();
             let photon_endpoint_calibration = photon_endpoint_calibration.get(&r).copied();
             let target_scattering_centers = *target_scattering_centers.get(&r)?;
             Some((
@@ -537,6 +600,10 @@ impl Luminosity {
     ///
     /// # Returns
     /// [`FluxHistograms`] for flux and tagged luminosity that satisfy the requested selections.
+    ///
+    /// # Errors
+    /// Returns a [`LuminosityError`] if RCDB/CCDB data cannot be fetched or the run
+    /// selection is invalid after filtering.
     pub fn fetch(
         &self,
         edges: &[f64],
@@ -563,7 +630,7 @@ impl Luminosity {
         }
         let mut run_periods: Vec<RunPeriod> = runs_by_period.keys().copied().collect();
         run_periods.sort_unstable();
-        for rp in run_periods.iter() {
+        for rp in &run_periods {
             let selection = ctx
                 .rest_version()
                 .get(rp)
