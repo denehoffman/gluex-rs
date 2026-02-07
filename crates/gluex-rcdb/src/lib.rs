@@ -11,7 +11,6 @@ pub mod database;
 /// Lightweight structs that mirror RCDB tables.
 pub mod models;
 
-use gluex_core::errors::ParseTimestampError;
 use thiserror::Error;
 
 use crate::models::ValueType as LocalValueType;
@@ -40,7 +39,7 @@ pub enum RCDBError {
     PathResolutionError(#[from] std::io::Error),
     /// Timestamp parsing failed while decoding a `time` condition.
     #[error(transparent)]
-    ParseTimestampError(#[from] ParseTimestampError),
+    GlueXCoreError(#[from] gluex_core::GlueXCoreError),
     /// Encountered a value type identifier we do not understand.
     #[error("unknown RCDB value type identifier: {0}")]
     UnknownValueType(String),

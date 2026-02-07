@@ -9,9 +9,8 @@ use ::gluex_rcdb::{
 use chrono::{DateTime, Utc};
 use gluex_core::{
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
-    run_periods::RunPeriodError,
     utils::resolve_path,
-    RunNumber,
+    GlueXCoreError, RunNumber,
 };
 use pyo3::{
     exceptions::PyRuntimeError,
@@ -104,7 +103,7 @@ pub fn parse_context(
         ctx = ctx.with_run_period(
             run_period
                 .parse()
-                .map_err(|e: RunPeriodError| PyRuntimeError::new_err(e.to_string()))?,
+                .map_err(|e: GlueXCoreError| PyRuntimeError::new_err(e.to_string()))?,
         );
     } else if let Some(run_list) = runs {
         ctx = ctx.with_runs(run_list);
@@ -869,7 +868,7 @@ impl Aliases {
         Ok(PyExpr::new(conditions::aliases::approved_production(
             run_period
                 .parse()
-                .map_err(|e: RunPeriodError| PyRuntimeError::new_err(e.to_string()))?,
+                .map_err(|e: GlueXCoreError| PyRuntimeError::new_err(e.to_string()))?,
         )))
     }
 }

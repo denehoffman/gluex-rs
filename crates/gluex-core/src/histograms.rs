@@ -1,26 +1,26 @@
 use auto_ops::impl_op_ex;
 use serde::{Deserialize, Serialize};
 
-use crate::errors::HistogramError;
+use crate::GlueXCoreError;
 
 /// Validate histogram bin edges.
 ///
 /// Edges must be finite, strictly increasing, and contain at least two values.
 ///
 /// # Errors
-/// Returns a [`HistogramError`] when validation fails.
-pub fn validate_edges(edges: &[f64]) -> Result<(), HistogramError> {
+/// Returns a histogram-related [`GlueXCoreError`] when validation fails.
+pub fn validate_edges(edges: &[f64]) -> Result<(), GlueXCoreError> {
     if edges.len() < 2 {
-        return Err(HistogramError::TooFewEdges { len: edges.len() });
+        return Err(GlueXCoreError::HistogramTooFewEdges { len: edges.len() });
     }
     for (index, edge) in edges.iter().copied().enumerate() {
         if !edge.is_finite() {
-            return Err(HistogramError::NonFiniteEdge { index, value: edge });
+            return Err(GlueXCoreError::HistogramNonFiniteEdge { index, value: edge });
         }
     }
     for (index, pair) in edges.windows(2).enumerate() {
         if pair[1] <= pair[0] {
-            return Err(HistogramError::NotStrictlyIncreasing {
+            return Err(GlueXCoreError::HistogramNotStrictlyIncreasing {
                 index,
                 next_index: index + 1,
                 left: pair[0],
@@ -45,11 +45,11 @@ impl Histogram {
         counts: &[f64],
         edges: &[f64],
         errors: Option<&[f64]>,
-    ) -> Result<Self, HistogramError> {
+    ) -> Result<Self, GlueXCoreError> {
         validate_edges(edges)?;
         let expected = edges.len() - 1;
         if counts.len() != expected {
-            return Err(HistogramError::CountLengthMismatch {
+            return Err(GlueXCoreError::HistogramCountLengthMismatch {
                 expected,
                 found: counts.len(),
             });
@@ -58,7 +58,7 @@ impl Histogram {
             .map(|e| e.to_vec())
             .unwrap_or(counts.iter().map(|c| c.abs().sqrt()).collect::<Vec<f64>>());
         if counts.len() != errors.len() {
-            return Err(HistogramError::ErrorLengthMismatch {
+            return Err(GlueXCoreError::HistogramErrorLengthMismatch {
                 expected: counts.len(),
                 found: errors.len(),
             });
@@ -69,7 +69,7 @@ impl Histogram {
             errors,
         })
     }
-    pub fn new_filled(data: &[f64], edges: &[f64]) -> Result<Self, HistogramError> {
+    pub fn new_filled(data: &[f64], edges: &[f64]) -> Result<Self, GlueXCoreError> {
         let mut hist = Self::empty(edges)?;
         hist.fill_all(data);
         Ok(hist)
@@ -78,7 +78,7 @@ impl Histogram {
         data: &[f64],
         weights: &[f64],
         edges: &[f64],
-    ) -> Result<Self, HistogramError> {
+    ) -> Result<Self, GlueXCoreError> {
         let mut hist = Self::empty(edges)?;
         hist.fill_all_weighted(data, weights)?;
         Ok(hist)
@@ -87,7 +87,7 @@ impl Histogram {
         data: &[f64],
         bins: usize,
         limits: (f64, f64),
-    ) -> Result<Self, HistogramError> {
+    ) -> Result<Self, GlueXCoreError> {
         let mut hist = Self::empty_uniform(bins, limits)?;
         hist.fill_all(data);
         Ok(hist)
@@ -97,7 +97,7 @@ impl Histogram {
         weights: &[f64],
         bins: usize,
         limits: (f64, f64),
-    ) -> Result<Self, HistogramError> {
+    ) -> Result<Self, GlueXCoreError> {
         let mut hist = Self::empty_uniform(bins, limits)?;
         hist.fill_all_weighted(data, weights)?;
         Ok(hist)
@@ -106,20 +106,20 @@ impl Histogram {
         counts: &[f64],
         limits: (f64, f64),
         errors: Option<&[f64]>,
-    ) -> Result<Self, HistogramError> {
+    ) -> Result<Self, GlueXCoreError> {
         let bins = counts.len();
         if bins == 0 {
-            return Err(HistogramError::EmptyBinCount);
+            return Err(GlueXCoreError::HistogramEmptyBinCount);
         }
         let (min, max) = limits;
         if !min.is_finite() || !max.is_finite() || max <= min {
-            return Err(HistogramError::InvalidUniformLimits { min, max });
+            return Err(GlueXCoreError::HistogramInvalidUniformLimits { min, max });
         }
         let width = (max - min) / bins as f64;
         let edges: Vec<f64> = (0..=bins).map(|i| min + i as f64 * width).collect();
         Self::new(counts, &edges, errors)
     }
-    pub fn empty(edges: &[f64]) -> Result<Self, HistogramError> {
+    pub fn empty(edges: &[f64]) -> Result<Self, GlueXCoreError> {
         validate_edges(edges)?;
         let nbins = edges.len() - 1;
         Ok(Self {
@@ -128,13 +128,13 @@ impl Histogram {
             errors: vec![0.0; nbins],
         })
     }
-    pub fn empty_uniform(bins: usize, limits: (f64, f64)) -> Result<Self, HistogramError> {
+    pub fn empty_uniform(bins: usize, limits: (f64, f64)) -> Result<Self, GlueXCoreError> {
         if bins == 0 {
-            return Err(HistogramError::EmptyBinCount);
+            return Err(GlueXCoreError::HistogramEmptyBinCount);
         }
         let (min, max) = limits;
         if !min.is_finite() || !max.is_finite() || max <= min {
-            return Err(HistogramError::InvalidUniformLimits { min, max });
+            return Err(GlueXCoreError::HistogramInvalidUniformLimits { min, max });
         }
         let width = (max - min) / bins as f64;
         let edges: Vec<f64> = (0..=bins).map(|i| min + i as f64 * width).collect();
@@ -190,9 +190,9 @@ impl Histogram {
         &mut self,
         values: &[f64],
         weights: &[f64],
-    ) -> Result<(), HistogramError> {
+    ) -> Result<(), GlueXCoreError> {
         if values.len() != weights.len() {
-            return Err(HistogramError::WeightLengthMismatch {
+            return Err(GlueXCoreError::HistogramWeightLengthMismatch {
                 expected: values.len(),
                 found: weights.len(),
             });

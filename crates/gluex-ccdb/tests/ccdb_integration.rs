@@ -2,7 +2,7 @@
 
 use chrono::{Datelike, Timelike};
 use gluex_ccdb::{context::CCDBContext, database::CCDB, models::ColumnMeta, CCDBResult};
-use gluex_core::{errors::ParseTimestampError, parsers::parse_timestamp};
+use gluex_core::{parsers::parse_timestamp, GlueXCoreError};
 const TABLE_PATH: &str = "/test/demo/mytable";
 
 fn open_db() -> CCDB {
@@ -38,7 +38,7 @@ fn parse_timestamp_infers_and_validates_inputs() -> CCDBResult<()> {
     );
 
     let err = parse_timestamp("no digits here").unwrap_err();
-    assert!(matches!(err, ParseTimestampError::NoDigits(msg) if msg == "no digits here"));
+    assert!(matches!(err, GlueXCoreError::TimestampNoDigits(msg) if msg == "no digits here"));
     Ok(())
 }
 

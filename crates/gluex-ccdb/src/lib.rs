@@ -2,7 +2,6 @@
 //!
 //! This crate provides a read-only interface to the Jefferson Lab Calibration
 //! and Conditions Database (CCDB).
-use gluex_core::errors::ParseTimestampError;
 use thiserror::Error;
 
 /// Context handling for run-, variation-, and timestamp-aware requests.
@@ -77,13 +76,7 @@ pub enum CCDBError {
     },
     /// Timestamp string failed to parse.
     #[error(transparent)]
-    ParseTimestampError(#[from] ParseTimestampError),
-    /// Error finding the requested REST version.
-    #[error(transparent)]
-    RESTVersionError(#[from] gluex_core::run_periods::RESTVersionError),
-    /// Error parsing the requested run period.
-    #[error(transparent)]
-    RunPeriodError(#[from] gluex_core::run_periods::RunPeriodError),
+    GlueXCoreError(#[from] gluex_core::GlueXCoreError),
     /// Required environment variable is not set.
     #[error("missing {0} environment variable for CCDB connection")]
     MissingConnectionEnv(String),
@@ -96,7 +89,4 @@ pub use crate::models::{
     AssignmentMeta, AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta,
     EventRangeMeta, RunRangeMeta, TypeTableMeta, VariationMeta,
 };
-pub use gluex_core::{
-    run_periods::{RESTVersionError, RunPeriod, RunPeriodError},
-    RESTVersion, RunNumber,
-};
+pub use gluex_core::{run_periods::RunPeriod, GlueXCoreError, RESTVersion, RunNumber};

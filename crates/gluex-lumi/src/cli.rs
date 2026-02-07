@@ -2,8 +2,8 @@ use std::{collections::HashMap, env, ffi::OsString, io, path::PathBuf, str::From
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use gluex_core::{
-    run_periods::{parse_rest_version_selection, rest_versions_for, RESTVersionError, RunPeriod},
-    RunNumber,
+    run_periods::{parse_rest_version_selection, rest_versions_for, RunPeriod},
+    GlueXCoreError, RunNumber,
 };
 use serde_json::to_writer_pretty;
 use strum::IntoEnumIterator;
@@ -90,7 +90,7 @@ fn parse_run_pair(s: &str) -> Result<(RunPeriod, RESTVersionSelection), String> 
         .transpose()?;
     let selection = match parse_rest_version_selection(run, parsed) {
         Ok(selection) => selection,
-        Err(RESTVersionError::UnknownRESTVersion { requested, .. }) => {
+        Err(GlueXCoreError::UnknownRESTVersion { requested, .. }) => {
             eprintln!(
                 "Warning: REST ver{requested:02} is not defined for run period {}. Using current timestamp instead.",
                 run.short_name()

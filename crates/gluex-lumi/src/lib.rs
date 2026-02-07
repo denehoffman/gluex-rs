@@ -22,8 +22,7 @@ pub mod cli;
 pub const BERILLIUM_RADIATION_LENGTH_METERS: f64 = 35.28e-2;
 
 pub use gluex_core::{
-    run_periods::{RESTVersionError, RunPeriod, RunPeriodError},
-    Histogram, HistogramError, RESTVersion, RESTVersionSelection, RunNumber,
+    run_periods::RunPeriod, GlueXCoreError, Histogram, RESTVersion, RESTVersionSelection, RunNumber,
 };
 
 #[derive(Error, Debug)]
@@ -41,15 +40,9 @@ pub enum LuminosityError {
     /// Endpoint calibration was required but unavailable for this run.
     #[error("Missing endpoint calibration for run {0}")]
     MissingEndpointCalibration(RunNumber),
-    /// Wrapper around [`RESTVersionError`].
+    /// Wrapper around [`GlueXCoreError`].
     #[error(transparent)]
-    RESTVersionError(#[from] RESTVersionError),
-    /// Wrapper around [`RunPeriodError`].
-    #[error(transparent)]
-    RunPeriodError(#[from] RunPeriodError),
-    /// Wrapper around [`HistogramError`].
-    #[error(transparent)]
-    HistogramError(#[from] HistogramError),
+    GlueXCoreError(#[from] GlueXCoreError),
     /// No runs remained after selection and exclusions.
     #[error("at least one run number is required")]
     EmptyRunSelection,

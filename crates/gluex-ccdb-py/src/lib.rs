@@ -7,10 +7,8 @@ use ::gluex_ccdb::{
 };
 use chrono::{DateTime, Utc};
 use gluex_core::{
-    parsers::parse_timestamp,
-    run_periods::{RESTVersionSelection, RunPeriodError},
-    utils::resolve_path,
-    RESTVersion, RunNumber,
+    parsers::parse_timestamp, run_periods::RESTVersionSelection, utils::resolve_path,
+    GlueXCoreError, RESTVersion, RunNumber,
 };
 use pyo3::{
     conversion::IntoPyObject,
@@ -618,7 +616,7 @@ impl PyTypeTableHandle {
     ) -> PyResult<BTreeMap<RunNumber, PyData>> {
         let run_period = run_period
             .parse()
-            .map_err(|e: RunPeriodError| py_ccdb_error(CCDBError::RunPeriodError(e)))?;
+            .map_err(|e: GlueXCoreError| py_ccdb_error(CCDBError::GlueXCoreError(e)))?;
         let rest_version = parse_py_rest_version_selection(run_period, rest_version)?;
         let mut ctx = CCDBContext::default()
             .with_run_period(run_period, rest_version)
@@ -879,7 +877,7 @@ impl PyCCDB {
     ) -> PyResult<BTreeMap<RunNumber, PyData>> {
         let run_period = run_period
             .parse()
-            .map_err(|e: RunPeriodError| py_ccdb_error(CCDBError::RunPeriodError(e)))?;
+            .map_err(|e: GlueXCoreError| py_ccdb_error(CCDBError::GlueXCoreError(e)))?;
         let rest_version = parse_py_rest_version_selection(run_period, rest_version)?;
         let mut ctx = CCDBContext::default()
             .with_run_period(run_period, rest_version)

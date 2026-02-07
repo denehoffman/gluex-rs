@@ -3,9 +3,8 @@ use lazy_static::lazy_static;
 use std::{collections::HashMap, str::FromStr};
 
 use strum::{EnumIter, IntoEnumIterator};
-use thiserror::Error;
 
-use crate::{RESTVersion, RunNumber};
+use crate::{GlueXCoreError, RESTVersion, RunNumber};
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RunPeriod {
@@ -56,14 +55,14 @@ impl RESTVersionSelection {
     pub fn try_new(
         run_period: RunPeriod,
         rest_version: RESTVersion,
-    ) -> Result<Self, RESTVersionError> {
+    ) -> Result<Self, GlueXCoreError> {
         let Some(versions) = REST_VERSION_TIMESTAMPS.get(&run_period) else {
-            return Err(RESTVersionError::MissingRESTVersions(run_period));
+            return Err(GlueXCoreError::MissingRESTVersions(run_period));
         };
         if versions.contains_key(&rest_version) {
             Ok(Self::Version(rest_version))
         } else {
-            Err(RESTVersionError::UnknownRESTVersion {
+            Err(GlueXCoreError::UnknownRESTVersion {
                 run_period,
                 requested: rest_version,
             })
@@ -82,19 +81,16 @@ impl RESTVersionSelection {
     ///
     /// Returns an error if the requested REST version is not defined for the run period or
     /// if the run period has no REST metadata.
-    pub fn resolve_timestamp(
-        self,
-        run_period: RunPeriod,
-    ) -> Result<DateTime<Utc>, RESTVersionError> {
+    pub fn resolve_timestamp(self, run_period: RunPeriod) -> Result<DateTime<Utc>, GlueXCoreError> {
         match self {
             Self::Current => Ok(Utc::now()),
             Self::Timestamp(timestamp) => Ok(timestamp),
             Self::Version(rest_version) => {
                 let rest_versions = REST_VERSION_TIMESTAMPS
                     .get(&run_period)
-                    .ok_or(RESTVersionError::MissingRESTVersions(run_period))?;
+                    .ok_or(GlueXCoreError::MissingRESTVersions(run_period))?;
                 rest_versions.get(&rest_version).copied().ok_or(
-                    RESTVersionError::UnknownRESTVersion {
+                    GlueXCoreError::UnknownRESTVersion {
                         run_period,
                         requested: rest_version,
                     },
@@ -105,7 +101,7 @@ impl RESTVersionSelection {
 }
 
 impl TryFrom<(RunPeriod, RESTVersion)> for RESTVersionSelection {
-    type Error = RESTVersionError;
+    type Error = GlueXCoreError;
 
     fn try_from(value: (RunPeriod, RESTVersion)) -> Result<Self, Self::Error> {
         RESTVersionSelection::try_new(value.0, value.1)
@@ -113,7 +109,7 @@ impl TryFrom<(RunPeriod, RESTVersion)> for RESTVersionSelection {
 }
 
 impl TryFrom<(RunPeriod, &RESTVersion)> for RESTVersionSelection {
-    type Error = RESTVersionError;
+    type Error = GlueXCoreError;
 
     fn try_from(value: (RunPeriod, &RESTVersion)) -> Result<Self, Self::Error> {
         RESTVersionSelection::try_new(value.0, *value.1)
@@ -216,16 +212,8 @@ pub fn coherent_peak(run: RunNumber) -> (f64, f64) {
     }
 }
 
-#[derive(Error, Debug, Clone)]
-pub enum RunPeriodError {
-    #[error("Run number {0} not in range of any known run period")]
-    UnknownRunPeriodError(RunNumber),
-    #[error("Could not parse run period from string {0}")]
-    RunPeriodParseError(String),
-}
-
 impl FromStr for RunPeriod {
-    type Err = RunPeriodError;
+    type Err = GlueXCoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
@@ -241,18 +229,18 @@ impl FromStr for RunPeriod {
             "f22" => Ok(Self::RP2022_08),
             "s23" => Ok(Self::RP2023_01),
             "s25" => Ok(Self::RP2025_01),
-            _ => Err(RunPeriodError::RunPeriodParseError(s.to_string())),
+            _ => Err(GlueXCoreError::RunPeriodParse(s.to_string())),
         }
     }
 }
 
 impl TryFrom<RunNumber> for RunPeriod {
-    type Error = RunPeriodError;
+    type Error = GlueXCoreError;
 
     fn try_from(value: RunNumber) -> Result<Self, Self::Error> {
         RunPeriod::iter()
             .find(|rp: &RunPeriod| value >= rp.min_run() && value <= rp.max_run())
-            .ok_or(RunPeriodError::UnknownRunPeriodError(value))
+            .ok_or(GlueXCoreError::UnknownRunPeriod(value))
     }
 }
 
@@ -321,22 +309,6 @@ pub static ref REST_VERSION_TIMESTAMPS: HashMap<RunPeriod, HashMap<RESTVersion, 
     };
 }
 
-/// Error returned when resolving REST versions for a run period.
-#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RESTVersionError {
-    /// No REST metadata exists for the run period.
-    #[error("Run period {0:?} is missing REST version metadata")]
-    MissingRESTVersions(RunPeriod),
-    /// The requested REST version is not defined for the run period.
-    #[error("REST version {requested} is not defined for run period {run_period:?}")]
-    UnknownRESTVersion {
-        /// Requested run period.
-        run_period: RunPeriod,
-        /// Requested REST version.
-        requested: RESTVersion,
-    },
-}
-
 /// Return the available REST versions and timestamps for `run_period` ordered by version.
 pub fn rest_versions_for(run_period: RunPeriod) -> Option<Vec<(RESTVersion, DateTime<Utc>)>> {
     let mut versions: Vec<(RESTVersion, DateTime<Utc>)> = REST_VERSION_TIMESTAMPS
@@ -352,7 +324,7 @@ pub fn rest_versions_for(run_period: RunPeriod) -> Option<Vec<(RESTVersion, Date
 pub fn parse_rest_version_selection(
     run_period: RunPeriod,
     rest_version: Option<RESTVersion>,
-) -> Result<RESTVersionSelection, RESTVersionError> {
+) -> Result<RESTVersionSelection, GlueXCoreError> {
     match rest_version {
         Some(version) => RESTVersionSelection::try_new(run_period, version),
         None => Ok(RESTVersionSelection::Current),
