@@ -267,7 +267,7 @@ impl Default for Luminosity {
 }
 
 impl Luminosity {
-    /// Create a calculator from RCDB and CCDB SQLite paths.
+    /// Create a calculator from RCDB and CCDB `SQLite` paths.
     pub fn new(rcdb: impl AsRef<Path>, ccdb: impl AsRef<Path>) -> Self {
         Self {
             rcdb: rcdb.as_ref().to_path_buf(),
@@ -283,7 +283,7 @@ pub struct FluxCache {
     pub livetime_scaling: f64,
     /// Pair-spectrometer acceptance parameters `(p0, p1, p2)`.
     pub pair_spectrometer_parameters: (f64, f64, f64),
-    /// Photon endpoint energy in GeV.
+    /// Photon endpoint energy in `GeV`.
     pub photon_endpoint_energy: f64,
     /// TAGM tagged flux rows `(column, flux, error)`.
     pub tagm_tagged_flux: Vec<(f64, f64, f64)>,
@@ -293,12 +293,13 @@ pub struct FluxCache {
     pub tagh_tagged_flux: Vec<(f64, f64, f64)>,
     /// TAGH scaled-energy ranges `(emin, emax)`.
     pub tagh_scaled_energy_range: Vec<(f64, f64)>,
-    /// Optional endpoint calibration correction in GeV.
+    /// Optional endpoint calibration correction in `GeV`.
     pub photon_endpoint_calibration: Option<f64>,
     /// Number of target scattering centers and uncertainty `(value, error)`.
     pub target_scattering_centers: (f64, f64),
 }
 
+#[allow(clippy::too_many_lines)]
 fn get_flux_cache(
     run_period: RunPeriod,
     runs: &[RunNumber],
@@ -370,11 +371,11 @@ fn get_flux_cache(
         .collect();
     let pair_spectrometer_parameters = fetch_pair_spectrometer_parameters(&ccdb, &ccdb_context)?;
     let mut photon_endpoint_energy = fetch_photon_endpoint_energy(&ccdb, &ccdb_context_restver)?;
-    let tagm_tagged_flux = fetch_tagm_tagged_flux(&ccdb, &ccdb_context)?;
-    let mut tagm_scaled_energy_range =
+    let microscope_tagged_flux = fetch_tagm_tagged_flux(&ccdb, &ccdb_context)?;
+    let mut microscope_scaled_energy_range =
         fetch_tagm_scaled_energy_range(&ccdb, &ccdb_context_restver)?;
-    let tagh_tagged_flux = fetch_tagh_tagged_flux(&ccdb, &ccdb_context)?;
-    let mut tagh_scaled_energy_range =
+    let hodoscope_tagged_flux = fetch_tagh_tagged_flux(&ccdb, &ccdb_context)?;
+    let mut hodoscope_scaled_energy_range =
         fetch_tagh_scaled_energy_range(&ccdb, &ccdb_context_restver)?;
     let mut photon_endpoint_calibration =
         fetch_photon_endpoint_calibration(&ccdb, &ccdb_context_restver)?;
@@ -400,13 +401,13 @@ fn get_flux_cache(
             run_period.max_run(),
         );
         apply_run_override(
-            &mut tagm_scaled_energy_range,
+            &mut microscope_scaled_energy_range,
             fetch_tagm_scaled_energy_range(&ccdb, &override_context)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
         apply_run_override(
-            &mut tagh_scaled_energy_range,
+            &mut hodoscope_scaled_energy_range,
             fetch_tagh_scaled_energy_range(&ccdb, &override_context)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
@@ -423,10 +424,6 @@ fn get_flux_cache(
         .filter_map(|(r, livetime_scaling)| {
             let pair_spectrometer_parameters = *pair_spectrometer_parameters.get(&r)?;
             let photon_endpoint_energy = *photon_endpoint_energy.get(&r)?;
-            let tagm_tagged_flux = tagm_tagged_flux.get(&r)?.clone();
-            let tagm_scaled_energy_range = tagm_scaled_energy_range.get(&r)?.clone();
-            let tagh_tagged_flux = tagh_tagged_flux.get(&r)?.clone();
-            let tagh_scaled_energy_range = tagh_scaled_energy_range.get(&r)?.clone();
             let photon_endpoint_calibration = photon_endpoint_calibration.get(&r).copied();
             let target_scattering_centers = *target_scattering_centers.get(&r)?;
             Some((
@@ -435,10 +432,10 @@ fn get_flux_cache(
                     livetime_scaling,
                     pair_spectrometer_parameters,
                     photon_endpoint_energy,
-                    tagm_tagged_flux,
-                    tagm_scaled_energy_range,
-                    tagh_tagged_flux,
-                    tagh_scaled_energy_range,
+                    tagm_tagged_flux: microscope_tagged_flux.get(&r)?.clone(),
+                    tagm_scaled_energy_range: microscope_scaled_energy_range.get(&r)?.clone(),
+                    tagh_tagged_flux: hodoscope_tagged_flux.get(&r)?.clone(),
+                    tagh_scaled_energy_range: hodoscope_scaled_energy_range.get(&r)?.clone(),
                     photon_endpoint_calibration,
                     target_scattering_centers,
                 },
@@ -607,6 +604,7 @@ impl Luminosity {
     /// # Errors
     /// Returns a [`LuminosityError`] if RCDB/CCDB data cannot be fetched or the run
     /// selection is invalid after filtering.
+    #[allow(clippy::too_many_lines)]
     pub fn fetch(
         &self,
         edges: &[f64],
@@ -615,8 +613,8 @@ impl Luminosity {
         let mut cache: HashMap<RunNumber, FluxCache> = HashMap::new();
         let coherent_peak = ctx.coherent_peak();
         let mut tagged_flux_hist = Histogram::empty(edges)?;
-        let mut tagm_flux_hist = Histogram::empty(edges)?;
-        let mut tagh_flux_hist = Histogram::empty(edges)?;
+        let mut microscope_flux_hist = Histogram::empty(edges)?;
+        let mut hodoscope_flux_hist = Histogram::empty(edges)?;
         let mut tagged_luminosity_hist = Histogram::empty(edges)?;
         let mut run_numbers: Vec<RunNumber> = ctx.runs().to_vec();
         if !ctx.exclude_runs().is_empty() {
@@ -686,8 +684,9 @@ impl Luminosity {
                         let error = tagged_flux.2 * data.livetime_scaling / acceptance;
                         tagged_flux_hist.counts[ibin] += count;
                         tagged_flux_hist.errors[ibin] = tagged_flux_hist.errors[ibin].hypot(error);
-                        tagm_flux_hist.counts[ibin] += count;
-                        tagm_flux_hist.errors[ibin] = tagm_flux_hist.errors[ibin].hypot(error);
+                        microscope_flux_hist.counts[ibin] += count;
+                        microscope_flux_hist.errors[ibin] =
+                            microscope_flux_hist.errors[ibin].hypot(error);
                     }
                 }
                 // Fill hodoscope
@@ -716,8 +715,9 @@ impl Luminosity {
                         let error = tagged_flux.2 * data.livetime_scaling / acceptance;
                         tagged_flux_hist.counts[ibin] += count;
                         tagged_flux_hist.errors[ibin] = tagged_flux_hist.errors[ibin].hypot(error);
-                        tagh_flux_hist.counts[ibin] += count;
-                        tagh_flux_hist.errors[ibin] = tagh_flux_hist.errors[ibin].hypot(error);
+                        hodoscope_flux_hist.counts[ibin] += count;
+                        hodoscope_flux_hist.errors[ibin] =
+                            hodoscope_flux_hist.errors[ibin].hypot(error);
                     }
                 }
                 let (n_scattering_centers, n_scattering_centers_error) =
@@ -738,8 +738,8 @@ impl Luminosity {
         }
         Ok(FluxHistograms {
             tagged_flux: tagged_flux_hist,
-            tagm_flux: tagm_flux_hist,
-            tagh_flux: tagh_flux_hist,
+            tagm_flux: microscope_flux_hist,
+            tagh_flux: hodoscope_flux_hist,
             tagged_luminosity: tagged_luminosity_hist,
         })
     }
