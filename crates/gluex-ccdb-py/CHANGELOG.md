@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1](https://github.com/denehoffman/gluex-rs/compare/gluex-ccdb-py-v0.2.0...gluex-ccdb-py-v0.2.1) (2026-02-07)
+
+
+### Features
+
+* **core:** Add shared path resolver and adopt across crates ([c2c9620](https://github.com/denehoffman/gluex-rs/commit/c2c9620ca0b396acb048fec5c3d595d6e8ef3ac2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * gluex-core bumped from 0.2.0 to 0.2.1
+    * gluex-ccdb bumped from 0.2.0 to 0.2.1
+
 ## [0.2.0](https://github.com/denehoffman/gluex-rs/compare/gluex-ccdb-py-v0.1.9...gluex-ccdb-py-v0.2.0) (2026-02-06)
 
 

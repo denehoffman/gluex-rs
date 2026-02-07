@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-ccdb"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "criterion",
@@ -383,7 +383,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-ccdb-py"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "gluex-ccdb",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "auto_ops",
  "chrono",
@@ -406,7 +406,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-lumi"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "clap",
@@ -422,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-lumi-py"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "gluex-core",
@@ -433,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-rcdb"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "criterion",
@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-rcdb-py"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "gluex-core",
