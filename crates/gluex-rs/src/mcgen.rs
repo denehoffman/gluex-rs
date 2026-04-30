@@ -1,120 +1,543 @@
-use std::{path::Path, sync::Arc};
+//! HDDM export utilities for laddu-generated Monte Carlo batches.
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+
+use std::{error::Error, fmt, path::Path};
 
 use fastrand::Rng;
-use gluex_core::RunPeriod;
-use hddm::Particle;
-use laddu::{Dataset, GeneratedBatch, Vec3};
+use gluex_core::particles::Particle as GluexParticle;
+use laddu::{Event, GeneratedBatch, GeneratedParticleLayout, Vec3, Vec4};
 
-use crate::hddm_s::{
-    Beam, Hddm, Momentum, Origin, PhysicsEvent, Product, Properties, Random, Reaction, Target,
-    Vertex,
+use crate::{
+    hddm_s::{
+        Beam, Hddm, Momentum, Origin, PhysicsEvent, Product, Properties, Random, Reaction, Target,
+        Vertex,
+    },
+    species::{gluex_particle_from_species, SpeciesMappingError},
 };
 
-struct HddmBatchWriter {
-    dataset: GeneratedBatch,
-    reaction: laddu::Reaction,
-    initial_vertex: Vec3,
+/// Error returned while converting a generated batch into `GlueX` HDDM records.
+#[derive(Debug)]
+pub enum GluexHddmError {
+    /// The generated layout did not contain the requested particle.
+    MissingParticle {
+        /// Generated particle identifier.
+        id: String,
+    },
+    /// The requested particle did not have species metadata.
+    MissingSpecies {
+        /// Generated particle identifier.
+        id: String,
+    },
+    /// The requested particle does not have a stored p4 column in the generated dataset.
+    MissingStoredP4 {
+        /// Generated particle identifier.
+        id: String,
+    },
+    /// The dataset event did not contain an expected p4 value.
+    MissingEventP4 {
+        /// Dataset p4 column label.
+        label: String,
+    },
+    /// Species metadata could not be mapped to GlueX/HDDM particle IDs.
+    Species(SpeciesMappingError),
+    /// HDDM writing failed.
+    Hddm(hddm::HddmError),
 }
 
-impl HddmBatchWriter {
-    fn append_to(&self, path: impl AsRef<Path>) {
-        let mut rng = Rng::with_seed(0);
-        let mut writer = crate::hddm_s::append(path.as_ref()).unwrap();
-        for (i, event) in self.dataset.dataset().iter().enumerate() {
-            let event_beam = event.p4("beam").unwrap();
-            let beam = Beam {
-                type_: Particle::Gamma,
-                momentum: Momentum {
-                    e: event_beam.e() as f32,
-                    px: event_beam.px() as f32,
-                    py: event_beam.py() as f32,
-                    pz: event_beam.pz() as f32,
-                    momentum_double: None,
-                },
-                polarization: None,
-                properties: Properties {
-                    charge: 0,
-                    mass: 0.0,
-                },
-            };
-            let target = Target {
-                type_: Particle::Proton,
-                momentum: Momentum {
-                    e: 0.938272,
-                    px: 0.0,
-                    py: 0.0,
-                    pz: 0.0,
-                    momentum_double: None,
-                },
-                polarization: None,
-                properties: Properties {
-                    charge: 1,
-                    mass: 0.938272,
-                },
-            };
-            let mut product_list = todo!();
-            // let mut product_list = self
-            //     .reaction
-            //     .iter_final_state()
-            //     .map(|p| Product {
-            //         decay_vertex: 0, // TODO:
-            //         id: p.index as i32,
-            //         mech: 0,
-            //         parentid: p.parent_index as i32,
-            //         pdgtype: gluex_core::Particle::from(p.particle).to_pdg() as i32,
-            //         type_: p.particle,
-            //         momentum: Momentum {
-            //             e: p.p4.e() as f32,
-            //             px: p.p4.px() as f32,
-            //             py: p.p4.py() as f32,
-            //             pz: p.p4.pz() as f32,
-            //             momentum_double: None,
-            //         },
-            //         polarization: None,
-            //         properties: Some(Properties {
-            //             charge: gluex_core::Particle::from(p.particle).particle_charge() as i32,
-            //             mass: gluex_core::Particle::from(p.particle).particle_mass() as f32,
-            //         }),
-            //     })
-            //     .collect::<Vec<Product>>();
-            let vertex_list = vec![Vertex {
-                product: product_list,
-                origin: Origin {
-                    t: 0.0,
-                    vx: self.initial_vertex.x as f32,
-                    vy: self.initial_vertex.y as f32,
-                    vz: self.initial_vertex.z as f32,
-                },
-            }];
-            let mut randoms = Random {
-                seed1: rng.i32(0..),
-                seed2: rng.i32(0..),
-                seed3: rng.i32(0..),
-                seed4: rng.i32(0..),
-            };
-            let reaction = Reaction {
-                type_: 0,
-                weight: 1.0,
-                beam: Some(beam),
-                target: Some(target),
-                vertex: vertex_list,
-                random: Some(randoms),
-                user_data: vec![],
-            };
-            let record = Hddm {
-                geometry: None,
-                physics_event: vec![PhysicsEvent {
-                    event_no: i as i32,
-                    run_no: RunPeriod::RP2019_11.min_run() as i32,
-                    data_version_string: vec![],
-                    ccdb_context: vec![],
-                    reaction: vec![reaction],
-                    hit_view: None,
-                    recon_view: None,
-                }],
-            };
-            writer.write_record(&record).unwrap();
+impl fmt::Display for GluexHddmError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingParticle { id } => write!(f, "generated particle '{id}' was not found"),
+            Self::MissingSpecies { id } => {
+                write!(f, "generated particle '{id}' has no species metadata")
+            }
+            Self::MissingStoredP4 { id } => {
+                write!(f, "generated particle '{id}' has no stored p4 column")
+            }
+            Self::MissingEventP4 { label } => {
+                write!(f, "event is missing p4 column '{label}'")
+            }
+            Self::Species(err) => write!(f, "{err}"),
+            Self::Hddm(err) => write!(f, "{err}"),
         }
-        writer.finish().unwrap();
+    }
+}
+
+impl Error for GluexHddmError {}
+
+impl From<SpeciesMappingError> for GluexHddmError {
+    fn from(value: SpeciesMappingError) -> Self {
+        Self::Species(value)
+    }
+}
+
+impl From<hddm::HddmError> for GluexHddmError {
+    fn from(value: hddm::HddmError) -> Self {
+        Self::Hddm(value)
+    }
+}
+
+/// Configuration for exporting generated events to `GlueX` simulation HDDM.
+#[derive(Clone, Debug)]
+pub struct GluexHddmConfig {
+    beam_id: String,
+    target_id: String,
+    run_number: i32,
+    first_event_number: i32,
+    random_seed: u64,
+    vertex: Vec3,
+}
+
+impl GluexHddmConfig {
+    /// Construct a `GlueX` HDDM export configuration.
+    ///
+    /// The `beam_id` and `target_id` identify generated initial-state particles. Transport
+    /// products are inferred from the stored generated p4 columns in each [`GeneratedBatch`],
+    /// excluding the beam and target. Composite particles that should be decayed by Geant4, such as
+    /// `KShort`, should be selected with `GeneratedStorage`, while their generated daughters should
+    /// be omitted from generated p4 storage.
+    pub fn new(beam_id: impl Into<String>, target_id: impl Into<String>) -> Self {
+        Self {
+            beam_id: beam_id.into(),
+            target_id: target_id.into(),
+            run_number: 0,
+            first_event_number: 0,
+            random_seed: 0,
+            vertex: Vec3::zero(),
+        }
+    }
+
+    /// Return the generated beam particle identifier.
+    #[must_use]
+    pub fn beam_id(&self) -> &str {
+        &self.beam_id
+    }
+
+    /// Return the generated target particle identifier.
+    #[must_use]
+    pub fn target_id(&self) -> &str {
+        &self.target_id
+    }
+
+    /// Return a copy of this config with a different run number.
+    #[must_use]
+    pub fn with_run_number(mut self, run_number: i32) -> Self {
+        self.run_number = run_number;
+        self
+    }
+
+    /// Return a copy of this config with a different first event number.
+    #[must_use]
+    pub fn with_first_event_number(mut self, first_event_number: i32) -> Self {
+        self.first_event_number = first_event_number;
+        self
+    }
+
+    /// Return a copy of this config with a deterministic random seed.
+    #[must_use]
+    pub fn with_random_seed(mut self, random_seed: u64) -> Self {
+        self.random_seed = random_seed;
+        self
+    }
+
+    /// Return a copy of this config with a fixed production vertex in centimeters.
+    #[must_use]
+    pub fn with_vertex(mut self, vertex: Vec3) -> Self {
+        self.vertex = vertex;
+        self
+    }
+}
+
+/// Writer for converting generated laddu batches into `GlueX` simulation HDDM files.
+#[derive(Clone, Debug)]
+pub struct GluexHddmWriter {
+    config: GluexHddmConfig,
+}
+
+impl GluexHddmWriter {
+    /// Construct a writer from an export configuration.
+    #[must_use]
+    pub fn new(config: GluexHddmConfig) -> Self {
+        Self { config }
+    }
+
+    /// Return this writer's export configuration.
+    #[must_use]
+    pub fn config(&self) -> &GluexHddmConfig {
+        &self.config
+    }
+
+    /// Write a generated batch to a new HDDM file.
+    ///
+    /// This creates one `GlueX` primary vertex per event. Beam and target are stored in their
+    /// dedicated HDDM fields, and selected products are stored with `parentid = 0`, matching the
+    /// convention used by `GlueX`'s `HDDMDataWriter` for internally generated transport products.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a requested particle is absent, lacks species metadata, lacks required
+    /// p4 data, cannot be mapped to `GlueX` particle IDs, or if the HDDM writer fails.
+    pub fn write_batch(
+        &self,
+        batch: &GeneratedBatch,
+        path: impl AsRef<Path>,
+    ) -> Result<(), GluexHddmError> {
+        let mut writer = crate::hddm_s::create(path.as_ref())?;
+        for record in self.records(batch)? {
+            writer.write_record(&record)?;
+        }
+        writer.finish()?;
+        Ok(())
+    }
+
+    /// Build HDDM records for a generated batch without writing them.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same conversion errors as [`GluexHddmWriter::write_batch`].
+    fn records(&self, batch: &GeneratedBatch) -> Result<Vec<Hddm>, GluexHddmError> {
+        let beam_layout = require_particle(batch, &self.config.beam_id)?;
+        let target_layout = require_particle(batch, &self.config.target_id)?;
+        let product_layouts =
+            stored_product_layouts(batch, &self.config.beam_id, &self.config.target_id);
+
+        let beam_particle = require_gluex_particle(beam_layout)?;
+        let target_particle = require_gluex_particle(target_layout)?;
+        let product_particles = product_layouts
+            .iter()
+            .map(|layout| require_gluex_particle(layout))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut rng = Rng::with_seed(self.config.random_seed);
+        let mut records = Vec::with_capacity(batch.dataset().n_events_local());
+        for (event_index, event) in batch.dataset().iter().enumerate() {
+            let beam_p4 = stored_p4(batch, beam_layout, &event)?;
+            let target_p4 = optional_stored_p4(batch, target_layout, &event)?
+                .unwrap_or_else(|| Vec4::new(0.0, 0.0, 0.0, target_particle.particle_mass()));
+            let products = product_layouts
+                .iter()
+                .zip(product_particles.iter().copied())
+                .enumerate()
+                .map(|(index, (layout, particle))| {
+                    let p4 = stored_p4(batch, layout, &event)?;
+                    Ok(product_from_particle(index + 1, particle, p4))
+                })
+                .collect::<Result<Vec<_>, GluexHddmError>>()?;
+
+            records.push(self.record(
+                event_index,
+                beam_particle,
+                beam_p4,
+                target_particle,
+                target_p4,
+                products,
+                &mut rng,
+                event.weight(),
+            ));
+        }
+        Ok(records)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn record(
+        &self,
+        event_index: usize,
+        beam_particle: GluexParticle,
+        beam_p4: Vec4,
+        target_particle: GluexParticle,
+        target_p4: Vec4,
+        products: Vec<Product>,
+        rng: &mut Rng,
+        weight: f64,
+    ) -> Hddm {
+        Hddm {
+            geometry: None,
+            physics_event: vec![PhysicsEvent {
+                event_no: self.config.first_event_number + event_index as i32,
+                run_no: self.config.run_number,
+                data_version_string: vec![],
+                ccdb_context: vec![],
+                reaction: vec![Reaction {
+                    type_: 0,
+                    weight: weight as f32,
+                    beam: Some(Beam {
+                        type_: beam_particle.into(),
+                        momentum: momentum(beam_p4),
+                        polarization: None,
+                        properties: properties(beam_particle),
+                    }),
+                    target: Some(Target {
+                        type_: target_particle.into(),
+                        momentum: momentum(target_p4),
+                        polarization: None,
+                        properties: properties(target_particle),
+                    }),
+                    vertex: vec![Vertex {
+                        product: products,
+                        origin: Origin {
+                            t: 0.0,
+                            vx: self.config.vertex.x as f32,
+                            vy: self.config.vertex.y as f32,
+                            vz: self.config.vertex.z as f32,
+                        },
+                    }],
+                    random: Some(Random {
+                        seed1: rng.i32(0..),
+                        seed2: rng.i32(0..),
+                        seed3: rng.i32(0..),
+                        seed4: rng.i32(0..),
+                    }),
+                    user_data: vec![],
+                }],
+                hit_view: None,
+                recon_view: None,
+            }],
+        }
+    }
+}
+
+fn require_particle<'a>(
+    batch: &'a GeneratedBatch,
+    id: &str,
+) -> Result<&'a GeneratedParticleLayout, GluexHddmError> {
+    batch
+        .layout()
+        .particle(id)
+        .ok_or_else(|| GluexHddmError::MissingParticle { id: id.to_string() })
+}
+
+fn stored_product_layouts<'a>(
+    batch: &'a GeneratedBatch,
+    beam_id: &str,
+    target_id: &str,
+) -> Vec<&'a GeneratedParticleLayout> {
+    batch
+        .layout()
+        .particles()
+        .iter()
+        .filter(|layout| {
+            layout.p4_label().is_some() && layout.id() != beam_id && layout.id() != target_id
+        })
+        .collect()
+}
+
+fn require_gluex_particle(
+    layout: &GeneratedParticleLayout,
+) -> Result<GluexParticle, GluexHddmError> {
+    let species = layout
+        .species()
+        .ok_or_else(|| GluexHddmError::MissingSpecies {
+            id: layout.id().to_string(),
+        })?;
+    Ok(gluex_particle_from_species(species)?)
+}
+
+fn stored_p4(
+    batch: &GeneratedBatch,
+    layout: &GeneratedParticleLayout,
+    event: &Event,
+) -> Result<Vec4, GluexHddmError> {
+    let label = layout
+        .p4_label()
+        .ok_or_else(|| GluexHddmError::MissingStoredP4 {
+            id: layout.id().to_string(),
+        })?;
+    if !batch
+        .layout()
+        .p4_labels()
+        .iter()
+        .any(|stored| stored == label)
+    {
+        return Err(GluexHddmError::MissingStoredP4 {
+            id: layout.id().to_string(),
+        });
+    }
+    event
+        .p4(label)
+        .ok_or_else(|| GluexHddmError::MissingEventP4 {
+            label: label.to_string(),
+        })
+}
+
+fn optional_stored_p4(
+    batch: &GeneratedBatch,
+    layout: &GeneratedParticleLayout,
+    event: &Event,
+) -> Result<Option<Vec4>, GluexHddmError> {
+    if layout.p4_label().is_some() {
+        stored_p4(batch, layout, event).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+fn product_from_particle(id: usize, particle: GluexParticle, p4: Vec4) -> Product {
+    Product {
+        decay_vertex: 0,
+        id: id as i32,
+        mech: 0,
+        parentid: 0,
+        pdgtype: particle.to_pdg() as i32,
+        type_: particle.into(),
+        momentum: momentum(p4),
+        polarization: None,
+        properties: Some(properties(particle)),
+    }
+}
+
+fn properties(particle: GluexParticle) -> Properties {
+    Properties {
+        charge: particle.particle_charge() as i32,
+        mass: particle.particle_mass() as f32,
+    }
+}
+
+fn momentum(p4: Vec4) -> Momentum {
+    Momentum {
+        e: p4.e() as f32,
+        px: p4.px() as f32,
+        py: p4.py() as f32,
+        pz: p4.pz() as f32,
+        momentum_double: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, fs, path::PathBuf, process};
+
+    use laddu::{
+        generation::{
+            CompositeGenerator, EventGenerator, GeneratedParticle, GeneratedReaction,
+            GeneratedStorage, InitialGenerator, MandelstamTDistribution, ParticleSpecies,
+            Reconstruction, StableGenerator,
+        },
+        Vec3,
+    };
+
+    use super::{GluexHddmConfig, GluexHddmWriter};
+
+    fn ksks_batch() -> laddu::LadduResult<laddu::GeneratedBatch> {
+        let beam = GeneratedParticle::initial(
+            "beam",
+            InitialGenerator::beam_with_fixed_energy(0.0, 9.0),
+            Reconstruction::Stored,
+        )
+        .with_species(ParticleSpecies::code(22));
+        let target = GeneratedParticle::initial(
+            "target",
+            InitialGenerator::target(0.938_272_046),
+            Reconstruction::Missing,
+        )
+        .with_species(ParticleSpecies::code(2212));
+        let pip_1 = GeneratedParticle::stable(
+            "pip1",
+            StableGenerator::new(0.139_570_18),
+            Reconstruction::Stored,
+        )
+        .with_species(ParticleSpecies::code(211));
+        let pim_1 = GeneratedParticle::stable(
+            "pim1",
+            StableGenerator::new(0.139_570_18),
+            Reconstruction::Stored,
+        )
+        .with_species(ParticleSpecies::code(-211));
+        let pip_2 = GeneratedParticle::stable(
+            "pip2",
+            StableGenerator::new(0.139_570_18),
+            Reconstruction::Stored,
+        )
+        .with_species(ParticleSpecies::code(211));
+        let pim_2 = GeneratedParticle::stable(
+            "pim2",
+            StableGenerator::new(0.139_570_18),
+            Reconstruction::Stored,
+        )
+        .with_species(ParticleSpecies::code(-211));
+        let ks_1 = GeneratedParticle::composite(
+            "ks1",
+            CompositeGenerator::new(0.497_614, 0.497_615),
+            (&pip_1, &pim_1),
+            Reconstruction::Stored,
+        )
+        .with_species(ParticleSpecies::code(310));
+        let ks_2 = GeneratedParticle::composite(
+            "ks2",
+            CompositeGenerator::new(0.497_614, 0.497_615),
+            (&pip_2, &pim_2),
+            Reconstruction::Stored,
+        )
+        .with_species(ParticleSpecies::code(310));
+        let kk = GeneratedParticle::composite(
+            "kk",
+            CompositeGenerator::new(1.1, 1.3),
+            (&ks_1, &ks_2),
+            Reconstruction::Composite,
+        );
+        let recoil = GeneratedParticle::stable(
+            "recoil",
+            StableGenerator::new(0.938_272_046),
+            Reconstruction::Stored,
+        )
+        .with_species(ParticleSpecies::code(2212));
+        let reaction = GeneratedReaction::two_to_two(
+            beam,
+            target,
+            kk,
+            recoil,
+            MandelstamTDistribution::Exponential { slope: 1.0 },
+        )?;
+        EventGenerator::new(reaction, HashMap::new(), Some(0))
+            .with_storage(GeneratedStorage::only(["beam", "ks1", "ks2", "recoil"]))?
+            .generate_batch(2)
+    }
+
+    #[test]
+    fn exports_selected_transport_products_only() {
+        let batch = ksks_batch().unwrap();
+        let writer = GluexHddmWriter::new(
+            GluexHddmConfig::new("beam", "target")
+                .with_run_number(90_000)
+                .with_first_event_number(7)
+                .with_vertex(Vec3::new(0.1, 0.2, 50.0)),
+        );
+        let records = writer.records(&batch).unwrap();
+        assert_eq!(records.len(), 2);
+        let event = &records[0].physics_event[0];
+        assert_eq!(event.run_no, 90_000);
+        assert_eq!(event.event_no, 7);
+        let reaction = &event.reaction[0];
+        assert_eq!(reaction.beam.as_ref().unwrap().type_, hddm::Particle::Gamma);
+        assert_eq!(
+            reaction.target.as_ref().unwrap().type_,
+            hddm::Particle::Proton
+        );
+        let products = &reaction.vertex[0].product;
+        assert_eq!(products.len(), 3);
+        assert_eq!(products[0].type_, hddm::Particle::KShort);
+        assert_eq!(products[1].type_, hddm::Particle::KShort);
+        assert_eq!(products[2].type_, hddm::Particle::Proton);
+        assert!(products.iter().all(|product| product.parentid == 0));
+        assert_eq!(
+            products
+                .iter()
+                .map(|product| product.id)
+                .collect::<Vec<_>>(),
+            [1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn writes_selected_transport_products_to_hddm_file() {
+        let batch = ksks_batch().unwrap();
+        let writer = GluexHddmWriter::new(GluexHddmConfig::new("beam", "target"));
+        let path = PathBuf::from(format!(
+            "/tmp/gluex-rs-ksks-demo-{}-{}.hddm",
+            process::id(),
+            fastrand::u64(..)
+        ));
+        writer.write_batch(&batch, &path).unwrap();
+        assert!(path.metadata().unwrap().len() > 0);
+        fs::remove_file(path).unwrap();
     }
 }

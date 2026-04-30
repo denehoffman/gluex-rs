@@ -1,4 +1,4 @@
-//! A Rust library for unified GlueX data analysis.
+//! A Rust library for unified `GlueX` data analysis.
 
 // pub(crate) mod hddm_s {
 //     include!(concat!(env!("OUT_DIR"), "/hddm_s.rs"));
