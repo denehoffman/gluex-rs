@@ -1,0 +1,23 @@
+[package]
+name = "gluex-rs"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fastrand.workspace = true
+gluex-core.workspace = true
+hddm.workspace = true
+laddu = { path = "../../../laddu/crates/laddu" }
+
+[build-dependencies]
+anyhow.workspace = true
+hddm.workspace = true
+hddm-rs.workspace = true
+
+[lints]
+workspace = true

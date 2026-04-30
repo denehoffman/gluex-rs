@@ -53,7 +53,7 @@ def resolve_python_versions(skip: list[str] | None) -> list[str]:
 
 def create_build_job(job_name: str, name: str, library_name: str, targets: list[Target], *, needs: list[str]) -> Job:
     def platform_entry(target: Target) -> dict[str, object]:
-        entry = {
+        entry: dict[str, object] = {
             'runner': target.runner,
             'target': target.target,
             'python_versions': resolve_python_versions(target.skip_python_versions),

@@ -22,9 +22,17 @@
   "bump-patch-for-minor-pre-major": true,
   "release-type": "rust",
   "packages": {
+    "crates/gluex-rs": {
+      "component": "gluex-rs"
+    },
     "crates/gluex-core": {
       "component": "gluex-core",
       "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-core'].version"
+        },
         {
           "type": "toml",
           "path": "crates/gluex-ccdb/Cargo.toml",

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-default-members = ["crates/gluex-rcdb", "crates/gluex-ccdb", "crates/gluex-lumi", "crates/gluex-core", "crates/gluex-ccdb-py", "crates/gluex-rcdb-py", "crates/gluex-lumi-py"]
+default-members = ["crates/gluex-rs", "crates/gluex-rcdb", "crates/gluex-ccdb", "crates/gluex-lumi", "crates/gluex-core", "crates/gluex-ccdb-py", "crates/gluex-rcdb-py", "crates/gluex-lumi-py"]
 
 [workspace.package]
 authors = ["Nathaniel Dene Hoffman <dene@cmu.edu>"]
@@ -12,22 +12,29 @@ repository = "https://github.com/denehoffman/gluex-rs"
 rust-version = "1.88.0"
 
 [workspace.dependencies]
+anyhow = "1.0.102"
 auto_ops = "0.3.0"
-chrono = { version = "0.4.42", features = ["serde"] }
-clap = { version = "4.5.53", features = ["derive", "env"] }
-criterion = "0.8.1"
+chrono = { version = "0.4.44", features = ["serde"] }
+clap = { version = "4.6.1", features = ["derive", "env"] }
+criterion = "0.8.2"
 dashmap = "6.1.0"
+fastrand = "2.4.1"
+hddm = "0.2.0"
+hddm-rs = "0.2.0"
 itertools = "0.14.0"
+laddu = "0.18.0"
 lazy_static = "1.5.0"
-memchr = "2.7.6"
+memchr = "2.8.0"
 parking_lot = "0.12.5"
-pyo3 = { version = "0.28.0", features = ["abi3", "generate-import-lib"] }
-rusqlite = { version = "0.38.0", features = ["bundled"] }
+pyo3 = { version = "0.28.3", features = ["abi3", "generate-import-lib"] }
+rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = {version = "1.0.228", features = ["derive"]}
-serde_json = "1.0.145"
+serde_json = "1.0.149"
 shellexpand = "3.1.1"
-strum = { version = "0.27.2", features = ["derive"] }
-thiserror = "2.0.17"
+strum = { version = "0.28.0", features = ["derive"] }
+thiserror = "2.0.18"
+
+gluex-core = { version = "0.2.1", path = "crates/gluex-core" }
 
 [profile.profiling]
 inherits = "release"
