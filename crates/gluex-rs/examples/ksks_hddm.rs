@@ -16,9 +16,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let output_path = env::args_os()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp/laddu_ksks_demo.hddm"));
+        .unwrap_or_else(|| PathBuf::from("laddu_ksks_demo.hddm"));
 
-    let batch = generate_ksks_batch(100)?;
     let writer = GluexHddmWriter::new(
         GluexHddmConfig::new("beam", "target")
             .with_run_number(40_000)
@@ -26,12 +25,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             .with_random_seed(0)
             .with_vertex(Vec3::new(0.0, 0.0, 50.0)),
     );
-    writer.write_batch(&batch, &output_path)?;
+    let batch = generate_ksks_batch(1000, 0)?;
+    let mut event_number = writer.write_batch(&batch, &output_path)?;
+    for i in 1..1000 {
+        let batch = generate_ksks_batch(1000, i)?;
+        event_number = writer.append_batch(&batch, &output_path, event_number)?;
+    }
     println!("wrote {}", output_path.display());
     Ok(())
 }
 
-fn generate_ksks_batch(n_events: usize) -> laddu::LadduResult<laddu::GeneratedBatch> {
+fn generate_ksks_batch(n_events: usize, seed: u64) -> laddu::LadduResult<laddu::GeneratedBatch> {
     let beam = GeneratedParticle::initial(
         "beam",
         InitialGenerator::beam_with_fixed_energy(0.0, 9.0),
@@ -85,7 +89,7 @@ fn generate_ksks_batch(n_events: usize) -> laddu::LadduResult<laddu::GeneratedBa
         MandelstamTDistribution::Exponential { slope: 1.0 },
     )?;
 
-    EventGenerator::new(reaction, HashMap::new(), Some(0))
+    EventGenerator::new(reaction, HashMap::new(), Some(seed))
         .with_storage(GeneratedStorage::only(["beam", "ks1", "ks2", "recoil"]))?
         .generate_batch(n_events)
 }

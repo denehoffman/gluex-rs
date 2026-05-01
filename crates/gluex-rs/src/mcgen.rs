@@ -5,6 +5,7 @@ use std::{error::Error, fmt, path::Path};
 
 use fastrand::Rng;
 use gluex_core::particles::Particle as GluexParticle;
+use hddm::Compression;
 use laddu::{Event, GeneratedBatch, GeneratedParticleLayout, Vec3, Vec4};
 
 use crate::{
@@ -181,10 +182,53 @@ impl GluexHddmWriter {
         &self,
         batch: &GeneratedBatch,
         path: impl AsRef<Path>,
+    ) -> Result<usize, GluexHddmError> {
+        let mut writer = crate::hddm_s::create(path.as_ref())?;
+        let mut event_number = 0;
+        self.write_batch_to_writer(batch, &mut writer, &mut event_number)?;
+        Ok(event_number)
+    }
+
+    /// Append a generated batch to an existing HDDM file.
+    ///
+    /// The existing file must have been created with the same HDDM schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if conversion or file writing fails.
+    pub fn append_batch(
+        &self,
+        batch: &GeneratedBatch,
+        path: impl AsRef<Path>,
+        start_event: usize,
+    ) -> Result<usize, GluexHddmError> {
+        let mut writer = crate::hddm_s::append(path.as_ref())?;
+        let mut event_number = start_event;
+        self.write_batch_to_writer(batch, &mut writer, &mut event_number)?;
+        Ok(event_number)
+    }
+
+    /// Write generated batches to a new HDDM file.
+    ///
+    /// This keeps the file open across batches, so records after the first batch are appended
+    /// without rewriting the schema header.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if conversion or file writing fails.
+    pub fn write_batches<'a>(
+        &self,
+        batches: impl IntoIterator<Item = &'a GeneratedBatch>,
+        path: impl AsRef<Path>,
     ) -> Result<(), GluexHddmError> {
         let mut writer = crate::hddm_s::create(path.as_ref())?;
-        for record in self.records(batch)? {
-            writer.write_record(&record)?;
+        writer.set_compression(Compression::None)?; // NOTE: hdgeant4 can't handle compression
+        let mut event_number = 0;
+        for batch in batches {
+            for record in self.records(batch, event_number)? {
+                writer.write_record(&record)?;
+                event_number += 1;
+            }
         }
         writer.finish()?;
         Ok(())
@@ -195,7 +239,11 @@ impl GluexHddmWriter {
     /// # Errors
     ///
     /// Returns the same conversion errors as [`GluexHddmWriter::write_batch`].
-    fn records(&self, batch: &GeneratedBatch) -> Result<Vec<Hddm>, GluexHddmError> {
+    fn records(
+        &self,
+        batch: &GeneratedBatch,
+        start_event: usize,
+    ) -> Result<Vec<Hddm>, GluexHddmError> {
         let beam_layout = require_particle(batch, &self.config.beam_id)?;
         let target_layout = require_particle(batch, &self.config.target_id)?;
         let product_layouts =
@@ -225,7 +273,7 @@ impl GluexHddmWriter {
                 .collect::<Result<Vec<_>, GluexHddmError>>()?;
 
             records.push(self.record(
-                event_index,
+                event_index + start_event,
                 beam_particle,
                 beam_p4,
                 target_particle,
@@ -236,6 +284,20 @@ impl GluexHddmWriter {
             ));
         }
         Ok(records)
+    }
+
+    fn write_batch_to_writer(
+        &self,
+        batch: &GeneratedBatch,
+        writer: &mut hddm::HddmFileWriter,
+        start_event: &mut usize,
+    ) -> Result<(), GluexHddmError> {
+        for record in self.records(batch, *start_event)? {
+            writer.write_record(&record)?;
+            *start_event += 1;
+        }
+        writer.finish()?;
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -501,7 +563,7 @@ mod tests {
                 .with_first_event_number(7)
                 .with_vertex(Vec3::new(0.1, 0.2, 50.0)),
         );
-        let records = writer.records(&batch).unwrap();
+        let records = writer.records(&batch, 0).unwrap();
         assert_eq!(records.len(), 2);
         let event = &records[0].physics_event[0];
         assert_eq!(event.run_no, 90_000);
@@ -538,6 +600,23 @@ mod tests {
         ));
         writer.write_batch(&batch, &path).unwrap();
         assert!(path.metadata().unwrap().len() > 0);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn appends_batches_to_existing_hddm_file() {
+        let first = ksks_batch().unwrap();
+        let second = ksks_batch().unwrap();
+        let writer = GluexHddmWriter::new(GluexHddmConfig::new("beam", "target"));
+        let path = PathBuf::from(format!(
+            "/tmp/gluex-rs-ksks-append-{}-{}.hddm",
+            process::id(),
+            fastrand::u64(..)
+        ));
+        let event_number = writer.write_batch(&first, &path).unwrap();
+        let first_size = path.metadata().unwrap().len();
+        let _ = writer.append_batch(&second, &path, event_number).unwrap();
+        assert!(path.metadata().unwrap().len() > first_size);
         fs::remove_file(path).unwrap();
     }
 }

@@ -1664,12 +1664,12 @@ pub fn create<P: AsRef<std::path::Path>>(path: P) -> ::hddm::HddmResult<::hddm::
         ::hddm::WriteMode::Create {
             model: MODEL.to_string(),
         },
-        ::hddm::Compression::Zlib,
+        ::hddm::Compression::None,
     )
 }
 #[allow(dead_code)]
 pub fn append<P: AsRef<std::path::Path>>(path: P) -> ::hddm::HddmResult<::hddm::HddmFileWriter> {
-    ::hddm::HddmFileWriter::new(path, ::hddm::WriteMode::Append, ::hddm::Compression::Zlib)
+    ::hddm::HddmFileWriter::new(path, ::hddm::WriteMode::Append, ::hddm::Compression::None)
 }
 impl ::hddm::HddmSchema for Hddm {
     fn model_text() -> &'static str {
