@@ -11,7 +11,7 @@ use std::path::Path;
 use fastrand::Rng;
 use gluex_core::particles::Particle as GluexParticle;
 use hddm::Compression;
-use laddu::{Event, GeneratedBatch, GeneratedParticleLayout, Vec3, Vec4};
+use laddu::{GeneratedBatch, GeneratedParticleLayout, OwnedEvent, Vec3, Vec4};
 use thiserror::Error;
 
 use crate::generation::{
@@ -101,28 +101,28 @@ impl GluexHddmConfig {
 
     /// Return a copy of this config with a different run number.
     #[must_use]
-    pub fn with_run_number(mut self, run_number: i32) -> Self {
+    pub const fn with_run_number(mut self, run_number: i32) -> Self {
         self.run_number = run_number;
         self
     }
 
     /// Return a copy of this config with a different first event number.
     #[must_use]
-    pub fn with_first_event_number(mut self, first_event_number: i32) -> Self {
+    pub const fn with_first_event_number(mut self, first_event_number: i32) -> Self {
         self.first_event_number = first_event_number;
         self
     }
 
     /// Return a copy of this config with a deterministic random seed.
     #[must_use]
-    pub fn with_random_seed(mut self, random_seed: u64) -> Self {
+    pub const fn with_random_seed(mut self, random_seed: u64) -> Self {
         self.random_seed = random_seed;
         self
     }
 
     /// Return a copy of this config with a fixed production vertex in centimeters.
     #[must_use]
-    pub fn with_vertex(mut self, vertex: Vec3) -> Self {
+    pub const fn with_vertex(mut self, vertex: Vec3) -> Self {
         self.vertex = vertex;
         self
     }
@@ -137,13 +137,13 @@ pub struct GluexHddmWriter {
 impl GluexHddmWriter {
     /// Construct a writer from an export configuration.
     #[must_use]
-    pub fn new(config: GluexHddmConfig) -> Self {
+    pub const fn new(config: GluexHddmConfig) -> Self {
         Self { config }
     }
 
     /// Return this writer's export configuration.
     #[must_use]
-    pub fn config(&self) -> &GluexHddmConfig {
+    pub const fn config(&self) -> &GluexHddmConfig {
         &self.config
     }
 
@@ -237,16 +237,16 @@ impl GluexHddmWriter {
 
         let mut rng = Rng::with_seed(self.config.random_seed);
         let mut records = Vec::with_capacity(batch.dataset().n_events_local());
-        for (event_index, event) in batch.dataset().iter().enumerate() {
-            let beam_p4 = stored_p4(batch, beam_layout, &event)?;
-            let target_p4 = optional_stored_p4(batch, target_layout, &event)?
+        for (event_index, event) in batch.dataset().events_global().iter().enumerate() {
+            let beam_p4 = stored_p4(batch, beam_layout, event)?;
+            let target_p4 = optional_stored_p4(batch, target_layout, event)?
                 .unwrap_or_else(|| Vec4::new(0.0, 0.0, 0.0, target_particle.particle_mass()));
             let products = product_layouts
                 .iter()
                 .zip(product_particles.iter().copied())
                 .enumerate()
                 .map(|(index, (layout, particle))| {
-                    let p4 = stored_p4(batch, layout, &event)?;
+                    let p4 = stored_p4(batch, layout, event)?;
                     Ok(product_from_particle(index + 1, particle, p4))
                 })
                 .collect::<Result<Vec<_>, GlueXGenerationError>>()?;
@@ -376,7 +376,7 @@ fn require_gluex_particle(
 fn stored_p4(
     batch: &GeneratedBatch,
     layout: &GeneratedParticleLayout,
-    event: &Event,
+    event: &OwnedEvent,
 ) -> Result<Vec4, GlueXGenerationError> {
     let label = layout
         .p4_label()
@@ -403,7 +403,7 @@ fn stored_p4(
 fn optional_stored_p4(
     batch: &GeneratedBatch,
     layout: &GeneratedParticleLayout,
-    event: &Event,
+    event: &OwnedEvent,
 ) -> Result<Option<Vec4>, GlueXGenerationError> {
     if layout.p4_label().is_some() {
         stored_p4(batch, layout, event).map(Some)

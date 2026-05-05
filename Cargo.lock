@@ -1299,8 +1299,6 @@ dependencies = [
 [[package]]
 name = "hddm"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2df65532997d6efc578ee8cc24efdb8b58c9ef5852a8874a39540b0ae2b9846"
 dependencies = [
  "bzip2",
  "flate2",
@@ -1312,8 +1310,6 @@ dependencies = [
 [[package]]
 name = "hddm-derive"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "087f13746fc92d7660c3de95e66b9750324ac83349d59964ba2b4ac696c1bcd3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1323,8 +1319,6 @@ dependencies = [
 [[package]]
 name = "hddm-rs"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9fff0fea9066aca37a75387d9b988148b35d3d6d815139b44e5223eeccffc43"
 dependencies = [
  "anyhow",
  "clap",

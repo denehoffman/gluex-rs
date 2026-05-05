@@ -27,8 +27,8 @@ pub enum RunSelection {
 impl RunSelection {
     /// True when no runs will be returned.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
-        matches!(self, RunSelection::Runs(r) if r.is_empty())
+    pub const fn is_empty(&self) -> bool {
+        matches!(self, Self::Runs(r) if r.is_empty())
     }
 }
 
@@ -112,7 +112,7 @@ impl RCDBContext {
 
     /// Returns the run selection strategy for this context.
     #[must_use]
-    pub fn selection(&self) -> &RunSelection {
+    pub const fn selection(&self) -> &RunSelection {
         &self.selection
     }
 

@@ -33,12 +33,10 @@ fn normalize_path(base: &str, path: &str) -> String {
             }
         }
     };
-    if path.starts_with('/') {
-        push_parts(path);
-    } else {
+    if !path.starts_with('/') {
         push_parts(base);
-        push_parts(path);
     }
+    push_parts(path);
     if segments.is_empty() {
         "/".to_string()
     } else {
@@ -82,7 +80,7 @@ impl CCDB {
         let path_str = resolved_path.to_string_lossy().to_string();
         let conn = Connection::open_with_flags(&resolved_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
-        let db = CCDB {
+        let db = Self {
             connection: Arc::new(Mutex::new(conn)),
             variation_cache: Arc::new(DashMap::new()),
             variation_chain_cache: Arc::new(DashMap::new()),
@@ -369,7 +367,7 @@ pub struct DirectoryHandle {
 impl DirectoryHandle {
     /// Returns the directory metadata as loaded from CCDB.
     #[must_use]
-    pub fn meta(&self) -> &DirectoryMeta {
+    pub const fn meta(&self) -> &DirectoryMeta {
         &self.meta
     }
     /// Returns the absolute path for this directory.
@@ -382,7 +380,7 @@ impl DirectoryHandle {
             let mut current = self.meta.clone();
             loop {
                 if current.parent_id == 0 {
-                    names.push(current.name.clone());
+                    names.push(current.name);
                     break;
                 }
                 names.push(current.name.clone());
@@ -402,7 +400,7 @@ impl DirectoryHandle {
         if self.meta.parent_id == 0 {
             None
         } else {
-            Some(DirectoryHandle {
+            Some(Self {
                 db: self.db.clone(),
                 meta: self.db.directory_meta.get(&self.meta.parent_id)?.clone(),
             })
@@ -410,12 +408,12 @@ impl DirectoryHandle {
     }
     /// Lists subdirectories directly under this directory.
     #[must_use]
-    pub fn dirs(&self) -> Vec<DirectoryHandle> {
+    pub fn dirs(&self) -> Vec<Self> {
         self.db
             .directory_meta
             .iter()
             .filter(|meta| meta.parent_id == self.meta.id)
-            .map(|meta| DirectoryHandle {
+            .map(|meta| Self {
                 db: self.db.clone(),
                 meta: meta.value().clone(),
             })
@@ -426,7 +424,7 @@ impl DirectoryHandle {
     /// # Errors
     ///
     /// This method returns an error if the directory cannot be found.
-    pub fn dir(&self, path: &str) -> CCDBResult<DirectoryHandle> {
+    pub fn dir(&self, path: &str) -> CCDBResult<Self> {
         let target = normalize_path(&self.full_path(), path);
         self.db.dir(&target)
     }
@@ -475,7 +473,7 @@ pub struct TypeTableHandle {
 impl TypeTableHandle {
     /// Returns the table metadata as loaded from CCDB.
     #[must_use]
-    pub fn meta(&self) -> &TypeTableMeta {
+    pub const fn meta(&self) -> &TypeTableMeta {
         &self.meta
     }
     /// Returns the table name (without parent path components).
@@ -485,27 +483,28 @@ impl TypeTableHandle {
     }
     /// Returns the unique numeric identifier for this table.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.meta.id
     }
     /// Returns the absolute path of this table, including directory prefix.
     #[must_use]
     pub fn full_path(&self) -> String {
         let dir_meta = self.db.directory_meta.get(&self.meta.directory_id);
-        if let Some(dir_meta) = dir_meta {
-            let dir = DirectoryHandle {
-                db: self.db.clone(),
-                meta: dir_meta.clone(),
-            };
-            let mut p = dir.full_path();
-            if !p.ends_with('/') {
-                p.push('/');
-            }
-            p.push_str(&self.meta.name);
-            p
-        } else {
-            format!("/{}", self.meta.name)
-        }
+        dir_meta.map_or_else(
+            || format!("/{}", self.meta.name),
+            |dir_meta| {
+                let dir = DirectoryHandle {
+                    db: self.db.clone(),
+                    meta: dir_meta.clone(),
+                };
+                let mut p = dir.full_path();
+                if !p.ends_with('/') {
+                    p.push('/');
+                }
+                p.push_str(&self.meta.name);
+                p
+            },
+        )
     }
     /// Loads column metadata for this table.
     ///

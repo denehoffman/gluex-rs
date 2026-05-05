@@ -82,13 +82,13 @@ pub fn gluex_particle_from_species(
 ) -> Result<GluexParticle, SpeciesMappingError> {
     match species {
         ParticleSpecies::Code { id, namespace } => {
-            if let Some(namespace) = namespace {
-                if !namespace.eq_ignore_ascii_case("pdg") {
-                    return Err(SpeciesMappingError::UnsupportedNamespace {
-                        namespace: namespace.clone(),
-                        id: *id,
-                    });
-                }
+            if let Some(namespace) = namespace
+                && !namespace.eq_ignore_ascii_case("pdg")
+            {
+                return Err(SpeciesMappingError::UnsupportedNamespace {
+                    namespace: namespace.clone(),
+                    id: *id,
+                });
             }
             let pdg = isize::try_from(*id)
                 .map_err(|_| SpeciesMappingError::CodeOutOfRange { id: *id })?;

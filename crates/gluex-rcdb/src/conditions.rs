@@ -102,8 +102,8 @@ impl Expr {
 
     /// Negates the expression.
     #[must_use]
-    pub fn negate(self) -> Expr {
-        Expr::new(ExprInner::Not(self))
+    pub fn negate(self) -> Self {
+        Self::new(ExprInner::Not(self))
     }
 
     fn fmt_with(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

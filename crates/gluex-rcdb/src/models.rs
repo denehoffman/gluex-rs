@@ -25,15 +25,15 @@ pub enum ValueType {
 impl ValueType {
     /// Returns the identifier string stored in the database.
     #[must_use]
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            ValueType::String => "string",
-            ValueType::Int => "int",
-            ValueType::Bool => "bool",
-            ValueType::Float => "float",
-            ValueType::Json => "json",
-            ValueType::Blob => "blob",
-            ValueType::Time => "time",
+            Self::String => "string",
+            Self::Int => "int",
+            Self::Bool => "bool",
+            Self::Float => "float",
+            Self::Json => "json",
+            Self::Blob => "blob",
+            Self::Time => "time",
         }
     }
 
@@ -41,32 +41,32 @@ impl ValueType {
     #[must_use]
     pub fn from_identifier(value: &str) -> Option<Self> {
         match value {
-            "string" => Some(ValueType::String),
-            "int" => Some(ValueType::Int),
-            "bool" => Some(ValueType::Bool),
-            "float" => Some(ValueType::Float),
-            "json" => Some(ValueType::Json),
-            "blob" => Some(ValueType::Blob),
-            "time" => Some(ValueType::Time),
+            "string" => Some(Self::String),
+            "int" => Some(Self::Int),
+            "bool" => Some(Self::Bool),
+            "float" => Some(Self::Float),
+            "json" => Some(Self::Json),
+            "blob" => Some(Self::Blob),
+            "time" => Some(Self::Time),
             _ => None,
         }
     }
 
     /// True when the value is backed by the `text_value` column.
     #[must_use]
-    pub fn is_textual(&self) -> bool {
-        matches!(self, ValueType::String | ValueType::Json | ValueType::Blob)
+    pub const fn is_textual(&self) -> bool {
+        matches!(self, Self::String | Self::Json | Self::Blob)
     }
 
     /// Returns the storage column name used in the `conditions` table.
     #[must_use]
-    pub fn column_name(&self) -> &'static str {
+    pub const fn column_name(&self) -> &'static str {
         match self {
-            ValueType::String | ValueType::Json | ValueType::Blob => "text_value",
-            ValueType::Int => "int_value",
-            ValueType::Bool => "bool_value",
-            ValueType::Float => "float_value",
-            ValueType::Time => "time_value",
+            Self::String | Self::Json | Self::Blob => "text_value",
+            Self::Int => "int_value",
+            Self::Bool => "bool_value",
+            Self::Float => "float_value",
+            Self::Time => "time_value",
         }
     }
 }
@@ -82,7 +82,7 @@ pub struct ConditionTypeMeta {
 impl ConditionTypeMeta {
     /// Database identifier for the condition type.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Name of the condition type.
@@ -92,7 +92,7 @@ impl ConditionTypeMeta {
     }
     /// [`ValueType`] used to store the condition.
     #[must_use]
-    pub fn value_type(&self) -> ValueType {
+    pub const fn value_type(&self) -> ValueType {
         self.value_type
     }
     /// Timestamp describing when the condition was created.
@@ -123,7 +123,7 @@ pub struct ConditionMeta {
 impl ConditionMeta {
     /// Identifier of the condition row.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Raw text value stored alongside the condition.
@@ -133,27 +133,27 @@ impl ConditionMeta {
     }
     /// Raw integer value stored alongside the condition.
     #[must_use]
-    pub fn int_value(&self) -> i64 {
+    pub const fn int_value(&self) -> i64 {
         self.int_value
     }
     /// Raw floating-point value stored alongside the condition.
     #[must_use]
-    pub fn float_value(&self) -> f64 {
+    pub const fn float_value(&self) -> f64 {
         self.float_value
     }
     /// Raw boolean stored as an integer (0 or 1).
     #[must_use]
-    pub fn bool_value(&self) -> i64 {
+    pub const fn bool_value(&self) -> i64 {
         self.bool_value
     }
     /// Run number associated with the condition.
     #[must_use]
-    pub fn run_number(&self) -> i64 {
+    pub const fn run_number(&self) -> i64 {
         self.run_number
     }
     /// Identifier referencing the condition type entry.
     #[must_use]
-    pub fn condition_type_id(&self) -> Id {
+    pub const fn condition_type_id(&self) -> Id {
         self.condition_type_id
     }
     /// Timestamp describing when the condition was created.
@@ -188,7 +188,7 @@ pub struct RunPeriodMeta {
 impl RunPeriodMeta {
     /// Identifier of the run period.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Human-readable period name.
@@ -203,12 +203,12 @@ impl RunPeriodMeta {
     }
     /// Minimum run number included in the period.
     #[must_use]
-    pub fn run_min(&self) -> RunNumber {
+    pub const fn run_min(&self) -> RunNumber {
         self.run_min
     }
     /// Maximum run number included in the period.
     #[must_use]
-    pub fn run_max(&self) -> RunNumber {
+    pub const fn run_max(&self) -> RunNumber {
         self.run_max
     }
     /// Timestamp describing when the period started.
@@ -239,7 +239,7 @@ pub struct RunMeta {
 impl RunMeta {
     /// Run number for this record.
     #[must_use]
-    pub fn number(&self) -> RunNumber {
+    pub const fn number(&self) -> RunNumber {
         self.number
     }
     /// Timestamp indicating when the run began.

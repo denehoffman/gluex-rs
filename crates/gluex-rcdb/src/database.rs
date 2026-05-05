@@ -195,10 +195,10 @@ impl RCDB {
         let mut results: BTreeMap<RunNumber, HashMap<String, Value>> = BTreeMap::new();
         while let Some(row) = rows.next()? {
             let run_number: RunNumber = row.get(0)?;
-            if let Some(filter) = &run_filter {
-                if !filter.contains(&run_number) {
-                    continue;
-                }
+            if let Some(filter) = &run_filter
+                && !filter.contains(&run_number)
+            {
+                continue;
             }
 
             let entry = results.entry(run_number).or_default();
@@ -279,10 +279,10 @@ impl RCDB {
         let mut runs = Vec::new();
         while let Some(row) = rows.next()? {
             let run_number: RunNumber = row.get(0)?;
-            if let Some(filter) = &run_filter {
-                if !filter.contains(&run_number) {
-                    continue;
-                }
+            if let Some(filter) = &run_filter
+                && !filter.contains(&run_number)
+            {
+                continue;
             }
             runs.push(run_number);
         }
@@ -479,13 +479,11 @@ fn limit_run_ranges(runs: &[RunNumber]) -> Vec<(RunNumber, RunNumber)> {
     let mut start = runs[0];
     let mut end = runs[0];
     for &run in runs.iter().skip(1) {
-        if run == end + 1 {
-            end = run;
-        } else {
+        if run != end + 1 {
             ranges.push((start, end));
             start = run;
-            end = run;
         }
+        end = run;
     }
     ranges.push((start, end));
 

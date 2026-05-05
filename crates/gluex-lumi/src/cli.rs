@@ -123,7 +123,9 @@ fn print_rest_versions(run_period: RunPeriod) {
 fn uniform_edges(bins: usize, min: f64, max: f64) -> Vec<f64> {
     let bins_u32 = u32::try_from(bins).expect("bins validated by FluxArgs::into_config");
     let width = (max - min) / f64::from(bins_u32);
-    (0..=bins_u32).map(|i| min + f64::from(i) * width).collect()
+    (0..=bins_u32)
+        .map(|i| f64::from(i).mul_add(width, min))
+        .collect()
 }
 
 /// Execute the command-line interface with a custom argv iterator.

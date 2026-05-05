@@ -41,13 +41,13 @@ impl NamePath {
     }
     /// Returns the parent path, or [`None`] when this path is root.
     #[must_use]
-    pub fn parent(&self) -> Option<NamePath> {
+    pub fn parent(&self) -> Option<Self> {
         if self.is_root() {
             return None;
         }
         let mut parts: Vec<&str> = self.0.split('/').collect();
         parts.pop();
-        Some(NamePath(format!("/{}", parts.join("/"))))
+        Some(Self(format!("/{}", parts.join("/"))))
     }
     /// True when the path corresponds to the root directory.
     #[must_use]
@@ -158,7 +158,7 @@ impl CCDBContext {
     }
     /// Sets the timestamp for selecting assignments (query will give the most recent assignment not newer than this).
     #[must_use]
-    pub fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
+    pub const fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
         self.timestamp = timestamp;
         self
     }
@@ -210,7 +210,7 @@ impl FromStr for Request {
                 timestamp = Some(parse_timestamp(time_s)?);
             }
         }
-        Ok(Request {
+        Ok(Self {
             path,
             context: CCDBContext::new(run.map(|r| vec![r]), variation, timestamp),
         })

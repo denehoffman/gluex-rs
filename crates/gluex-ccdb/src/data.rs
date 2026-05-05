@@ -28,7 +28,7 @@ pub enum Column {
 impl Column {
     /// Number of rows in this column.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         match self {
             Self::Int(v) => v.len(),
             Self::UInt(v) => v.len(),
@@ -42,7 +42,7 @@ impl Column {
 
     /// Check if the column is empty.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         match self {
             Self::Int(v) => v.is_empty(),
             Self::UInt(v) => v.is_empty(),
@@ -147,7 +147,7 @@ pub enum Value<'a> {
 impl<'a> Value<'a> {
     /// Converts to [`i32`] if this is an integer cell.
     #[must_use]
-    pub fn as_int(self) -> Option<i32> {
+    pub const fn as_int(self) -> Option<i32> {
         if let Value::Int(v) = self {
             Some(*v)
         } else {
@@ -157,7 +157,7 @@ impl<'a> Value<'a> {
 
     /// Converts to [`u32`] if this is an unsigned integer cell.
     #[must_use]
-    pub fn as_uint(self) -> Option<u32> {
+    pub const fn as_uint(self) -> Option<u32> {
         if let Value::UInt(v) = self {
             Some(*v)
         } else {
@@ -167,7 +167,7 @@ impl<'a> Value<'a> {
 
     /// Converts to [`i64`] if this is a 64-bit integer cell.
     #[must_use]
-    pub fn as_long(self) -> Option<i64> {
+    pub const fn as_long(self) -> Option<i64> {
         if let Value::Long(v) = self {
             Some(*v)
         } else {
@@ -177,7 +177,7 @@ impl<'a> Value<'a> {
 
     /// Converts to [`u64`] if this is an unsigned 64-bit integer cell.
     #[must_use]
-    pub fn as_ulong(self) -> Option<u64> {
+    pub const fn as_ulong(self) -> Option<u64> {
         if let Value::ULong(v) = self {
             Some(*v)
         } else {
@@ -187,7 +187,7 @@ impl<'a> Value<'a> {
 
     /// Converts to [`f64`] if this is a floating-point cell.
     #[must_use]
-    pub fn as_double(self) -> Option<f64> {
+    pub const fn as_double(self) -> Option<f64> {
         if let Value::Double(v) = self {
             Some(*v)
         } else {
@@ -197,7 +197,7 @@ impl<'a> Value<'a> {
 
     /// Converts to [`bool`] if this is a boolean cell.
     #[must_use]
-    pub fn as_bool(self) -> Option<bool> {
+    pub const fn as_bool(self) -> Option<bool> {
         if let Value::Bool(v) = self {
             Some(*v)
         } else {
@@ -207,7 +207,7 @@ impl<'a> Value<'a> {
 
     /// Converts to [`&str`] if this is a string cell.
     #[must_use]
-    pub fn as_str(self) -> Option<&'a str> {
+    pub const fn as_str(self) -> Option<&'a str> {
         if let Value::String(v) = self {
             Some(v)
         } else {
@@ -330,13 +330,13 @@ impl<'a> RowView<'a> {
 
     /// Number of columns in this row.
     #[must_use]
-    pub fn n_columns(&self) -> usize {
+    pub const fn n_columns(&self) -> usize {
         self.columns.len()
     }
 
     /// Column types in this row in positional order.
     #[must_use]
-    pub fn column_types(&self) -> &'a [ColumnType] {
+    pub const fn column_types(&self) -> &'a [ColumnType] {
         self.column_types
     }
 }
@@ -405,7 +405,7 @@ impl ColumnLayout {
 
     /// Column name to positional index lookup table.
     #[must_use]
-    pub fn column_indices(&self) -> &HashMap<String, usize> {
+    pub const fn column_indices(&self) -> &HashMap<String, usize> {
         &self.column_indices
     }
 
@@ -417,7 +417,7 @@ impl ColumnLayout {
 
     /// Number of columns described by this layout.
     #[must_use]
-    pub fn column_count(&self) -> usize {
+    pub const fn column_count(&self) -> usize {
         self.columns.len()
     }
 }
@@ -524,7 +524,7 @@ impl Data {
                 found,
             });
         }
-        Ok(Data {
+        Ok(Self {
             n_rows,
             layout,
             columns: column_vecs,
@@ -533,7 +533,7 @@ impl Data {
 
     /// Number of rows in the dataset.
     #[must_use]
-    pub fn n_rows(&self) -> usize {
+    pub const fn n_rows(&self) -> usize {
         self.n_rows
     }
     /// Number of columns in the dataset.
@@ -733,7 +733,7 @@ struct VaultFieldIter<'a> {
 }
 
 impl<'a> VaultFieldIter<'a> {
-    fn new(input: &'a str) -> Self {
+    const fn new(input: &'a str) -> Self {
         Self {
             input,
             cursor: 0,

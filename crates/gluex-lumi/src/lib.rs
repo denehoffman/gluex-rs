@@ -79,12 +79,12 @@ impl FromStr for Converter {
 impl Converter {
     /// Converter thickness in meters.
     #[must_use]
-    pub fn thickness(&self) -> Option<f64> {
+    pub const fn thickness(&self) -> Option<f64> {
         match self {
-            Converter::Retracted | Converter::Unknown => None,
-            Converter::Be750um => Some(750e-6),
-            Converter::Be75um => Some(75e-6),
-            Converter::Be50um => Some(50e-6),
+            Self::Retracted | Self::Unknown => None,
+            Self::Be750um => Some(750e-6),
+            Self::Be75um => Some(75e-6),
+            Self::Be50um => Some(50e-6),
         }
     }
     /// Converter thickness in units of radiation length.
@@ -146,19 +146,19 @@ impl LuminosityContext {
 
     /// Per-run-period REST version selection map.
     #[must_use]
-    pub fn rest_version(&self) -> &HashMap<RunPeriod, RESTVersionSelection> {
+    pub const fn rest_version(&self) -> &HashMap<RunPeriod, RESTVersionSelection> {
         &self.rest_version
     }
 
     /// Whether coherent-peak-only flux should be used.
     #[must_use]
-    pub fn coherent_peak(&self) -> bool {
+    pub const fn coherent_peak(&self) -> bool {
         self.coherent_peak
     }
 
     /// Whether polarized beam constraints and constants should be used.
     #[must_use]
-    pub fn polarized(&self) -> bool {
+    pub const fn polarized(&self) -> bool {
         self.polarized
     }
 
@@ -217,14 +217,14 @@ impl LuminosityContext {
 
     /// Enable or disable coherent-peak-only flux selection.
     #[must_use]
-    pub fn with_coherent_peak(mut self, enabled: bool) -> Self {
+    pub const fn with_coherent_peak(mut self, enabled: bool) -> Self {
         self.coherent_peak = enabled;
         self
     }
 
     /// Enable or disable polarized beam selection.
     #[must_use]
-    pub fn with_polarized(mut self, enabled: bool) -> Self {
+    pub const fn with_polarized(mut self, enabled: bool) -> Self {
         self.polarized = enabled;
         self
     }
@@ -384,9 +384,7 @@ fn get_flux_cache(
         .collect();
 
     if run_period == RunPeriod::RP2019_11 {
-        let override_context = ccdb_context
-            .clone()
-            .with_timestamp(rp2019_11_override_timestamp());
+        let override_context = ccdb_context.with_timestamp(rp2019_11_override_timestamp());
         apply_run_override(
             &mut photon_endpoint_energy,
             fetch_photon_endpoint_energy(&ccdb, &override_context)?,
@@ -657,8 +655,8 @@ impl Luminosity {
                     .iter()
                     .zip(data.tagm_scaled_energy_range.iter())
                 {
-                    let energy =
-                        data.photon_endpoint_energy * (e_range.0 + e_range.1) * 0.5 + delta_e;
+                    let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1))
+                        .mul_add(0.5, delta_e);
 
                     if coherent_peak {
                         let (coherent_peak_low, coherent_peak_high) =
@@ -688,8 +686,8 @@ impl Luminosity {
                     .iter()
                     .zip(data.tagh_scaled_energy_range.iter())
                 {
-                    let energy =
-                        data.photon_endpoint_energy * (e_range.0 + e_range.1) * 0.5 + delta_e;
+                    let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1))
+                        .mul_add(0.5, delta_e);
 
                     if coherent_peak {
                         let (coherent_peak_low, coherent_peak_high) =

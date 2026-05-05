@@ -19,8 +19,8 @@ clap = { version = "4.6.1", features = ["derive", "env"] }
 criterion = "0.8.2"
 dashmap = "6.1.0"
 fastrand = "2.4.1"
-hddm = "0.2.1"
-hddm-rs = "0.2.1"
+hddm = { version = "0.2.1", path = "../hddm-rs/crates/hddm" }
+hddm-rs = { version = "0.2.1", path = "../hddm-rs/crates/hddm-rs" }
 itertools = "0.14.0"
 laddu = { version = "0.18.0", path = "../laddu/crates/laddu" }
 lazy_static = "1.5.0"
@@ -57,8 +57,10 @@ lto = "off"
 missing_docs = "deny"
 
 [workspace.lints.clippy]
-suspicious = "warn"
-complexity = "warn"
-perf = "warn"
-style = "warn"
-pedantic = "warn"
+suspicious = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+significant_drop_tightening = "allow"

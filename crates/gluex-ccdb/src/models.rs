@@ -40,7 +40,7 @@ impl ColumnType {
 
     /// Returns the identifier string stored in CCDB for this type.
     #[must_use]
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Int => "int",
             Self::UInt => "uint",
@@ -73,7 +73,7 @@ pub struct ColumnMeta {
 impl ColumnMeta {
     /// Identifier of the column definition.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Human readable column name.
@@ -83,17 +83,17 @@ impl ColumnMeta {
     }
     /// Identifier of the type table the column belongs to.
     #[must_use]
-    pub fn type_id(&self) -> Id {
+    pub const fn type_id(&self) -> Id {
         self.type_id
     }
     /// Typed representation of the stored column data.
     #[must_use]
-    pub fn column_type(&self) -> ColumnType {
+    pub const fn column_type(&self) -> ColumnType {
         self.column_type
     }
     /// Ordering index for the column within the table schema.
     #[must_use]
-    pub fn order(&self) -> i64 {
+    pub const fn order(&self) -> i64 {
         self.order
     }
     /// Free-form comment associated with the column.
@@ -137,7 +137,7 @@ pub struct DirectoryMeta {
 impl DirectoryMeta {
     /// Identifier of the directory row.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Human readable directory name.
@@ -147,12 +147,12 @@ impl DirectoryMeta {
     }
     /// Identifier of the parent directory.
     #[must_use]
-    pub fn parent_id(&self) -> Id {
+    pub const fn parent_id(&self) -> Id {
         self.parent_id
     }
     /// Identifier of the user who created the directory.
     #[must_use]
-    pub fn author_id(&self) -> Id {
+    pub const fn author_id(&self) -> Id {
         self.author_id
     }
     /// Free-form comment describing the directory.
@@ -162,22 +162,22 @@ impl DirectoryMeta {
     }
     /// True when the directory has been marked as deprecated.
     #[must_use]
-    pub fn is_deprecated(&self) -> bool {
+    pub const fn is_deprecated(&self) -> bool {
         self.is_deprecated
     }
     /// Identifier of the user who deprecated the directory.
     #[must_use]
-    pub fn deprecated_by_user_id(&self) -> Id {
+    pub const fn deprecated_by_user_id(&self) -> Id {
         self.deprecated_by_user_id
     }
     /// True when the directory is locked against modification.
     #[must_use]
-    pub fn is_locked(&self) -> bool {
+    pub const fn is_locked(&self) -> bool {
         self.is_locked
     }
     /// Identifier of the user who locked the directory.
     #[must_use]
-    pub fn locked_by_user_id(&self) -> Id {
+    pub const fn locked_by_user_id(&self) -> Id {
         self.locked_by_user_id
     }
     /// Timestamp describing when the directory was created.
@@ -221,12 +221,12 @@ pub struct TypeTableMeta {
 impl TypeTableMeta {
     /// Identifier of the type table.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Identifier of the directory containing the type.
     #[must_use]
-    pub fn directory_id(&self) -> Id {
+    pub const fn directory_id(&self) -> Id {
         self.directory_id
     }
     /// Name of the type table.
@@ -236,22 +236,22 @@ impl TypeTableMeta {
     }
     /// Number of rows stored in the table.
     #[must_use]
-    pub fn n_rows(&self) -> i64 {
+    pub const fn n_rows(&self) -> i64 {
         self.n_rows
     }
     /// Number of columns defined for the table.
     #[must_use]
-    pub fn n_columns(&self) -> i64 {
+    pub const fn n_columns(&self) -> i64 {
         self.n_columns
     }
     /// Number of assignments referencing this table.
     #[must_use]
-    pub fn n_assignments(&self) -> i64 {
+    pub const fn n_assignments(&self) -> i64 {
         self.n_assignments
     }
     /// Identifier of the user who created the type.
     #[must_use]
-    pub fn author_id(&self) -> Id {
+    pub const fn author_id(&self) -> Id {
         self.author_id
     }
     /// Free-form comment explaining the type table.
@@ -261,22 +261,22 @@ impl TypeTableMeta {
     }
     /// True when the type has been deprecated.
     #[must_use]
-    pub fn is_deprecated(&self) -> bool {
+    pub const fn is_deprecated(&self) -> bool {
         self.is_deprecated
     }
     /// Identifier of the user who deprecated the type.
     #[must_use]
-    pub fn deprecated_by_user_id(&self) -> Id {
+    pub const fn deprecated_by_user_id(&self) -> Id {
         self.deprecated_by_user_id
     }
     /// True when the type is locked.
     #[must_use]
-    pub fn is_locked(&self) -> bool {
+    pub const fn is_locked(&self) -> bool {
         self.is_locked
     }
     /// Identifier of the user who locked the type.
     #[must_use]
-    pub fn locked_by_user_id(&self) -> Id {
+    pub const fn locked_by_user_id(&self) -> Id {
         self.locked_by_user_id
     }
     /// Timestamp describing when the type was created.
@@ -318,7 +318,7 @@ pub struct ConstantSetMeta {
 impl ConstantSetMeta {
     /// Identifier of the constant set.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Vault path or identifier for the backing data blob.
@@ -328,7 +328,7 @@ impl ConstantSetMeta {
     }
     /// Identifier of the type table the set belongs to.
     #[must_use]
-    pub fn constant_type_id(&self) -> Id {
+    pub const fn constant_type_id(&self) -> Id {
         self.constant_type_id
     }
     /// Timestamp describing when the set was created.
@@ -365,27 +365,27 @@ pub struct AssignmentMeta {
 impl AssignmentMeta {
     /// Identifier of the assignment.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Identifier of the variation referenced by the assignment.
     #[must_use]
-    pub fn variation_id(&self) -> Id {
+    pub const fn variation_id(&self) -> Id {
         self.variation_id
     }
     /// Identifier of the associated run range.
     #[must_use]
-    pub fn run_range_id(&self) -> Id {
+    pub const fn run_range_id(&self) -> Id {
         self.run_range_id
     }
     /// Identifier of the associated event range.
     #[must_use]
-    pub fn event_range_id(&self) -> Id {
+    pub const fn event_range_id(&self) -> Id {
         self.event_range_id
     }
     /// Identifier of the user who created the assignment.
     #[must_use]
-    pub fn author_id(&self) -> Id {
+    pub const fn author_id(&self) -> Id {
         self.author_id
     }
     /// Free-form comment associated with the assignment.
@@ -395,7 +395,7 @@ impl AssignmentMeta {
     }
     /// Identifier of the constant set referenced by the assignment.
     #[must_use]
-    pub fn constant_set_id(&self) -> Id {
+    pub const fn constant_set_id(&self) -> Id {
         self.constant_set_id
     }
     /// Timestamp describing when the assignment was created.
@@ -426,12 +426,12 @@ pub struct AssignmentMetaLite {
 impl AssignmentMetaLite {
     /// Identifier of the assignment.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Identifier of the constant set referenced by the assignment.
     #[must_use]
-    pub fn constant_set_id(&self) -> Id {
+    pub const fn constant_set_id(&self) -> Id {
         self.constant_set_id
     }
     /// Timestamp describing when the assignment was created.
@@ -466,7 +466,7 @@ pub struct VariationMeta {
 impl VariationMeta {
     /// Identifier of the variation row.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Human readable variation name.
@@ -481,7 +481,7 @@ impl VariationMeta {
     }
     /// Identifier of the user who created the variation.
     #[must_use]
-    pub fn author_id(&self) -> Id {
+    pub const fn author_id(&self) -> Id {
         self.author_id
     }
     /// Free-form comment associated with the variation.
@@ -491,32 +491,32 @@ impl VariationMeta {
     }
     /// Identifier of the parent variation.
     #[must_use]
-    pub fn parent_id(&self) -> Id {
+    pub const fn parent_id(&self) -> Id {
         self.parent_id
     }
     /// True when the variation is locked.
     #[must_use]
-    pub fn is_locked(&self) -> bool {
+    pub const fn is_locked(&self) -> bool {
         self.is_locked
     }
     /// Identifier of the user who locked the variation.
     #[must_use]
-    pub fn locked_by_user_id(&self) -> Id {
+    pub const fn locked_by_user_id(&self) -> Id {
         self.locked_by_user_id
     }
     /// Behavior flag defining how lookups walk parent variations.
     #[must_use]
-    pub fn go_back_behavior(&self) -> i64 {
+    pub const fn go_back_behavior(&self) -> i64 {
         self.go_back_behavior
     }
     /// True when the variation is deprecated.
     #[must_use]
-    pub fn is_deprecated(&self) -> bool {
+    pub const fn is_deprecated(&self) -> bool {
         self.is_deprecated
     }
     /// Identifier of the user who deprecated the variation.
     #[must_use]
-    pub fn deprecated_by_user_id(&self) -> Id {
+    pub const fn deprecated_by_user_id(&self) -> Id {
         self.deprecated_by_user_id
     }
     /// Timestamp describing when the variation was created.
@@ -568,7 +568,7 @@ pub struct RunRangeMeta {
 impl RunRangeMeta {
     /// Identifier of the run range.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Human readable name of the run range.
@@ -578,12 +578,12 @@ impl RunRangeMeta {
     }
     /// Minimum run number included in the range.
     #[must_use]
-    pub fn run_min(&self) -> RunNumber {
+    pub const fn run_min(&self) -> RunNumber {
         self.run_min
     }
     /// Maximum run number included in the range.
     #[must_use]
-    pub fn run_max(&self) -> RunNumber {
+    pub const fn run_max(&self) -> RunNumber {
         self.run_max
     }
     /// Free-form comment describing the run range.
@@ -624,22 +624,22 @@ pub struct EventRangeMeta {
 impl EventRangeMeta {
     /// Identifier of the event range.
     #[must_use]
-    pub fn id(&self) -> Id {
+    pub const fn id(&self) -> Id {
         self.id
     }
     /// Run number this event range belongs to.
     #[must_use]
-    pub fn run_number(&self) -> RunNumber {
+    pub const fn run_number(&self) -> RunNumber {
         self.run_number
     }
     /// Minimum event number included in the range.
     #[must_use]
-    pub fn event_min(&self) -> i64 {
+    pub const fn event_min(&self) -> i64 {
         self.event_min
     }
     /// Maximum event number included in the range.
     #[must_use]
-    pub fn event_max(&self) -> i64 {
+    pub const fn event_max(&self) -> i64 {
         self.event_max
     }
     /// Free-form comment describing the event range.
