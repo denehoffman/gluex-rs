@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.10,<2.0"]
+requires = ["maturin>=1.11,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -8,7 +8,7 @@ description = "Python bindings for GlueX luminosity calculations"
 requires-python = ">=3.8"
 readme = "README.md"
 license = { text = "Apache-2.0 OR MIT" }
-authors = [{ name = "Nathaniel Dene Hoffman", email = "dene@cmu.edu" }]
+authors = [{ name = "Nathaniel Dene Hoffman", email = "nhoffman@wm.edu" }]
 keywords = ["gluex", "luminosity", "physics"]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
@@ -19,6 +19,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",

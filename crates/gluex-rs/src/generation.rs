@@ -1,81 +1,60 @@
 //! HDDM export utilities for laddu-generated Monte Carlo batches.
 #![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
-use std::{error::Error, fmt, path::Path};
+/// Particle species mapping utilities.
+pub mod species;
+
+pub(crate) mod hddm_s;
+
+use std::path::Path;
 
 use fastrand::Rng;
 use gluex_core::particles::Particle as GluexParticle;
 use hddm::Compression;
 use laddu::{Event, GeneratedBatch, GeneratedParticleLayout, Vec3, Vec4};
+use thiserror::Error;
 
-use crate::{
+use crate::generation::{
     hddm_s::{
         Beam, Hddm, Momentum, Origin, PhysicsEvent, Product, Properties, Random, Reaction, Target,
         Vertex,
     },
-    species::{gluex_particle_from_species, SpeciesMappingError},
+    species::{SpeciesMappingError, gluex_particle_from_species},
 };
 
 /// Error returned while converting a generated batch into `GlueX` HDDM records.
-#[derive(Debug)]
-pub enum GluexHddmError {
-    /// The generated layout did not contain the requested particle.
+#[derive(Debug, Error)]
+pub enum GlueXGenerationError {
+    /// The requested particle does not have a stored p4 column in the generated dataset.
+    #[error("generated particle '{id}' was not found")]
     MissingParticle {
         /// Generated particle identifier.
         id: String,
     },
     /// The requested particle did not have species metadata.
+    #[error("generated particle '{id}' has no species metadata")]
     MissingSpecies {
         /// Generated particle identifier.
         id: String,
     },
-    /// The requested particle does not have a stored p4 column in the generated dataset.
+    /// The requested particle did not have a stored p4 column.
+    #[error("generated particle '{id}' has no stored p4 column")]
     MissingStoredP4 {
         /// Generated particle identifier.
         id: String,
     },
     /// The dataset event did not contain an expected p4 value.
+    #[error("event is missing p4 column '{label}'")]
     MissingEventP4 {
         /// Dataset p4 column label.
         label: String,
     },
     /// Species metadata could not be mapped to GlueX/HDDM particle IDs.
-    Species(SpeciesMappingError),
+    #[error(transparent)]
+    Species(#[from] SpeciesMappingError),
     /// HDDM writing failed.
-    Hddm(hddm::HddmError),
-}
-
-impl fmt::Display for GluexHddmError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MissingParticle { id } => write!(f, "generated particle '{id}' was not found"),
-            Self::MissingSpecies { id } => {
-                write!(f, "generated particle '{id}' has no species metadata")
-            }
-            Self::MissingStoredP4 { id } => {
-                write!(f, "generated particle '{id}' has no stored p4 column")
-            }
-            Self::MissingEventP4 { label } => {
-                write!(f, "event is missing p4 column '{label}'")
-            }
-            Self::Species(err) => write!(f, "{err}"),
-            Self::Hddm(err) => write!(f, "{err}"),
-        }
-    }
-}
-
-impl Error for GluexHddmError {}
-
-impl From<SpeciesMappingError> for GluexHddmError {
-    fn from(value: SpeciesMappingError) -> Self {
-        Self::Species(value)
-    }
-}
-
-impl From<hddm::HddmError> for GluexHddmError {
-    fn from(value: hddm::HddmError) -> Self {
-        Self::Hddm(value)
-    }
+    #[error(transparent)]
+    Hddm(#[from] hddm::HddmError),
 }
 
 /// Configuration for exporting generated events to `GlueX` simulation HDDM.
@@ -182,8 +161,8 @@ impl GluexHddmWriter {
         &self,
         batch: &GeneratedBatch,
         path: impl AsRef<Path>,
-    ) -> Result<usize, GluexHddmError> {
-        let mut writer = crate::hddm_s::create(path.as_ref())?;
+    ) -> Result<usize, GlueXGenerationError> {
+        let mut writer = hddm_s::create(path.as_ref())?;
         let mut event_number = 0;
         self.write_batch_to_writer(batch, &mut writer, &mut event_number)?;
         Ok(event_number)
@@ -201,8 +180,8 @@ impl GluexHddmWriter {
         batch: &GeneratedBatch,
         path: impl AsRef<Path>,
         start_event: usize,
-    ) -> Result<usize, GluexHddmError> {
-        let mut writer = crate::hddm_s::append(path.as_ref())?;
+    ) -> Result<usize, GlueXGenerationError> {
+        let mut writer = hddm_s::append(path.as_ref())?;
         let mut event_number = start_event;
         self.write_batch_to_writer(batch, &mut writer, &mut event_number)?;
         Ok(event_number)
@@ -220,8 +199,8 @@ impl GluexHddmWriter {
         &self,
         batches: impl IntoIterator<Item = &'a GeneratedBatch>,
         path: impl AsRef<Path>,
-    ) -> Result<(), GluexHddmError> {
-        let mut writer = crate::hddm_s::create(path.as_ref())?;
+    ) -> Result<(), GlueXGenerationError> {
+        let mut writer = hddm_s::create(path.as_ref())?;
         writer.set_compression(Compression::None)?; // NOTE: hdgeant4 can't handle compression
         let mut event_number = 0;
         for batch in batches {
@@ -243,7 +222,7 @@ impl GluexHddmWriter {
         &self,
         batch: &GeneratedBatch,
         start_event: usize,
-    ) -> Result<Vec<Hddm>, GluexHddmError> {
+    ) -> Result<Vec<Hddm>, GlueXGenerationError> {
         let beam_layout = require_particle(batch, &self.config.beam_id)?;
         let target_layout = require_particle(batch, &self.config.target_id)?;
         let product_layouts =
@@ -270,7 +249,7 @@ impl GluexHddmWriter {
                     let p4 = stored_p4(batch, layout, &event)?;
                     Ok(product_from_particle(index + 1, particle, p4))
                 })
-                .collect::<Result<Vec<_>, GluexHddmError>>()?;
+                .collect::<Result<Vec<_>, GlueXGenerationError>>()?;
 
             records.push(self.record(
                 event_index + start_event,
@@ -291,7 +270,7 @@ impl GluexHddmWriter {
         batch: &GeneratedBatch,
         writer: &mut hddm::HddmFileWriter,
         start_event: &mut usize,
-    ) -> Result<(), GluexHddmError> {
+    ) -> Result<(), GlueXGenerationError> {
         for record in self.records(batch, *start_event)? {
             writer.write_record(&record)?;
             *start_event += 1;
@@ -361,11 +340,11 @@ impl GluexHddmWriter {
 fn require_particle<'a>(
     batch: &'a GeneratedBatch,
     id: &str,
-) -> Result<&'a GeneratedParticleLayout, GluexHddmError> {
+) -> Result<&'a GeneratedParticleLayout, GlueXGenerationError> {
     batch
         .layout()
         .particle(id)
-        .ok_or_else(|| GluexHddmError::MissingParticle { id: id.to_string() })
+        .ok_or_else(|| GlueXGenerationError::MissingParticle { id: id.to_string() })
 }
 
 fn stored_product_layouts<'a>(
@@ -385,10 +364,10 @@ fn stored_product_layouts<'a>(
 
 fn require_gluex_particle(
     layout: &GeneratedParticleLayout,
-) -> Result<GluexParticle, GluexHddmError> {
+) -> Result<GluexParticle, GlueXGenerationError> {
     let species = layout
         .species()
-        .ok_or_else(|| GluexHddmError::MissingSpecies {
+        .ok_or_else(|| GlueXGenerationError::MissingSpecies {
             id: layout.id().to_string(),
         })?;
     Ok(gluex_particle_from_species(species)?)
@@ -398,10 +377,10 @@ fn stored_p4(
     batch: &GeneratedBatch,
     layout: &GeneratedParticleLayout,
     event: &Event,
-) -> Result<Vec4, GluexHddmError> {
+) -> Result<Vec4, GlueXGenerationError> {
     let label = layout
         .p4_label()
-        .ok_or_else(|| GluexHddmError::MissingStoredP4 {
+        .ok_or_else(|| GlueXGenerationError::MissingStoredP4 {
             id: layout.id().to_string(),
         })?;
     if !batch
@@ -410,13 +389,13 @@ fn stored_p4(
         .iter()
         .any(|stored| stored == label)
     {
-        return Err(GluexHddmError::MissingStoredP4 {
+        return Err(GlueXGenerationError::MissingStoredP4 {
             id: layout.id().to_string(),
         });
     }
     event
         .p4(label)
-        .ok_or_else(|| GluexHddmError::MissingEventP4 {
+        .ok_or_else(|| GlueXGenerationError::MissingEventP4 {
             label: label.to_string(),
         })
 }
@@ -425,7 +404,7 @@ fn optional_stored_p4(
     batch: &GeneratedBatch,
     layout: &GeneratedParticleLayout,
     event: &Event,
-) -> Result<Option<Vec4>, GluexHddmError> {
+) -> Result<Option<Vec4>, GlueXGenerationError> {
     if layout.p4_label().is_some() {
         stored_p4(batch, layout, event).map(Some)
     } else {
@@ -469,12 +448,12 @@ mod tests {
     use std::{collections::HashMap, fs, path::PathBuf, process};
 
     use laddu::{
+        Vec3,
         generation::{
             CompositeGenerator, EventGenerator, GeneratedParticle, GeneratedReaction,
             GeneratedStorage, InitialGenerator, MandelstamTDistribution, ParticleSpecies,
             Reconstruction, StableGenerator,
         },
-        Vec3,
     };
 
     use super::{GluexHddmConfig, GluexHddmWriter};

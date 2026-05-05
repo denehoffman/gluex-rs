@@ -1,15 +1,15 @@
 use crate::{
+    CCDBError, CCDBResult,
     context::{CCDBContext, Request},
     data::{ColumnLayout, Data},
     models::{
         AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta,
         VariationMeta,
     },
-    CCDBError, CCDBResult,
 };
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use gluex_core::{utils::resolve_path, Id, RunNumber};
+use gluex_core::{Id, RunNumber, utils::resolve_path};
 use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{Connection, OpenFlags};
 use std::{

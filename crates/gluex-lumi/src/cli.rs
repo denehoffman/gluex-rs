@@ -2,8 +2,8 @@ use std::{collections::HashMap, env, ffi::OsString, io, path::PathBuf, str::From
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use gluex_core::{
-    run_periods::{parse_rest_version_selection, rest_versions_for, RunPeriod},
     GlueXCoreError, RunNumber,
+    run_periods::{RunPeriod, parse_rest_version_selection, rest_versions_for},
 };
 use serde_json::to_writer_pretty;
 use strum::IntoEnumIterator;

@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
 use gluex_core::{
+    RunNumber,
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
     parsers::parse_timestamp,
     run_periods::{RESTVersionSelection, RunPeriod},
-    RunNumber,
 };
 use std::{ops::Bound, str::FromStr};
 

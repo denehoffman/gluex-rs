@@ -1393,11 +1393,7 @@ impl Particle {
             Self::DeltaPlusPlus => "",
         }
         .to_string();
-        if name.is_empty() {
-            None
-        } else {
-            Some(name)
-        }
+        if name.is_empty() { None } else { Some(name) }
     }
 
     pub fn from_geant_name(name: &str) -> Option<Self> {

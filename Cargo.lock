@@ -1162,6 +1162,7 @@ dependencies = [
  "auto_ops",
  "chrono",
  "hddm",
+ "laddu",
  "lazy_static",
  "serde",
  "shellexpand",
@@ -1224,10 +1225,21 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "fastrand",
+ "gluex-ccdb",
  "gluex-core",
+ "gluex-lumi",
+ "gluex-rcdb",
  "hddm",
  "hddm-rs",
  "laddu",
+ "thiserror",
+]
+
+[[package]]
+name = "gluex-rs-py"
+version = "0.1.0"
+dependencies = [
+ "pyo3",
 ]
 
 [[package]]

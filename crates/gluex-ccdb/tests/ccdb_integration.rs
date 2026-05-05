@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use chrono::{Datelike, Timelike};
-use gluex_ccdb::{context::CCDBContext, database::CCDB, models::ColumnMeta, CCDBResult};
-use gluex_core::{parsers::parse_timestamp, GlueXCoreError};
+use gluex_ccdb::{CCDBResult, context::CCDBContext, database::CCDB, models::ColumnMeta};
+use gluex_core::{GlueXCoreError, parsers::parse_timestamp};
 const TABLE_PATH: &str = "/test/demo/mytable";
 
 fn open_db() -> CCDB {

@@ -1,9 +1,9 @@
 //! Criterion benchmarks for RCDB fetch queries.
 use std::{hint::black_box, path::PathBuf, time::Duration};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use gluex_core::{run_periods::RunPeriod, utils::resolve_path};
-use gluex_rcdb::{conditions::aliases::approved_production, context::RCDBContext, RCDB};
+use gluex_rcdb::{RCDB, conditions::aliases::approved_production, context::RCDBContext};
 
 fn rcdb_path() -> PathBuf {
     if let Ok(path) = std::env::var("RCDB_BENCH_CONNECTION") {

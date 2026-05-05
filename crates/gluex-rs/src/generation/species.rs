@@ -129,7 +129,7 @@ pub fn hddm_particle_from_species(
 
 #[cfg(test)]
 mod tests {
-    use super::{gluex_particle_from_species, hddm_particle_from_species, SpeciesMappingError};
+    use super::{SpeciesMappingError, gluex_particle_from_species, hddm_particle_from_species};
     use gluex_core::particles::Particle as GluexParticle;
     use laddu::ParticleSpecies;
 

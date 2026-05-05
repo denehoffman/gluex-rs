@@ -3,7 +3,7 @@ use std::{fmt, sync::Arc};
 use chrono::{DateTime, Utc};
 use rusqlite::types::Value;
 
-use crate::{models::ValueType, RCDBError};
+use crate::{RCDBError, models::ValueType};
 
 /// Condition expression used to filter RCDB queries.
 #[derive(Debug, Clone)]
@@ -638,7 +638,7 @@ impl IntoExprList for &Vec<Expr> {
 pub mod aliases {
     use gluex_core::run_periods::RunPeriod;
 
-    use super::{all, float_cond, int_cond, string_cond, Expr};
+    use super::{Expr, all, float_cond, int_cond, string_cond};
 
     /// Returns the reusable expression for the `is_production` alias.
     #[must_use]

@@ -1,6 +1,6 @@
 use crate::CCDBResult;
 use chrono::{DateTime, Utc};
-use gluex_core::{parsers::parse_timestamp, Id, RunNumber};
+use gluex_core::{Id, RunNumber, parsers::parse_timestamp};
 use std::fmt::Display;
 
 /// Typed representation of a column type.

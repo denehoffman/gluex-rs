@@ -5,16 +5,16 @@ use std::{
     sync::Arc,
 };
 
-use gluex_core::{parsers::parse_timestamp, utils::resolve_path, Id, RunNumber};
+use gluex_core::{Id, RunNumber, parsers::parse_timestamp, utils::resolve_path};
 use parking_lot::{Mutex, MutexGuard, RwLock};
 use rusqlite::types::Value as SqlValue;
-use rusqlite::{params_from_iter, Connection, OpenFlags, ToSql};
+use rusqlite::{Connection, OpenFlags, ToSql, params_from_iter};
 
 use crate::{
+    RCDBError, RCDBResult,
     context::{RCDBContext, RunSelection},
     data::Value,
     models::{ConditionTypeMeta, ValueType},
-    RCDBError, RCDBResult,
 };
 
 /// Primary entry point for interacting with an RCDB `SQLite` file.

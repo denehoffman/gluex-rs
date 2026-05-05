@@ -2,7 +2,7 @@
 
 use std::{hint::black_box, sync::Arc};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use gluex_ccdb::{data::ColumnLayout, database::CCDB, models::ColumnMeta};
 
 const TABLE_PATH: &str = "/test/demo/mytable";

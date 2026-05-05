@@ -89,4 +89,4 @@ pub use crate::models::{
     AssignmentMeta, AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta,
     EventRangeMeta, RunRangeMeta, TypeTableMeta, VariationMeta,
 };
-pub use gluex_core::{run_periods::RunPeriod, GlueXCoreError, RESTVersion, RunNumber};
+pub use gluex_core::{GlueXCoreError, RESTVersion, RunNumber, run_periods::RunPeriod};

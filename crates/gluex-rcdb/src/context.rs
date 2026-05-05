@@ -1,9 +1,9 @@
 use std::ops::{Bound, RangeBounds};
 
 use gluex_core::{
+    RunNumber,
     constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
     run_periods::RunPeriod,
-    RunNumber,
 };
 
 use crate::conditions::{Expr, IntoExprList};

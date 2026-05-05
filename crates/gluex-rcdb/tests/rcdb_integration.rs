@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use gluex_core::parsers::parse_timestamp;
-use gluex_rcdb::{conditions, RCDBContext, RCDBResult, Value, ValueType, RCDB};
+use gluex_rcdb::{RCDB, RCDBContext, RCDBResult, Value, ValueType, conditions};
 
 fn open_db() -> RCDB {
     let path =

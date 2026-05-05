@@ -1,14 +1,14 @@
 use ::gluex_ccdb::{
+    CCDBError,
     context::CCDBContext,
     data::{self, Data, Value},
-    database::{DirectoryHandle, TypeTableHandle, CCDB},
+    database::{CCDB, DirectoryHandle, TypeTableHandle},
     models::{ColumnMeta, ColumnType, TypeTableMeta},
-    CCDBError,
 };
 use chrono::{DateTime, Utc};
 use gluex_core::{
-    parsers::parse_timestamp, run_periods::RESTVersionSelection, utils::resolve_path,
-    GlueXCoreError, RESTVersion, RunNumber,
+    GlueXCoreError, RESTVersion, RunNumber, parsers::parse_timestamp,
+    run_periods::RESTVersionSelection, utils::resolve_path,
 };
 use pyo3::{
     conversion::IntoPyObject,

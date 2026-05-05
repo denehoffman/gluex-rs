@@ -246,7 +246,7 @@ impl TryFrom<RunNumber> for RunPeriod {
 
 lazy_static! {
     /// REST version timestamps sourced from hallddb
-pub static ref REST_VERSION_TIMESTAMPS: HashMap<RunPeriod, HashMap<RESTVersion, DateTime<Utc>>> = {
+    pub static ref REST_VERSION_TIMESTAMPS: HashMap<RunPeriod, HashMap<RESTVersion, DateTime<Utc>>> = {
         let mut m = HashMap::new();
         let mut m_s16 = HashMap::new();
         m_s16.insert(1, Utc.with_ymd_and_hms(2016, 7, 5, 14, 20, 0).unwrap());

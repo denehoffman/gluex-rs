@@ -226,3 +226,34 @@ impl_op_ex!(+ |a: &Histogram, b: &Histogram| -> Histogram {
             errors,
         }
 });
+
+impl From<Histogram> for laddu::math::Histogram {
+    fn from(value: Histogram) -> Self {
+        Self {
+            counts: value.counts,
+            bin_edges: value.edges,
+        }
+    }
+}
+
+impl From<&Histogram> for laddu::math::Histogram {
+    fn from(value: &Histogram) -> Self {
+        (value.clone()).into()
+    }
+}
+
+impl From<laddu::math::Histogram> for Histogram {
+    fn from(value: laddu::math::Histogram) -> Self {
+        Self {
+            counts: value.counts.clone(),
+            edges: value.bin_edges,
+            errors: value.counts.iter().map(|v| v.sqrt()).collect(),
+        }
+    }
+}
+
+impl From<&laddu::math::Histogram> for Histogram {
+    fn from(value: &laddu::math::Histogram) -> Self {
+        value.clone().into()
+    }
+}

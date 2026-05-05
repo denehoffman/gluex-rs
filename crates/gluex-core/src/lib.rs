@@ -1,5 +1,4 @@
 pub mod constants;
-pub mod detectors;
 pub mod enums;
 pub mod histograms;
 pub mod parsers;
@@ -78,8 +77,7 @@ pub enum GlueXCoreError {
     },
 }
 
-pub use crate::detectors::DetectorSystem;
-pub use crate::enums::Polarization;
+pub use crate::enums::{DetectorSystem, Polarization};
 pub use crate::histograms::Histogram;
 pub use crate::particles::{Charge, Particle};
 pub use crate::run_periods::{RESTVersionSelection, RunPeriod};

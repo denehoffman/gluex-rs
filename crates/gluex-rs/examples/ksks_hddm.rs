@@ -2,14 +2,14 @@
 
 use std::{collections::HashMap, env, error::Error, path::PathBuf};
 
-use gluex_rs::mcgen::{GluexHddmConfig, GluexHddmWriter};
+use gluex_rs::generation::{GluexHddmConfig, GluexHddmWriter};
 use laddu::{
+    Vec3,
     generation::{
         CompositeGenerator, EventGenerator, GeneratedParticle, GeneratedReaction, GeneratedStorage,
         InitialGenerator, MandelstamTDistribution, ParticleSpecies, Reconstruction,
         StableGenerator,
     },
-    Vec3,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {

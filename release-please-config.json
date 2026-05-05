@@ -16,6 +16,11 @@
       "type": "linked-versions",
       "groupName": "LUMI",
       "components": ["gluex-lumi", "gluex-lumi-py"]
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "ALL",
+      "components": ["gluex-rs", "gluex-rs-py"]
     }
   ],
   "bump-minor-pre-major": true,
@@ -23,7 +28,24 @@
   "release-type": "rust",
   "packages": {
     "crates/gluex-rs": {
-      "component": "gluex-rs"
+      "component": "gluex-rs",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-rs'].version"
+        }
+      ]
+    },
+    "crates/gluex-rs-py": {
+      "component": "gluex-rs-py",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-rs-py'].version"
+        }
+      ]
     },
     "crates/gluex-core": {
       "component": "gluex-core",
@@ -32,36 +54,6 @@
           "type": "toml",
           "path": "Cargo.toml",
           "jsonpath": "$.workspace.dependencies['gluex-core'].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/gluex-ccdb/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-core'].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/gluex-ccdb-py/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-core'].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/gluex-rcdb/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-core'].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/gluex-rcdb-py/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-core'].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/gluex-lumi/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-core'].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/gluex-lumi-py/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-core'].version"
         }
       ]
     },
@@ -70,49 +62,60 @@
       "extra-files": [
         {
           "type": "toml",
-          "path": "crates/gluex-ccdb-py/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-ccdb'].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/gluex-lumi/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-ccdb'].version"
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-ccdb'].version"
         }
       ]
     },
     "crates/gluex-ccdb-py": {
-      "component": "gluex-ccdb-py"
+      "component": "gluex-ccdb-py",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-ccdb-py'].version"
+        }
+      ]
     },
     "crates/gluex-rcdb": {
       "component": "gluex-rcdb",
       "extra-files": [
         {
           "type": "toml",
-          "path": "crates/gluex-rcdb-py/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-rcdb'].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/gluex-lumi/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-rcdb'].version"
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-rcdb'].version"
         }
       ]
     },
     "crates/gluex-rcdb-py": {
-      "component": "gluex-rcdb-py"
+      "component": "gluex-rcdb-py",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-rcdb-py'].version"
+        }
+      ]
     },
     "crates/gluex-lumi": {
       "component": "gluex-lumi",
       "extra-files": [
         {
           "type": "toml",
-          "path": "crates/gluex-lumi-py/Cargo.toml",
-          "jsonpath": "$.dependencies['gluex-lumi'].version"
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-lumi'].version"
         }
       ]
     },
     "crates/gluex-lumi-py": {
-      "component": "gluex-lumi-py"
+      "component": "gluex-lumi-py",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.dependencies['gluex-lumi-py'].version"
+        }
+      ]
     }
   }
 }

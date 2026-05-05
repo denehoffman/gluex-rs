@@ -71,5 +71,5 @@ pub use crate::context::{RCDBContext, RunSelection};
 pub use crate::data::Value;
 pub use crate::database::RCDB;
 pub use crate::models::ValueType;
-pub use gluex_core::run_periods::RunPeriod;
 pub use gluex_core::RunNumber;
+pub use gluex_core::run_periods::RunPeriod;

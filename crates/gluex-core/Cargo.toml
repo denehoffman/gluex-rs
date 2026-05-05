@@ -23,6 +23,7 @@ default = []
 auto_ops.workspace = true
 chrono.workspace = true
 hddm.workspace = true
+laddu.workspace = true
 lazy_static.workspace = true
 serde.workspace = true
 shellexpand.workspace = true

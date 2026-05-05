@@ -1,11 +1,11 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-default-members = ["crates/gluex-rs", "crates/gluex-rcdb", "crates/gluex-ccdb", "crates/gluex-lumi", "crates/gluex-core", "crates/gluex-ccdb-py", "crates/gluex-rcdb-py", "crates/gluex-lumi-py"]
+default-members = ["crates/*"]
 
 [workspace.package]
-authors = ["Nathaniel Dene Hoffman <dene@cmu.edu>"]
-edition = "2021"
+authors = ["Nathaniel Dene Hoffman <nhoffman@wm.edu>"]
+edition = "2024"
 homepage = "https://github.com/denehoffman/gluex-rs"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/denehoffman/gluex-rs"
@@ -22,19 +22,28 @@ fastrand = "2.4.1"
 hddm = "0.2.1"
 hddm-rs = "0.2.1"
 itertools = "0.14.0"
-laddu = "0.18.0"
+laddu = { version = "0.18.0", path = "../laddu/crates/laddu" }
 lazy_static = "1.5.0"
 memchr = "2.8.0"
 parking_lot = "0.12.5"
-pyo3 = { version = "0.28.3", features = ["abi3", "generate-import-lib"] }
+pyo3 = { version = "0.28.3", features = ["abi3", "generate-import-lib", "chrono", "extension-module"] }
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = {version = "1.0.228", features = ["derive"]}
 serde_json = "1.0.149"
-shellexpand = "3.1.1"
+shellexpand = "3.1.2"
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2.0.18"
 
 gluex-core = { version = "0.2.1", path = "crates/gluex-core" }
+gluex-rcdb = { version = "0.2.1", path = "crates/gluex-rcdb" }
+gluex-ccdb = { version = "0.2.1", path = "crates/gluex-ccdb" }
+gluex-lumi = { version = "0.3.1", path = "crates/gluex-lumi" }
+gluex-rs = { version = "0.1.0", path = "crates/gluex-rs" }
+
+gluex-rcdb-py = { version = "0.2.1", path = "crates/gluex-rcdb-py" }
+gluex-ccdb-py = { version = "0.2.1", path = "crates/gluex-ccdb-py" }
+gluex-lumi-py = { version = "0.3.1", path = "crates/gluex-lumi-py" }
+gluex-rs-py = { version = "0.1.0", path = "crates/gluex-rs-py" }
 
 [profile.profiling]
 inherits = "release"

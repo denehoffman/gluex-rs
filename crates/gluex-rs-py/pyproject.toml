@@ -3,13 +3,13 @@ requires = ["maturin>=1.11,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "gluex-rcdb"
-description = "Python bindings for the GlueX Run Condition Database"
+name = "gluex-rs"
+description = "A GlueX Utilities Library"
 requires-python = ">=3.8"
 readme = "README.md"
 license = { text = "Apache-2.0 OR MIT" }
 authors = [{ name = "Nathaniel Dene Hoffman", email = "nhoffman@wm.edu" }]
-keywords = ["gluex", "rcdb", "sqlite", "conditions"]
+keywords = ["gluex", "physics"]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "License :: OSI Approved :: MIT License",

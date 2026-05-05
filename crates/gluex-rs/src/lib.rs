@@ -1,13 +1,10 @@
 //! A Rust library for unified `GlueX` data analysis.
 
-// pub(crate) mod hddm_s {
-//     include!(concat!(env!("OUT_DIR"), "/hddm_s.rs"));
-// }
-
-pub(crate) mod hddm_s;
-
 /// Monte Carlo generation utilities
-pub mod mcgen;
+pub mod generation;
 
-/// Particle species mapping utilities.
-pub mod species;
+pub use gluex_core::*;
+
+pub use gluex_ccdb as ccdb;
+pub use gluex_lumi as lumi;
+pub use gluex_rcdb as rcdb;

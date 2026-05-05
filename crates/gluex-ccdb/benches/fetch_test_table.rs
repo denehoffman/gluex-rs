@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use gluex_ccdb::{context::CCDBContext, database::CCDB};
 
 const TABLE_PATH: &str = "/test/demo/mytable";

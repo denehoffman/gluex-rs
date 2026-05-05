@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.10,<2.0"]
+requires = ["maturin>=1.11,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -8,7 +8,7 @@ description = "Python bindings for accessing GlueX CCDB tables"
 requires-python = ">=3.8"
 readme = "README.md"
 license = { text = "Apache-2.0 OR MIT" }
-authors = [{ name = "Nathaniel Dene Hoffman", email = "dene@cmu.edu" }]
+authors = [{ name = "Nathaniel Dene Hoffman", email = "nhoffman@wm.edu" }]
 keywords = ["gluex", "ccdb", "sqlite", "calibration"]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
@@ -19,11 +19,14 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+
 [project.optional-dependencies]
 tests = [
     "pytest",
@@ -37,6 +40,3 @@ Issues = "https://github.com/denehoffman/gluex-rs/issues"
 
 [tool.ruff]
 target-version = "py38"
-
-[tool.ruff.lint]
-per-file-ignores = { "python/tests/test_all.py" = ["PLR2004"] }

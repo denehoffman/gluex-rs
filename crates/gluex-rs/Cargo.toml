@@ -10,9 +10,15 @@ rust-version.workspace = true
 
 [dependencies]
 fastrand.workspace = true
-gluex-core.workspace = true
 hddm.workspace = true
-laddu = { path = "../../../laddu/crates/laddu" }
+laddu.workspace = true
+thiserror.workspace = true
+
+gluex-core.workspace = true
+gluex-rcdb.workspace = true
+gluex-ccdb.workspace = true
+gluex-lumi.workspace = true
+
 
 [build-dependencies]
 anyhow.workspace = true

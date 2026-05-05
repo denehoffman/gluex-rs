@@ -1,6 +1,6 @@
 use crate::{
-    models::{ColumnMeta, ColumnType},
     CCDBError, CCDBResult,
+    models::{ColumnMeta, ColumnType},
 };
 use itertools::izip;
 use memchr::memchr;
