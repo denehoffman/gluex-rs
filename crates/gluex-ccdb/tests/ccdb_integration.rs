@@ -83,6 +83,14 @@ fn fetch_respects_runs_variations_and_timestamps() -> CCDBResult<()> {
     let empty = db.fetch(TABLE_PATH, &empty_ctx)?;
     assert!(empty.is_empty());
 
+    let no_runs = db.fetch(
+        TABLE_PATH,
+        &CCDBContext::default()
+            .with_runs([])
+            .with_timestamp(first_available),
+    )?;
+    assert!(no_runs.is_empty());
+
     let first_ctx = CCDBContext::default()
         .with_run_range(0..=3)
         .with_timestamp(first_available);

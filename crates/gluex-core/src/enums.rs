@@ -79,14 +79,16 @@ impl std::fmt::Display for DetectorSystem {
 }
 
 impl DetectorSystem {
-    #[allow(clippy::match_str_case_mismatch)]
+    /// Interpret GlueX detector names, returning [`DetectorSystem::NULL`] for
+    /// unrecognized values.
+    #[must_use]
     pub fn from_string(s: &str) -> Self {
         match s.to_uppercase().as_str() {
             "CDC" => Self::CDC,
             "FDC" => Self::FDC,
             "BCAL" => Self::BCAL,
             "TOF" => Self::TOF,
-            "Cherenkov" => Self::CHERENKOV,
+            "CHERENKOV" => Self::CHERENKOV,
             "FCAL" => Self::FCAL,
             "UPV" => Self::UPV,
             "TAGM" => Self::TAGM,
@@ -109,5 +111,27 @@ impl DetectorSystem {
             "ECAL+FCAL" => Self::ECAL_FCAL,
             _ => Self::NULL,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DetectorSystem;
+
+    #[test]
+    fn detector_parser_accepts_display_and_common_aliases() {
+        assert_eq!(
+            DetectorSystem::from_string("Cherenkov"),
+            DetectorSystem::CHERENKOV
+        );
+        assert_eq!(
+            DetectorSystem::from_string("cherenkov"),
+            DetectorSystem::CHERENKOV
+        );
+        assert_eq!(DetectorSystem::from_string("ST"), DetectorSystem::START);
+        assert_eq!(
+            DetectorSystem::from_string("ECAL+FCAL"),
+            DetectorSystem::ECAL_FCAL
+        );
     }
 }

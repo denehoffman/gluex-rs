@@ -1,4 +1,3 @@
-use auto_ops::impl_op_ex;
 use serde::{Deserialize, Serialize};
 
 use crate::GlueXCoreError;
@@ -205,27 +204,35 @@ impl Histogram {
     pub fn integral(&self) -> f64 {
         self.counts.iter().sum()
     }
-}
-impl_op_ex!(+ |a: &Histogram, b: &Histogram| -> Histogram {
-        assert_eq!(a.edges, b.edges);
-        let counts =a
+
+    /// Add another histogram with identical bin edges.
+    ///
+    /// # Errors
+    /// Returns [`GlueXCoreError::HistogramEdgeMismatch`] if the bin edges do
+    /// not match exactly.
+    pub fn try_add(&self, other: &Self) -> Result<Self, GlueXCoreError> {
+        if self.edges != other.edges {
+            return Err(GlueXCoreError::HistogramEdgeMismatch);
+        }
+        let counts = self
             .counts
             .iter()
-            .zip(&b.counts)
+            .zip(&other.counts)
             .map(|(a, b)| a + b)
             .collect();
-        let errors = a
+        let errors = self
             .errors
             .iter()
-            .zip(&b.errors)
+            .zip(&other.errors)
             .map(|(a, b)| a.hypot(*b))
             .collect();
-        Histogram {
+        Ok(Self {
             counts,
-            edges: a.edges.clone(),
+            edges: self.edges.clone(),
             errors,
-        }
-});
+        })
+    }
+}
 
 impl From<Histogram> for laddu::math::Histogram {
     fn from(value: Histogram) -> Self {
@@ -255,5 +262,33 @@ impl From<laddu::math::Histogram> for Histogram {
 impl From<&laddu::math::Histogram> for Histogram {
     fn from(value: &laddu::math::Histogram) -> Self {
         value.clone().into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::GlueXCoreError;
+
+    use super::Histogram;
+
+    #[test]
+    fn histogram_addition_combines_counts_and_errors() {
+        let left = Histogram::new(&[1.0, 2.0], &[0.0, 1.0, 2.0], Some(&[1.0, 2.0]))
+            .expect("valid histogram");
+        let right = Histogram::new(&[3.0, 4.0], &[0.0, 1.0, 2.0], Some(&[3.0, 4.0]))
+            .expect("valid histogram");
+        let total = left.try_add(&right).expect("matching edges");
+        assert_eq!(total.counts(), &[4.0, 6.0]);
+        assert_eq!(total.errors(), &[1.0_f64.hypot(3.0), 2.0_f64.hypot(4.0)]);
+    }
+
+    #[test]
+    fn histogram_addition_rejects_mismatched_edges() {
+        let left = Histogram::empty(&[0.0, 1.0]).expect("valid histogram");
+        let right = Histogram::empty(&[0.0, 2.0]).expect("valid histogram");
+        assert!(matches!(
+            left.try_add(&right),
+            Err(GlueXCoreError::HistogramEdgeMismatch)
+        ));
     }
 }

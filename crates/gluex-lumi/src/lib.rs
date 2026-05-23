@@ -46,6 +46,17 @@ pub enum LuminosityError {
     /// No runs remained after selection and exclusions.
     #[error("at least one run number is required")]
     EmptyRunSelection,
+    /// A database path was not supplied through the required environment variable.
+    #[error("missing {0} environment variable for luminosity connection")]
+    MissingConnectionEnv(String),
+    /// A selected production run lacks an input needed to compute luminosity.
+    #[error("missing required luminosity input {input} for selected run {run}")]
+    MissingRunInput {
+        /// Run with incomplete data.
+        run: RunNumber,
+        /// Missing or unusable input.
+        input: &'static str,
+    },
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -246,19 +257,6 @@ pub struct Luminosity {
     ccdb: PathBuf,
 }
 
-impl Default for Luminosity {
-    fn default() -> Self {
-        let rcdb = env::var("RCDB_CONNECTION")
-            .expect("RCDB_CONNECTION is not set for Luminosity::default()");
-        let ccdb = env::var("CCDB_CONNECTION")
-            .expect("CCDB_CONNECTION is not set for Luminosity::default()");
-        Self {
-            rcdb: PathBuf::from(rcdb),
-            ccdb: PathBuf::from(ccdb),
-        }
-    }
-}
-
 impl Luminosity {
     /// Create a calculator from RCDB and CCDB `SQLite` paths.
     pub fn new(rcdb: impl AsRef<Path>, ccdb: impl AsRef<Path>) -> Self {
@@ -266,6 +264,19 @@ impl Luminosity {
             rcdb: rcdb.as_ref().to_path_buf(),
             ccdb: ccdb.as_ref().to_path_buf(),
         }
+    }
+
+    /// Create a calculator using `RCDB_CONNECTION` and `CCDB_CONNECTION`.
+    ///
+    /// # Errors
+    /// Returns [`LuminosityError::MissingConnectionEnv`] when either
+    /// environment variable is not defined.
+    pub fn try_from_env() -> Result<Self, LuminosityError> {
+        let rcdb = env::var("RCDB_CONNECTION")
+            .map_err(|_| LuminosityError::MissingConnectionEnv("RCDB_CONNECTION".to_string()))?;
+        let ccdb = env::var("CCDB_CONNECTION")
+            .map_err(|_| LuminosityError::MissingConnectionEnv("CCDB_CONNECTION".to_string()))?;
+        Ok(Self::new(rcdb, ccdb))
     }
 }
 
@@ -305,7 +316,7 @@ fn get_flux_cache(
         return Ok(HashMap::new());
     }
     let rcdb = RCDB::open(rcdb_path)?;
-    let mut rcdb_filters = gluex_rcdb::conditions::aliases::approved_production(run_period);
+    let mut rcdb_filters = gluex_rcdb::conditions::aliases::approved_production(run_period)?;
     if polarized {
         rcdb_filters = gluex_rcdb::conditions::all([
             rcdb_filters,
@@ -352,16 +363,21 @@ fn get_flux_cache(
             Some((r, if total > 0.0 { live / total } else { 1.0 }))
         })
         .collect::<HashMap<_, _>>();
-    let livetime_scaling: HashMap<RunNumber, f64> = polarimeter_converter
-        .into_iter()
-        .filter_map(|(r, c)| {
-            // See https://doi.org/10.1103/RevModPhys.46.815 Section IV parts B, C, and D
-            Some((
-                r,
-                livetime_ratio.get(&r).unwrap_or(&1.0) * 9.0 / (7.0 * c.radiation_lengths()?),
-            ))
-        })
-        .collect();
+    let mut livetime_scaling: HashMap<RunNumber, f64> = HashMap::new();
+    for (run, converter) in polarimeter_converter {
+        let radiation_lengths =
+            converter
+                .radiation_lengths()
+                .ok_or(LuminosityError::MissingRunInput {
+                    run,
+                    input: "usable polarimeter converter",
+                })?;
+        // See https://doi.org/10.1103/RevModPhys.46.815 Section IV parts B, C, and D
+        livetime_scaling.insert(
+            run,
+            livetime_ratio.get(&run).unwrap_or(&1.0) * 9.0 / (7.0 * radiation_lengths),
+        );
+    }
     let pair_spectrometer_parameters = fetch_pair_spectrometer_parameters(&ccdb, &ccdb_context)?;
     let mut photon_endpoint_energy = fetch_photon_endpoint_energy(&ccdb, &ccdb_context_restver)?;
     let microscope_tagged_flux = fetch_tagm_tagged_flux(&ccdb, &ccdb_context)?;
@@ -410,29 +426,47 @@ fn get_flux_cache(
             run_period.max_run(),
         );
     }
-    Ok(livetime_scaling
-        .into_iter()
-        .filter_map(|(r, livetime_scaling)| {
-            let pair_spectrometer_parameters = *pair_spectrometer_parameters.get(&r)?;
-            let photon_endpoint_energy = *photon_endpoint_energy.get(&r)?;
-            let photon_endpoint_calibration = photon_endpoint_calibration.get(&r).copied();
-            let target_scattering_centers = *target_scattering_centers.get(&r)?;
-            Some((
-                r,
-                FluxCache {
-                    livetime_scaling,
-                    pair_spectrometer_parameters,
-                    photon_endpoint_energy,
-                    tagm_tagged_flux: microscope_tagged_flux.get(&r)?.clone(),
-                    tagm_scaled_energy_range: microscope_scaled_energy_range.get(&r)?.clone(),
-                    tagh_tagged_flux: hodoscope_tagged_flux.get(&r)?.clone(),
-                    tagh_scaled_energy_range: hodoscope_scaled_energy_range.get(&r)?.clone(),
-                    photon_endpoint_calibration,
-                    target_scattering_centers,
-                },
-            ))
-        })
-        .collect())
+    let required = |run, input| LuminosityError::MissingRunInput { run, input };
+    let mut cache = HashMap::new();
+    for (run, livetime_scaling) in livetime_scaling {
+        let pair_spectrometer_parameters = *pair_spectrometer_parameters
+            .get(&run)
+            .ok_or_else(|| required(run, "pair-spectrometer acceptance"))?;
+        let photon_endpoint_energy = *photon_endpoint_energy
+            .get(&run)
+            .ok_or_else(|| required(run, "photon endpoint energy"))?;
+        let photon_endpoint_calibration = photon_endpoint_calibration.get(&run).copied();
+        let target_scattering_centers = *target_scattering_centers
+            .get(&run)
+            .ok_or_else(|| required(run, "target density"))?;
+        cache.insert(
+            run,
+            FluxCache {
+                livetime_scaling,
+                pair_spectrometer_parameters,
+                photon_endpoint_energy,
+                tagm_tagged_flux: microscope_tagged_flux
+                    .get(&run)
+                    .ok_or_else(|| required(run, "TAGM tagged flux"))?
+                    .clone(),
+                tagm_scaled_energy_range: microscope_scaled_energy_range
+                    .get(&run)
+                    .ok_or_else(|| required(run, "TAGM scaled energy range"))?
+                    .clone(),
+                tagh_tagged_flux: hodoscope_tagged_flux
+                    .get(&run)
+                    .ok_or_else(|| required(run, "TAGH tagged flux"))?
+                    .clone(),
+                tagh_scaled_energy_range: hodoscope_scaled_energy_range
+                    .get(&run)
+                    .ok_or_else(|| required(run, "TAGH scaled energy range"))?
+                    .clone(),
+                photon_endpoint_calibration,
+                target_scattering_centers,
+            },
+        );
+    }
+    Ok(cache)
 }
 
 /// Photon flux and luminosity histograms aggregated across TAGM and TAGH detectors.
@@ -607,6 +641,7 @@ impl Luminosity {
         let mut microscope_flux_hist = Histogram::empty(edges)?;
         let mut hodoscope_flux_hist = Histogram::empty(edges)?;
         let mut tagged_luminosity_hist = Histogram::empty(edges)?;
+        let mut target_scattering_centers = None;
         let mut run_numbers: Vec<RunNumber> = ctx.runs().to_vec();
         if !ctx.exclude_runs().is_empty() {
             let exclude_set: HashSet<RunNumber> = ctx.exclude_runs().iter().copied().collect();
@@ -711,20 +746,21 @@ impl Luminosity {
                             hodoscope_flux_hist.errors[ibin].hypot(error);
                     }
                 }
-                let (n_scattering_centers, n_scattering_centers_error) =
-                    data.target_scattering_centers;
-                for ibin in 0..tagged_flux_hist.bins() {
-                    let count = tagged_flux_hist.counts[ibin];
-                    if count <= 0.0 {
-                        continue;
-                    }
-                    let luminosity = count * n_scattering_centers / 1e12; // pb^-1
-                    let flux_error = tagged_flux_hist.errors[ibin] / count;
-                    let target_error = n_scattering_centers_error / n_scattering_centers;
-                    tagged_luminosity_hist.counts[ibin] = luminosity;
-                    tagged_luminosity_hist.errors[ibin] =
-                        luminosity * target_error.hypot(flux_error);
+                target_scattering_centers = Some(data.target_scattering_centers);
+            }
+        }
+        if let Some((n_scattering_centers, n_scattering_centers_error)) = target_scattering_centers
+        {
+            for ibin in 0..tagged_flux_hist.bins() {
+                let flux = tagged_flux_hist.counts[ibin];
+                if flux <= 0.0 {
+                    continue;
                 }
+                let luminosity = flux * n_scattering_centers / 1e12;
+                let flux_error = tagged_flux_hist.errors[ibin] / flux;
+                let target_error = n_scattering_centers_error / n_scattering_centers;
+                tagged_luminosity_hist.counts[ibin] = luminosity;
+                tagged_luminosity_hist.errors[ibin] = luminosity * target_error.hypot(flux_error);
             }
         }
         Ok(FluxHistograms {

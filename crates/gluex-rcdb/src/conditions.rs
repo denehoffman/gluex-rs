@@ -639,6 +639,7 @@ pub mod aliases {
     use gluex_core::run_periods::RunPeriod;
 
     use super::{Expr, all, float_cond, int_cond, string_cond};
+    use crate::{RCDBError, RCDBResult};
 
     /// Returns the reusable expression for the `is_production` alias.
     #[must_use]
@@ -797,9 +798,12 @@ pub mod aliases {
     }
 
     /// Returns an expression which matches approved production runs for the given [`RunPeriod`].
-    #[must_use]
-    pub fn approved_production(run_period: RunPeriod) -> Expr {
-        match run_period {
+    ///
+    /// # Errors
+    /// Returns [`RCDBError::UnsupportedApprovedProductionRunPeriod`] when no
+    /// approved-production alias has been defined for the requested period.
+    pub fn approved_production(run_period: RunPeriod) -> RCDBResult<Expr> {
+        Ok(match run_period {
             RunPeriod::RP2016_02 | RunPeriod::RP2017_01 => {
                 all([is_production(), status_approved()])
             }
@@ -810,7 +814,11 @@ pub mod aliases {
             RunPeriod::RP2023_01 | RunPeriod::RP2025_01 => {
                 all([is_dirc_production(), status_approved()])
             }
-            _ => unimplemented!(),
-        }
+            _ => {
+                return Err(RCDBError::UnsupportedApprovedProductionRunPeriod(
+                    run_period,
+                ));
+            }
+        })
     }
 }

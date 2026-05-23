@@ -103,7 +103,7 @@ pub fn gluex_particle_from_species(
             }
         }
         ParticleSpecies::Label(label) => {
-            let particle = GluexParticle::from_string(label);
+            let particle = GluexParticle::from_particle_type(label);
             if particle.is_unknown() && label != "Unknown" {
                 Err(SpeciesMappingError::UnknownLabel {
                     label: label.clone(),

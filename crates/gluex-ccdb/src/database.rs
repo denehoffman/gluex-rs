@@ -557,11 +557,7 @@ impl TypeTableHandle {
     /// Returns an error if resolving assignments fails, if any SQL queries fail, or if vault data
     /// cannot be decoded for the requested runs.
     pub fn fetch(&self, ctx: &CCDBContext) -> CCDBResult<BTreeMap<RunNumber, Data>> {
-        let runs: Vec<RunNumber> = if ctx.runs.is_empty() {
-            vec![0]
-        } else {
-            ctx.runs.clone() // PERF: is this ever expensive?
-        };
+        let runs = ctx.runs.clone();
         let assignments = self.resolve_assignments(&runs, &ctx.variation, ctx.timestamp)?;
         if assignments.is_empty() {
             return Ok(BTreeMap::new());

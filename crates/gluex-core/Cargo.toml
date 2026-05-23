@@ -20,7 +20,6 @@ crate-type = ["rlib"]
 default = []
 
 [dependencies]
-auto_ops.workspace = true
 chrono.workspace = true
 hddm.workspace = true
 laddu.workspace = true

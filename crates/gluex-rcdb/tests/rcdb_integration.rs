@@ -1,7 +1,9 @@
 #![allow(missing_docs)]
 
 use gluex_core::parsers::parse_timestamp;
-use gluex_rcdb::{RCDB, RCDBContext, RCDBResult, Value, ValueType, conditions};
+use gluex_rcdb::{
+    RCDB, RCDBContext, RCDBError, RCDBResult, RunPeriod, Value, ValueType, conditions,
+};
 
 fn open_db() -> RCDB {
     let path =
@@ -135,4 +137,14 @@ fn fetch_runs_with_alias() -> RCDBResult<()> {
     let runs = db.fetch_runs(&ctx)?;
     assert!(!runs.is_empty());
     Ok(())
+}
+
+#[test]
+fn approved_production_rejects_unsupported_run_periods() {
+    let error = conditions::aliases::approved_production(RunPeriod::RP2019_01)
+        .expect_err("unsupported periods must return an error");
+    assert!(matches!(
+        error,
+        RCDBError::UnsupportedApprovedProductionRunPeriod(RunPeriod::RP2019_01)
+    ));
 }

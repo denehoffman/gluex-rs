@@ -865,11 +865,14 @@ impl Aliases {
         PyExpr::new(conditions::aliases::status_reject())
     }
     pub fn approved_production(&self, run_period: String) -> PyResult<PyExpr> {
-        Ok(PyExpr::new(conditions::aliases::approved_production(
-            run_period
-                .parse()
-                .map_err(|e: GlueXCoreError| PyRuntimeError::new_err(e.to_string()))?,
-        )))
+        Ok(PyExpr::new(
+            conditions::aliases::approved_production(
+                run_period
+                    .parse()
+                    .map_err(|e: GlueXCoreError| PyRuntimeError::new_err(e.to_string()))?,
+            )
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
+        ))
     }
 }
 

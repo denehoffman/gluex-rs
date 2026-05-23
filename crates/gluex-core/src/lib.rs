@@ -60,6 +60,12 @@ pub enum GlueXCoreError {
         "uniform histogram limits must be finite and strictly increasing (min={min}, max={max})"
     )]
     HistogramInvalidUniformLimits { min: f64, max: f64 },
+    /// Histograms with different edges cannot be combined.
+    #[error("histogram edges differ and cannot be combined")]
+    HistogramEdgeMismatch,
+    /// Could not parse a particle from its canonical enum name.
+    #[error("unknown particle enum name: {0}")]
+    ParticleParse(String),
     /// Run number does not belong to any known run period.
     #[error("Run number {0} not in range of any known run period")]
     UnknownRunPeriod(RunNumber),

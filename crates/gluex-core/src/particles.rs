@@ -7,8 +7,11 @@ pub enum Charge {
     AllCharges,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Default)]
+use std::{fmt, str::FromStr};
+
+use strum::VariantArray;
+
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Default, VariantArray)]
 pub enum Particle {
     #[default]
     UnknownParticle,
@@ -106,36 +109,36 @@ pub enum Particle {
     Rho0,
     RhoPlus,
     RhoMinus,
-    omega,
-    phiMeson,
+    Omega,
+    Phi,
     EtaPrime,
-    a0_980,
-    f0_980,
-    KStar_892_0,
-    KStar_892_Plus,
-    KStar_892_Minus,
-    AntiKStar_892_0,
-    K1_1400_Plus,
-    K1_1400_Minus,
-    b1_1235_Plus,
-    Sigma_1385_Minus,
-    Sigma_1385_0,
-    Sigma_1385_Plus,
+    A0_980,
+    F0_980,
+    KStar892Zero,
+    KStar892Plus,
+    KStar892Minus,
+    AntiKStar892Zero,
+    K1Plus1400,
+    K1Minus1400,
+    B1Plus1235,
+    Sigma1385Minus,
+    Sigma1385Zero,
+    Sigma1385Plus,
     Jpsi,
-    Eta_c,
-    Chi_c0,
-    Chi_c1,
-    Chi_c2,
+    EtaC,
+    ChiC0,
+    ChiC1,
+    ChiC2,
     Psi2s,
     D0,
     DPlus,
-    Dstar0,
-    DstarPlus,
-    Lambda_c,
+    DStar0,
+    DStarPlus,
+    LambdaC,
     AntiD0,
     DMinus,
-    DstarMinus,
-    Sigma_cPlusPlus,
+    DStarMinus,
+    SigmaCPlusPlus,
     DeltaPlusPlus,
 }
 
@@ -241,36 +244,36 @@ impl Particle {
             Self::Rho0 => 44,     // was 157
             Self::RhoPlus => 42,  // was 158
             Self::RhoMinus => 43, // was 159
-            Self::omega => 33,    // was 160
-            Self::phiMeson => 34, // was 162
+            Self::Omega => 33,    // was 160
+            Self::Phi => 34,      // was 162
             Self::EtaPrime => 35, // was 161
-            Self::a0_980 => 163,
-            Self::f0_980 => 164,
-            Self::KStar_892_0 => 165,
-            Self::KStar_892_Plus => 166,
-            Self::KStar_892_Minus => 167,
-            Self::AntiKStar_892_0 => 168,
-            Self::K1_1400_Plus => 169,
-            Self::K1_1400_Minus => 170,
-            Self::b1_1235_Plus => 171,
-            Self::Sigma_1385_Minus => 172,
-            Self::Sigma_1385_0 => 173,
-            Self::Sigma_1385_Plus => 174,
+            Self::A0_980 => 163,
+            Self::F0_980 => 164,
+            Self::KStar892Zero => 165,
+            Self::KStar892Plus => 166,
+            Self::KStar892Minus => 167,
+            Self::AntiKStar892Zero => 168,
+            Self::K1Plus1400 => 169,
+            Self::K1Minus1400 => 170,
+            Self::B1Plus1235 => 171,
+            Self::Sigma1385Minus => 172,
+            Self::Sigma1385Zero => 173,
+            Self::Sigma1385Plus => 174,
             Self::Jpsi => 183,
-            Self::Eta_c => 184,
-            Self::Chi_c0 => 185,
-            Self::Chi_c1 => 186,
-            Self::Chi_c2 => 187,
+            Self::EtaC => 184,
+            Self::ChiC0 => 185,
+            Self::ChiC1 => 186,
+            Self::ChiC2 => 187,
             Self::Psi2s => 188,
             Self::D0 => 189,
             Self::DPlus => 190,
-            Self::Dstar0 => 191,
-            Self::DstarPlus => 192,
-            Self::Lambda_c => 193,
+            Self::DStar0 => 191,
+            Self::DStarPlus => 192,
+            Self::LambdaC => 193,
             Self::AntiD0 => 194,
             Self::DMinus => 195,
-            Self::DstarMinus => 196,
-            Self::Sigma_cPlusPlus => 197,
+            Self::DStarMinus => 196,
+            Self::SigmaCPlusPlus => 197,
             Self::DeltaPlusPlus => 182,
         }
     }
@@ -281,7 +284,7 @@ impl Particle {
         )
     }
 
-    pub fn particle_type(&self) -> &str {
+    pub fn to_particle_type(&self) -> &str {
         match self {
             Self::UnknownParticle => "Unknown",
             Self::Gamma => "Gamma",
@@ -378,41 +381,41 @@ impl Particle {
             Self::Rho0 => "Rho0",
             Self::RhoPlus => "Rho+",
             Self::RhoMinus => "Rho-",
-            Self::omega => "Omega",
-            Self::phiMeson => "Phi",
+            Self::Omega => "Omega",
+            Self::Phi => "Phi",
             Self::EtaPrime => "EtaPrime",
-            Self::a0_980 => "a0(980)",
-            Self::f0_980 => "f0(980)",
-            Self::KStar_892_0 => "K*(892)0",
-            Self::KStar_892_Plus => "K*(892)+",
-            Self::KStar_892_Minus => "K*(892)-",
-            Self::AntiKStar_892_0 => "antiK*(892)0",
-            Self::K1_1400_Plus => "K1(1440)+",
-            Self::K1_1400_Minus => "K1(1440)-",
-            Self::b1_1235_Plus => "b1(1235)+",
-            Self::Sigma_1385_Minus => "Sigma(1385)-",
-            Self::Sigma_1385_0 => "Sigma(1385)0",
-            Self::Sigma_1385_Plus => "Sigma(1385)+",
+            Self::A0_980 => "a0(980)",
+            Self::F0_980 => "f0(980)",
+            Self::KStar892Zero => "K*(892)0",
+            Self::KStar892Plus => "K*(892)+",
+            Self::KStar892Minus => "K*(892)-",
+            Self::AntiKStar892Zero => "antiK*(892)0",
+            Self::K1Plus1400 => "K1(1440)+",
+            Self::K1Minus1400 => "K1(1440)-",
+            Self::B1Plus1235 => "b1(1235)+",
+            Self::Sigma1385Minus => "Sigma(1385)-",
+            Self::Sigma1385Zero => "Sigma(1385)0",
+            Self::Sigma1385Plus => "Sigma(1385)+",
             Self::Jpsi => "Jpsi",
-            Self::Eta_c => "EtaC",
-            Self::Chi_c0 => "ChiC0",
-            Self::Chi_c1 => "ChiC1",
-            Self::Chi_c2 => "ChiC2",
+            Self::EtaC => "EtaC",
+            Self::ChiC0 => "ChiC0",
+            Self::ChiC1 => "ChiC1",
+            Self::ChiC2 => "ChiC2",
             Self::Psi2s => "Psi(2S)",
             Self::D0 => "D0",
             Self::DPlus => "D+",
-            Self::Dstar0 => "D*0",
-            Self::DstarPlus => "D*+",
-            Self::Lambda_c => "LambdaC",
+            Self::DStar0 => "D*0",
+            Self::DStarPlus => "D*+",
+            Self::LambdaC => "LambdaC",
             Self::AntiD0 => "AntiD0",
             Self::DMinus => "D-",
-            Self::DstarMinus => "D*-",
-            Self::Sigma_cPlusPlus => "SigmaC++",
+            Self::DStarMinus => "D*-",
+            Self::SigmaCPlusPlus => "SigmaC++",
             Self::DeltaPlusPlus => "Delta++",
         }
     }
 
-    pub fn enum_string(&self) -> &str {
+    fn enum_name(&self) -> &str {
         match self {
             Self::UnknownParticle => "Unknown",
             Self::Gamma => "Photon",
@@ -509,41 +512,41 @@ impl Particle {
             Self::Rho0 => "Rho0",
             Self::RhoPlus => "RhoPlus",
             Self::RhoMinus => "RhoMinus",
-            Self::omega => "omega",
-            Self::phiMeson => "phiMeson",
+            Self::Omega => "omega",
+            Self::Phi => "phiMeson",
             Self::EtaPrime => "EtaPrime",
-            Self::a0_980 => "a0_980",
-            Self::f0_980 => "f0_980",
-            Self::KStar_892_0 => "KStar_892_0",
-            Self::KStar_892_Plus => "KStar_892_Plus",
-            Self::KStar_892_Minus => "KStar_892_Minus",
-            Self::AntiKStar_892_0 => "AntiKStar_892_0",
-            Self::K1_1400_Plus => "K1_1400_Plus",
-            Self::K1_1400_Minus => "K1_1400_Minus",
-            Self::b1_1235_Plus => "b1_1235_Plus",
-            Self::Sigma_1385_Minus => "Sigma_1385_Minus",
-            Self::Sigma_1385_0 => "Sigma_1385_0",
-            Self::Sigma_1385_Plus => "Sigma_1385_Plus",
+            Self::A0_980 => "a0_980",
+            Self::F0_980 => "f0_980",
+            Self::KStar892Zero => "KStar_892_0",
+            Self::KStar892Plus => "KStar_892_Plus",
+            Self::KStar892Minus => "KStar_892_Minus",
+            Self::AntiKStar892Zero => "AntiKStar_892_0",
+            Self::K1Plus1400 => "K1_1400_Plus",
+            Self::K1Minus1400 => "K1_1400_Minus",
+            Self::B1Plus1235 => "b1_1235_Plus",
+            Self::Sigma1385Minus => "Sigma_1385_Minus",
+            Self::Sigma1385Zero => "Sigma_1385_0",
+            Self::Sigma1385Plus => "Sigma_1385_Plus",
             Self::Jpsi => "Jpsi",
-            Self::Eta_c => "Eta_c",
-            Self::Chi_c0 => "Chi_c0",
-            Self::Chi_c1 => "Chi_c1",
-            Self::Chi_c2 => "Chi_c2",
+            Self::EtaC => "Eta_c",
+            Self::ChiC0 => "Chi_c0",
+            Self::ChiC1 => "Chi_c1",
+            Self::ChiC2 => "Chi_c2",
             Self::Psi2s => "Psi2s",
             Self::D0 => "D0",
             Self::DPlus => "DPlus",
-            Self::Dstar0 => "Dstar0",
-            Self::DstarPlus => "DstarPlus",
-            Self::Lambda_c => "Lambda_c",
+            Self::DStar0 => "Dstar0",
+            Self::DStarPlus => "DstarPlus",
+            Self::LambdaC => "Lambda_c",
             Self::AntiD0 => "AntiD0",
             Self::DMinus => "DMinus",
-            Self::DstarMinus => "DstarMinus",
-            Self::Sigma_cPlusPlus => "Sigma_cPlusPlus",
+            Self::DStarMinus => "DstarMinus",
+            Self::SigmaCPlusPlus => "Sigma_cPlusPlus",
             Self::DeltaPlusPlus => "DeltaPlusPlus",
         }
     }
 
-    pub fn evtgen_string(&self) -> &str {
+    pub fn to_evtgen(&self) -> &str {
         match self {
             Self::UnknownParticle => "Unknown",
             Self::Gamma => "gamma",
@@ -640,36 +643,36 @@ impl Particle {
             Self::Rho0 => "rho0",
             Self::RhoPlus => "rho+",
             Self::RhoMinus => "rho-",
-            Self::omega => "omega",
-            Self::phiMeson => "phi",
+            Self::Omega => "omega",
+            Self::Phi => "phi",
             Self::EtaPrime => "eta'",
-            Self::a0_980 => "a_0",
-            Self::f0_980 => "f_0",
-            Self::KStar_892_0 => "K*0",
-            Self::KStar_892_Plus => "K*+",
-            Self::KStar_892_Minus => "K*-",
-            Self::AntiKStar_892_0 => "anti-K*0",
-            Self::K1_1400_Plus => "K'_1+",
-            Self::K1_1400_Minus => "K'_1-",
-            Self::b1_1235_Plus => "b_1+",
-            Self::Sigma_1385_Minus => "Sigma_1385_Minus",
-            Self::Sigma_1385_0 => "Sigma_1385_0",
-            Self::Sigma_1385_Plus => "Sigma_1385_Plus",
+            Self::A0_980 => "a_0",
+            Self::F0_980 => "f_0",
+            Self::KStar892Zero => "K*0",
+            Self::KStar892Plus => "K*+",
+            Self::KStar892Minus => "K*-",
+            Self::AntiKStar892Zero => "anti-K*0",
+            Self::K1Plus1400 => "K'_1+",
+            Self::K1Minus1400 => "K'_1-",
+            Self::B1Plus1235 => "b_1+",
+            Self::Sigma1385Minus => "Sigma_1385_Minus",
+            Self::Sigma1385Zero => "Sigma_1385_0",
+            Self::Sigma1385Plus => "Sigma_1385_Plus",
             Self::Jpsi => "J/psi",
-            Self::Eta_c => "eta_c",
-            Self::Chi_c0 => "chi_c0",
-            Self::Chi_c1 => "chi_c1",
-            Self::Chi_c2 => "chi_c2",
+            Self::EtaC => "eta_c",
+            Self::ChiC0 => "chi_c0",
+            Self::ChiC1 => "chi_c1",
+            Self::ChiC2 => "chi_c2",
             Self::Psi2s => "psi(2S)",
             Self::D0 => "D0",
             Self::DPlus => "D+",
-            Self::Dstar0 => "D*0",
-            Self::DstarPlus => "D*+",
-            Self::Lambda_c => "Lambda_c0",
+            Self::DStar0 => "D*0",
+            Self::DStarPlus => "D*+",
+            Self::LambdaC => "Lambda_c0",
             Self::AntiD0 => "anti-D0",
             Self::DMinus => "D-",
-            Self::DstarMinus => "D*-",
-            Self::Sigma_cPlusPlus => "Sigma_c++",
+            Self::DStarMinus => "D*-",
+            Self::SigmaCPlusPlus => "Sigma_c++",
             Self::DeltaPlusPlus => "Delta++",
         }
     }
@@ -771,43 +774,43 @@ impl Particle {
             Self::Rho0 => "Rho0",
             Self::RhoPlus => "RhoPlus",
             Self::RhoMinus => "RhoMinus",
-            Self::omega => "omega",
-            Self::phiMeson => "phi",
+            Self::Omega => "omega",
+            Self::Phi => "phi",
             Self::EtaPrime => "etapr",
-            Self::a0_980 => "a0_980",
-            Self::f0_980 => "f0_980",
-            Self::KStar_892_0 => "KStar_892_0",
-            Self::KStar_892_Plus => "KStar_892_Plus",
-            Self::KStar_892_Minus => "KStar_892_Minus",
-            Self::AntiKStar_892_0 => "AntiKStar_892_0",
-            Self::K1_1400_Plus => "K1_1400_Plus",
-            Self::K1_1400_Minus => "K1_1400_Minus",
-            Self::b1_1235_Plus => "b1_1235_Plus",
-            Self::Sigma_1385_Minus => "Sigma_1385_Minus",
-            Self::Sigma_1385_0 => "Sigma_1385_0",
-            Self::Sigma_1385_Plus => "Sigma_1385_Plus",
+            Self::A0_980 => "a0_980",
+            Self::F0_980 => "f0_980",
+            Self::KStar892Zero => "KStar_892_0",
+            Self::KStar892Plus => "KStar_892_Plus",
+            Self::KStar892Minus => "KStar_892_Minus",
+            Self::AntiKStar892Zero => "AntiKStar_892_0",
+            Self::K1Plus1400 => "K1_1400_Plus",
+            Self::K1Minus1400 => "K1_1400_Minus",
+            Self::B1Plus1235 => "b1_1235_Plus",
+            Self::Sigma1385Minus => "Sigma_1385_Minus",
+            Self::Sigma1385Zero => "Sigma_1385_0",
+            Self::Sigma1385Plus => "Sigma_1385_Plus",
             Self::Jpsi => "jpsi",
-            Self::Eta_c => "etac",
-            Self::Chi_c0 => "chic0",
-            Self::Chi_c1 => "chic1",
-            Self::Chi_c2 => "chic2",
+            Self::EtaC => "etac",
+            Self::ChiC0 => "chic0",
+            Self::ChiC1 => "chic1",
+            Self::ChiC2 => "chic2",
             Self::Psi2s => "psi2s",
             Self::D0 => "d0",
             Self::DPlus => "dp",
-            Self::Dstar0 => "ds0",
-            Self::DstarPlus => "dsp",
-            Self::Lambda_c => "lambc",
+            Self::DStar0 => "ds0",
+            Self::DStarPlus => "dsp",
+            Self::LambdaC => "lambc",
             Self::AntiD0 => "antid0",
             Self::DMinus => "dm",
-            Self::DstarMinus => "dsm",
-            Self::Sigma_cPlusPlus => "sigcpp",
+            Self::DStarMinus => "dsm",
+            Self::SigmaCPlusPlus => "sigcpp",
             Self::DeltaPlusPlus => "DeltaPlusPlus",
         }
     }
 
-    pub fn from_string(particle_name: &str) -> Self {
+    pub fn from_particle_type(particle_name: &str) -> Self {
         match particle_name {
-            "Photon" => Self::Gamma,
+            "Gamma" | "Photon" => Self::Gamma,
             "Positron" => Self::Positron,
             "Electron" => Self::Electron,
             "Neutrino" => Self::Neutrino,
@@ -851,7 +854,7 @@ impl Particle {
             "Beryllium-9" => Self::Be9,
             "Boron-10" => Self::B10,
             "Boron-11" => Self::B11,
-            "Carbon" => Self::C12,
+            "Carbon" | "Carbon-12" => Self::C12,
             "Nitrogen" => Self::N14,
             "Oxygen" => Self::O16,
             "Flourine" => Self::F19,
@@ -861,7 +864,8 @@ impl Particle {
             "Aluminum" => Self::Al27,
             "Silicon" => Self::Si28,
             "Phosphorous" => Self::P31,
-            "Sulfur" => Self::S32,
+            "Sulfur" | "Sulphur" => Self::S32,
+            "Chlorine" => Self::Cl35,
             "Argon" => Self::Ar36,
             "Potassium" => Self::K39,
             "Calcium" => Self::Ca40,
@@ -900,36 +904,36 @@ impl Particle {
             "Rho0" => Self::Rho0,
             "Rho+" => Self::RhoPlus,
             "Rho-" => Self::RhoMinus,
-            "Omega" => Self::omega,
+            "Omega" => Self::Omega,
             "EtaPrime" => Self::EtaPrime,
-            "Phi" => Self::phiMeson,
-            "a0(980)" => Self::a0_980,
-            "f0(980)" => Self::f0_980,
-            "K*(892)0" => Self::KStar_892_0,
-            "K*(892)+" => Self::KStar_892_Plus,
-            "K*(892)-" => Self::KStar_892_Minus,
-            "antiK*(892)0" => Self::AntiKStar_892_0,
-            "K1(1400)+" => Self::K1_1400_Plus,
-            "K1(1400)-" => Self::K1_1400_Minus,
-            "b1(1235)+" => Self::b1_1235_Plus,
-            "Sigma(1385)+" => Self::Sigma_1385_Plus,
-            "Sigma(1385)0" => Self::Sigma_1385_0,
-            "Sigma(1385)-" => Self::Sigma_1385_Minus,
+            "Phi" => Self::Phi,
+            "a0(980)" => Self::A0_980,
+            "f0(980)" => Self::F0_980,
+            "K*(892)0" => Self::KStar892Zero,
+            "K*(892)+" => Self::KStar892Plus,
+            "K*(892)-" => Self::KStar892Minus,
+            "antiK*(892)0" => Self::AntiKStar892Zero,
+            "K1(1400)+" | "K1(1440)+" => Self::K1Plus1400,
+            "K1(1400)-" | "K1(1440)-" => Self::K1Minus1400,
+            "b1(1235)+" => Self::B1Plus1235,
+            "Sigma(1385)+" => Self::Sigma1385Plus,
+            "Sigma(1385)0" => Self::Sigma1385Zero,
+            "Sigma(1385)-" => Self::Sigma1385Minus,
             "Jpsi" => Self::Jpsi,
-            "EtaC" => Self::Eta_c,
-            "ChiC0" => Self::Chi_c0,
-            "ChiC1" => Self::Chi_c1,
-            "ChiC2" => Self::Chi_c2,
+            "EtaC" => Self::EtaC,
+            "ChiC0" => Self::ChiC0,
+            "ChiC1" => Self::ChiC1,
+            "ChiC2" => Self::ChiC2,
             "Psi(2S)" => Self::Psi2s,
             "D0" => Self::D0,
             "AntiD0" => Self::AntiD0,
             "D+" => Self::DPlus,
             "D-" => Self::DMinus,
-            "D*0" => Self::Dstar0,
-            "D*+" => Self::DstarPlus,
-            "D*-" => Self::DstarMinus,
-            "LambdaC" => Self::Lambda_c,
-            "SigmaC++" => Self::Sigma_cPlusPlus,
+            "D*0" => Self::DStar0,
+            "D*+" => Self::DStarPlus,
+            "D*-" => Self::DStarMinus,
+            "LambdaC" => Self::LambdaC,
+            "SigmaC++" => Self::SigmaCPlusPlus,
             "Delta++" => Self::DeltaPlusPlus,
             _ => Self::UnknownParticle,
         }
@@ -941,23 +945,23 @@ impl Particle {
             Self::Rho0
                 | Self::RhoPlus
                 | Self::RhoMinus
-                | Self::omega
-                | Self::phiMeson
+                | Self::Omega
+                | Self::Phi
                 | Self::EtaPrime
-                | Self::a0_980
-                | Self::f0_980
-                | Self::KStar_892_0
-                | Self::KStar_892_Plus
-                | Self::KStar_892_Minus
-                | Self::AntiKStar_892_0
-                | Self::K1_1400_Plus
-                | Self::K1_1400_Minus
-                | Self::b1_1235_Plus
-                | Self::Sigma_1385_Minus
-                | Self::Sigma_1385_0
-                | Self::Sigma_1385_Plus
-                | Self::Eta_c
-                | Self::Chi_c0
+                | Self::A0_980
+                | Self::F0_980
+                | Self::KStar892Zero
+                | Self::KStar892Plus
+                | Self::KStar892Minus
+                | Self::AntiKStar892Zero
+                | Self::K1Plus1400
+                | Self::K1Minus1400
+                | Self::B1Plus1235
+                | Self::Sigma1385Minus
+                | Self::Sigma1385Zero
+                | Self::Sigma1385Plus
+                | Self::EtaC
+                | Self::ChiC0
                 | Self::DeltaPlusPlus
         )
     }
@@ -966,7 +970,7 @@ impl Particle {
         if self.is_fixed_mass() {
             return false;
         }
-        !matches!(self, Self::UnknownParticle | Self::phiMeson | Self::omega)
+        !matches!(self, Self::UnknownParticle | Self::Phi | Self::Omega)
     }
 
     pub fn is_detached_vertex(&self) -> bool {
@@ -1098,36 +1102,36 @@ impl Particle {
             Particle::Rho0 => "#rho^{0}",
             Particle::RhoPlus => "#rho^{#plus}",
             Particle::RhoMinus => "#rho^{#minus}",
-            Particle::omega => "#omega",
-            Particle::phiMeson => "#phi",
+            Particle::Omega => "#omega",
+            Particle::Phi => "#phi",
             Particle::EtaPrime => "#eta'",
-            Particle::a0_980 => "a_{0}(980)",
-            Particle::f0_980 => "f_{0}(980)",
-            Particle::KStar_892_0 => "K*(892)^{0}",
-            Particle::KStar_892_Plus => "K*(892)^{#plus}",
-            Particle::KStar_892_Minus => "K*(892)^{#minus}",
-            Particle::AntiKStar_892_0 => "#bar{K*}(892)^{0}",
-            Particle::K1_1400_Plus => "K_{1}(1400)^{#plus}",
-            Particle::K1_1400_Minus => "K_{1}(1400)^{#minus}",
-            Particle::b1_1235_Plus => "b_{1}(1235)^{#plus}",
-            Particle::Sigma_1385_Minus => "#Sigma(1385)^{#minus}",
-            Particle::Sigma_1385_0 => "#Sigma(1385)^{0}",
-            Particle::Sigma_1385_Plus => "#Sigma(1385)^{#plus}",
+            Particle::A0_980 => "a_{0}(980)",
+            Particle::F0_980 => "f_{0}(980)",
+            Particle::KStar892Zero => "K*(892)^{0}",
+            Particle::KStar892Plus => "K*(892)^{#plus}",
+            Particle::KStar892Minus => "K*(892)^{#minus}",
+            Particle::AntiKStar892Zero => "#bar{K*}(892)^{0}",
+            Particle::K1Plus1400 => "K_{1}(1400)^{#plus}",
+            Particle::K1Minus1400 => "K_{1}(1400)^{#minus}",
+            Particle::B1Plus1235 => "b_{1}(1235)^{#plus}",
+            Particle::Sigma1385Minus => "#Sigma(1385)^{#minus}",
+            Particle::Sigma1385Zero => "#Sigma(1385)^{0}",
+            Particle::Sigma1385Plus => "#Sigma(1385)^{#plus}",
             Particle::Jpsi => "J/#psi",
-            Particle::Eta_c => "#eta_{c}",
-            Particle::Chi_c0 => "#chi_{c0}",
-            Particle::Chi_c1 => "#chi_{c1}",
-            Particle::Chi_c2 => "#chi_{c2}",
+            Particle::EtaC => "#eta_{c}",
+            Particle::ChiC0 => "#chi_{c0}",
+            Particle::ChiC1 => "#chi_{c1}",
+            Particle::ChiC2 => "#chi_{c2}",
             Particle::Psi2s => "#psi(2S)",
             Particle::D0 => "D^{0}",
             Particle::DPlus => "D^{#plus}", // NOTE: D{^+} in particleType.h
-            Particle::Dstar0 => "D^{*0}",
-            Particle::DstarPlus => "D^{*#plus}", // NOTE: D^{*+} in particleType.h
-            Particle::Lambda_c => "#Lambda_{c}",
+            Particle::DStar0 => "D^{*0}",
+            Particle::DStarPlus => "D^{*#plus}", // NOTE: D^{*+} in particleType.h
+            Particle::LambdaC => "#Lambda_{c}",
             Particle::AntiD0 => "#bar{D^{0}}",
             Particle::DMinus => "D^{#minus}", // NOTE: D{^-} in particleType.h
-            Particle::DstarMinus => "D^{*#minus}", // NOTE: D^{*-} in particleType.h
-            Particle::Sigma_cPlusPlus => "#Sigma_{c}^{#plus#plus}", // NOTE: #Sigma_{c}^{++} in particleType.h
+            Particle::DStarMinus => "D^{*#minus}", // NOTE: D^{*-} in particleType.h
+            Particle::SigmaCPlusPlus => "#Sigma_{c}^{#plus#plus}", // NOTE: #Sigma_{c}^{++} in particleType.h
             Particle::DeltaPlusPlus => "#Delta(1232)^{#plus#plus}",
         }
     }
@@ -1172,18 +1176,18 @@ impl Particle {
             Self::Rho0 => 0.7690, // neutral only, photoproduced and other reactions. e+ e- gives 775.26
             Self::RhoPlus => 0.7665, // charged only, hadroproduced. tau decays and e+ e- gives 775.11
             Self::RhoMinus => 0.7665,
-            Self::omega => 0.78265,
+            Self::Omega => 0.78265,
             Self::EtaPrime => 0.95778,
-            Self::phiMeson => 1.019455,
-            Self::a0_980 => 0.980,
-            Self::f0_980 => 0.990,
-            Self::KStar_892_0 => 0.89581,     // neutral only
-            Self::KStar_892_Plus => 0.89166,  // charged only, hadroproduced
-            Self::KStar_892_Minus => 0.89166, // charged only, hadroproduced
-            Self::AntiKStar_892_0 => 0.89581, // neutral only
-            Self::K1_1400_Plus => 1.403,
-            Self::K1_1400_Minus => 1.403,
-            Self::b1_1235_Plus => 1.2295,
+            Self::Phi => 1.019455,
+            Self::A0_980 => 0.980,
+            Self::F0_980 => 0.990,
+            Self::KStar892Zero => 0.89581,     // neutral only
+            Self::KStar892Plus => 0.89166,     // charged only, hadroproduced
+            Self::KStar892Minus => 0.89166,    // charged only, hadroproduced
+            Self::AntiKStar892Zero => 0.89581, // neutral only
+            Self::K1Plus1400 => 1.403,
+            Self::K1Minus1400 => 1.403,
+            Self::B1Plus1235 => 1.2295,
             Self::Deuteron => 1.875612859, // from NIST
             Self::Triton => 2.808921004,   // from NIST 5.00735630 x 10^-27 kg
             Self::Helium => 3.727379238,   // from NIST 6.64465675 x 10-27 kg
@@ -1241,29 +1245,29 @@ impl Particle {
             Self::Hg202 => 188.13451,
             Self::Pb208 => 193.72899, // NIST gives 207.976627 AMU
             Self::U238 => 221.74295,
-            Self::Sigma_1385_Minus => 1.3872,
-            Self::Sigma_1385_0 => 1.3837,
-            Self::Sigma_1385_Plus => 1.38280,
+            Self::Sigma1385Minus => 1.3872,
+            Self::Sigma1385Zero => 1.3837,
+            Self::Sigma1385Plus => 1.38280,
             Self::DeltaPlusPlus => 1.232,
             Self::Jpsi => 3.069916,
-            Self::Eta_c => 2.9836,
-            Self::Chi_c0 => 3.41475,
-            Self::Chi_c1 => 3.51066,
-            Self::Chi_c2 => 3.55620,
+            Self::EtaC => 2.9836,
+            Self::ChiC0 => 3.41475,
+            Self::ChiC1 => 3.51066,
+            Self::ChiC2 => 3.55620,
             Self::Psi2s => 3.686109,
             Self::D0 => 1.86484,
             Self::AntiD0 => 1.86484,
             Self::DPlus => 1.86961,
             Self::DMinus => 1.86961,
-            Self::Dstar0 => 2.00685,
-            Self::DstarPlus => 2.01026,
-            Self::DstarMinus => 2.01026,
-            Self::Lambda_c => 2.28646,
-            Self::Sigma_cPlusPlus => 2.45397,
+            Self::DStar0 => 2.00685,
+            Self::DStarPlus => 2.01026,
+            Self::DStarMinus => 2.01026,
+            Self::LambdaC => 2.28646,
+            Self::SigmaCPlusPlus => 2.45397,
         }
     }
 
-    pub fn geant_name(&self) -> Option<String> {
+    pub fn to_geant4(&self) -> Option<String> {
         let name = match self {
             Self::UnknownParticle => "unknown",
             Self::Gamma => "gamma",
@@ -1360,43 +1364,43 @@ impl Particle {
             Self::Rho0 => "rho0",
             Self::RhoPlus => "rho+",
             Self::RhoMinus => "rho-",
-            Self::omega => "omega",
-            Self::phiMeson => "phi",
+            Self::Omega => "omega",
+            Self::Phi => "phi",
             Self::EtaPrime => "eta_prime",
-            Self::a0_980 => "a0(980)",
-            Self::f0_980 => "f0(980)",
-            Self::KStar_892_0 => "k_star0",
-            Self::KStar_892_Plus => "k_star+",
-            Self::KStar_892_Minus => "k_Star-",
-            Self::AntiKStar_892_0 => "anti_k_star0",
-            Self::K1_1400_Plus => "",
-            Self::K1_1400_Minus => "",
-            Self::b1_1235_Plus => "",
-            Self::Sigma_1385_Minus => "",
-            Self::Sigma_1385_0 => "",
-            Self::Sigma_1385_Plus => "",
+            Self::A0_980 => "a0(980)",
+            Self::F0_980 => "f0(980)",
+            Self::KStar892Zero => "k_star0",
+            Self::KStar892Plus => "k_star+",
+            Self::KStar892Minus => "k_Star-",
+            Self::AntiKStar892Zero => "anti_k_star0",
+            Self::K1Plus1400 => "",
+            Self::K1Minus1400 => "",
+            Self::B1Plus1235 => "",
+            Self::Sigma1385Minus => "",
+            Self::Sigma1385Zero => "",
+            Self::Sigma1385Plus => "",
             Self::Jpsi => "J/psi",
-            Self::Eta_c => "etac",
-            Self::Chi_c0 => "",
-            Self::Chi_c1 => "",
-            Self::Chi_c2 => "",
+            Self::EtaC => "etac",
+            Self::ChiC0 => "",
+            Self::ChiC1 => "",
+            Self::ChiC2 => "",
             Self::Psi2s => "",
             Self::D0 => "D0",
             Self::DPlus => "D+",
-            Self::Dstar0 => "",
-            Self::DstarPlus => "",
-            Self::Lambda_c => "lambda_c+",
+            Self::DStar0 => "",
+            Self::DStarPlus => "",
+            Self::LambdaC => "lambda_c+",
             Self::AntiD0 => "anti_D0",
             Self::DMinus => "D-",
-            Self::DstarMinus => "",
-            Self::Sigma_cPlusPlus => "sigma_c++",
+            Self::DStarMinus => "",
+            Self::SigmaCPlusPlus => "sigma_c++",
             Self::DeltaPlusPlus => "",
         }
         .to_string();
         if name.is_empty() { None } else { Some(name) }
     }
 
-    pub fn from_geant_name(name: &str) -> Option<Self> {
+    pub fn from_geant4(name: &str) -> Option<Self> {
         match name {
             "unknown" => Some(Self::UnknownParticle),
             "gamma" => Some(Self::Gamma),
@@ -1439,28 +1443,28 @@ impl Particle {
             "rho0" => Some(Self::Rho0),
             "rho+" => Some(Self::RhoPlus),
             "rho-" => Some(Self::RhoMinus),
-            "omega" => Some(Self::omega),
-            "phi" => Some(Self::phiMeson),
+            "omega" => Some(Self::Omega),
+            "phi" => Some(Self::Phi),
             "eta_prime" => Some(Self::EtaPrime),
-            "a0(980)" => Some(Self::a0_980),
-            "f0(980)" => Some(Self::f0_980),
-            "k_star0" => Some(Self::KStar_892_0),
-            "k_star+" => Some(Self::KStar_892_Plus),
-            "k_Star-" => Some(Self::KStar_892_Minus),
-            "anti_k_star0" => Some(Self::AntiKStar_892_0),
+            "a0(980)" => Some(Self::A0_980),
+            "f0(980)" => Some(Self::F0_980),
+            "k_star0" => Some(Self::KStar892Zero),
+            "k_star+" => Some(Self::KStar892Plus),
+            "k_Star-" => Some(Self::KStar892Minus),
+            "anti_k_star0" => Some(Self::AntiKStar892Zero),
             "J/psi" => Some(Self::Jpsi),
-            "etac" => Some(Self::Eta_c),
+            "etac" => Some(Self::EtaC),
             "D0" => Some(Self::D0),
             "D+" => Some(Self::DPlus),
-            "lambda_c+" => Some(Self::Lambda_c),
+            "lambda_c+" => Some(Self::LambdaC),
             "anti_D0" => Some(Self::AntiD0),
             "D-" => Some(Self::DMinus),
-            "sigma_c++" => Some(Self::Sigma_cPlusPlus),
+            "sigma_c++" => Some(Self::SigmaCPlusPlus),
             _ => None,
         }
     }
 
-    pub fn particle_charge(&self) -> isize {
+    pub fn charge_number(&self) -> isize {
         match self {
             Self::UnknownParticle => 0,
             Self::Gamma => 0,
@@ -1500,18 +1504,18 @@ impl Particle {
             Self::Rho0 => 0,
             Self::RhoPlus => 1,
             Self::RhoMinus => -1,
-            Self::omega => 0,
+            Self::Omega => 0,
             Self::EtaPrime => 0,
-            Self::phiMeson => 0,
-            Self::a0_980 => 0,
-            Self::f0_980 => 0,
-            Self::KStar_892_0 => 0,
-            Self::KStar_892_Plus => 1,
-            Self::KStar_892_Minus => -1,
-            Self::AntiKStar_892_0 => 0,
-            Self::K1_1400_Plus => 1,
-            Self::K1_1400_Minus => -1,
-            Self::b1_1235_Plus => 1,
+            Self::Phi => 0,
+            Self::A0_980 => 0,
+            Self::F0_980 => 0,
+            Self::KStar892Zero => 0,
+            Self::KStar892Plus => 1,
+            Self::KStar892Minus => -1,
+            Self::AntiKStar892Zero => 0,
+            Self::K1Plus1400 => 1,
+            Self::K1Minus1400 => -1,
+            Self::B1Plus1235 => 1,
             Self::Deuteron => 1,
             Self::Triton => 1,
             Self::Helium => 2,
@@ -1569,25 +1573,25 @@ impl Particle {
             Self::Hg202 => 80,
             Self::Pb208 => 82,
             Self::U238 => 92,
-            Self::Sigma_1385_Minus => -1,
-            Self::Sigma_1385_0 => 0,
-            Self::Sigma_1385_Plus => 1,
+            Self::Sigma1385Minus => -1,
+            Self::Sigma1385Zero => 0,
+            Self::Sigma1385Plus => 1,
             Self::DeltaPlusPlus => 2,
             Self::Jpsi => 0,
-            Self::Eta_c => 0,
-            Self::Chi_c0 => 0,
-            Self::Chi_c1 => 0,
-            Self::Chi_c2 => 0,
+            Self::EtaC => 0,
+            Self::ChiC0 => 0,
+            Self::ChiC1 => 0,
+            Self::ChiC2 => 0,
             Self::Psi2s => 0,
             Self::D0 => 0,
             Self::AntiD0 => 0,
             Self::DPlus => 1,
             Self::DMinus => -1,
-            Self::Dstar0 => 0,
-            Self::DstarPlus => 1,
-            Self::DstarMinus => -1,
-            Self::Lambda_c => 1,
-            Self::Sigma_cPlusPlus => 2,
+            Self::DStar0 => 0,
+            Self::DStarPlus => 1,
+            Self::DStarMinus => -1,
+            Self::LambdaC => 1,
+            Self::SigmaCPlusPlus => 2,
         }
     }
 
@@ -1631,21 +1635,21 @@ impl Particle {
             Self::Rho0 => 113,
             Self::RhoPlus => 213,
             Self::RhoMinus => -213,
-            Self::omega => 223,
+            Self::Omega => 223,
             Self::EtaPrime => 331,
-            Self::phiMeson => 333,
-            Self::a0_980 => 9000110,
-            Self::f0_980 => 9010221,
-            Self::KStar_892_0 => 313,
-            Self::AntiKStar_892_0 => -313,
-            Self::KStar_892_Plus => 323,
-            Self::KStar_892_Minus => -323,
-            Self::K1_1400_Plus => 20323,
-            Self::K1_1400_Minus => -20323,
-            Self::b1_1235_Plus => 10213,
-            Self::Sigma_1385_Minus => 3114,
-            Self::Sigma_1385_0 => 3214,
-            Self::Sigma_1385_Plus => 3224,
+            Self::Phi => 333,
+            Self::A0_980 => 9000110,
+            Self::F0_980 => 9010221,
+            Self::KStar892Zero => 313,
+            Self::AntiKStar892Zero => -313,
+            Self::KStar892Plus => 323,
+            Self::KStar892Minus => -323,
+            Self::K1Plus1400 => 20323,
+            Self::K1Minus1400 => -20323,
+            Self::B1Plus1235 => 10213,
+            Self::Sigma1385Minus => 3114,
+            Self::Sigma1385Zero => 3214,
+            Self::Sigma1385Plus => 3224,
             Self::Deuteron => 1000010020,
             Self::Triton => 1000010030,
             Self::He3 => 1000020030,
@@ -1705,20 +1709,20 @@ impl Particle {
             Self::U238 => 1000922380,
             Self::DeltaPlusPlus => 2224,
             Self::Jpsi => 443,
-            Self::Eta_c => 441,
-            Self::Chi_c0 => 10441,
-            Self::Chi_c1 => 20443,
-            Self::Chi_c2 => 445,
+            Self::EtaC => 441,
+            Self::ChiC0 => 10441,
+            Self::ChiC1 => 20443,
+            Self::ChiC2 => 445,
             Self::Psi2s => 100443,
             Self::D0 => 421,
             Self::AntiD0 => -421,
             Self::DPlus => 411,
             Self::DMinus => -411,
-            Self::Dstar0 => 423,
-            Self::DstarPlus => 413,
-            Self::DstarMinus => -413,
-            Self::Lambda_c => 4122,
-            Self::Sigma_cPlusPlus => 4222,
+            Self::DStar0 => 423,
+            Self::DStarPlus => 413,
+            Self::DStarMinus => -413,
+            Self::LambdaC => 4122,
+            Self::SigmaCPlusPlus => 4222,
         }
     }
 
@@ -1760,21 +1764,21 @@ impl Particle {
             113 => Self::Rho0,
             213 => Self::RhoPlus,
             -213 => Self::RhoMinus,
-            223 => Self::omega,
+            223 => Self::Omega,
             331 => Self::EtaPrime,
-            333 => Self::phiMeson,
-            9000110 => Self::a0_980,
-            9010221 => Self::f0_980,
-            313 => Self::KStar_892_0,
-            -313 => Self::AntiKStar_892_0,
-            323 => Self::KStar_892_Plus,
-            -323 => Self::KStar_892_Minus,
-            20323 => Self::K1_1400_Plus,
-            -20323 => Self::K1_1400_Minus,
-            10213 => Self::b1_1235_Plus,
-            3114 => Self::Sigma_1385_Minus,
-            3214 => Self::Sigma_1385_0,
-            3224 => Self::Sigma_1385_Plus,
+            333 => Self::Phi,
+            9000110 => Self::A0_980,
+            9010221 => Self::F0_980,
+            313 => Self::KStar892Zero,
+            -313 => Self::AntiKStar892Zero,
+            323 => Self::KStar892Plus,
+            -323 => Self::KStar892Minus,
+            20323 => Self::K1Plus1400,
+            -20323 => Self::K1Minus1400,
+            10213 => Self::B1Plus1235,
+            3114 => Self::Sigma1385Minus,
+            3214 => Self::Sigma1385Zero,
+            3224 => Self::Sigma1385Plus,
             1000010020 => Self::Deuteron,
             1000010030 => Self::Triton,
             1000020030 => Self::He3,
@@ -1834,25 +1838,25 @@ impl Particle {
             1000922380 => Self::U238,
             2224 => Self::DeltaPlusPlus,
             443 => Self::Jpsi,
-            441 => Self::Eta_c,
-            10441 => Self::Chi_c0,
-            20443 => Self::Chi_c1,
-            445 => Self::Chi_c2,
+            441 => Self::EtaC,
+            10441 => Self::ChiC0,
+            20443 => Self::ChiC1,
+            445 => Self::ChiC2,
             100443 => Self::Psi2s,
             421 => Self::D0,
             -421 => Self::AntiD0,
             411 => Self::DPlus,
             -411 => Self::DMinus,
-            423 => Self::Dstar0,
-            413 => Self::DstarPlus,
-            -413 => Self::DstarMinus,
-            4122 => Self::Lambda_c,
-            4222 => Self::Sigma_cPlusPlus,
+            423 => Self::DStar0,
+            413 => Self::DStarPlus,
+            -413 => Self::DStarMinus,
+            4122 => Self::LambdaC,
+            4222 => Self::SigmaCPlusPlus,
             _ => Self::UnknownParticle,
         }
     }
 
-    pub fn is_decaying_particle(&self) -> bool {
+    pub fn is_decaying(&self) -> bool {
         matches!(
             self,
             Self::UnknownParticle
@@ -1878,45 +1882,45 @@ impl Particle {
                 | Self::Rho0
                 | Self::RhoPlus
                 | Self::RhoMinus
-                | Self::omega
-                | Self::phiMeson
+                | Self::Omega
+                | Self::Phi
                 | Self::EtaPrime
-                | Self::a0_980
-                | Self::f0_980
-                | Self::KStar_892_0
-                | Self::KStar_892_Plus
-                | Self::KStar_892_Minus
-                | Self::AntiKStar_892_0
-                | Self::K1_1400_Plus
-                | Self::K1_1400_Minus
-                | Self::b1_1235_Plus
-                | Self::Sigma_1385_Minus
-                | Self::Sigma_1385_0
-                | Self::Sigma_1385_Plus
+                | Self::A0_980
+                | Self::F0_980
+                | Self::KStar892Zero
+                | Self::KStar892Plus
+                | Self::KStar892Minus
+                | Self::AntiKStar892Zero
+                | Self::K1Plus1400
+                | Self::K1Minus1400
+                | Self::B1Plus1235
+                | Self::Sigma1385Minus
+                | Self::Sigma1385Zero
+                | Self::Sigma1385Plus
                 | Self::Jpsi
-                | Self::Eta_c
-                | Self::Chi_c0
-                | Self::Chi_c1
-                | Self::Chi_c2
+                | Self::EtaC
+                | Self::ChiC0
+                | Self::ChiC1
+                | Self::ChiC2
                 | Self::Psi2s
                 | Self::D0
                 | Self::DPlus
-                | Self::Dstar0
-                | Self::DstarPlus
-                | Self::Lambda_c
+                | Self::DStar0
+                | Self::DStarPlus
+                | Self::LambdaC
                 | Self::AntiD0
                 | Self::DMinus
-                | Self::DstarMinus
-                | Self::Sigma_cPlusPlus
+                | Self::DStarMinus
+                | Self::SigmaCPlusPlus
                 | Self::DeltaPlusPlus
         )
     }
 
-    pub fn is_final_state_particle(&self) -> bool {
-        !self.is_decaying_particle()
+    pub fn is_final_state(&self) -> bool {
+        !self.is_decaying()
     }
 
-    pub fn particle_multiplex_power(&self) -> Option<usize> {
+    pub fn to_multiplex_power(&self) -> Option<usize> {
         match self {
             // Final-state particles (and pi0) (decimal: 10^power):
             Self::Gamma => Some(0),
@@ -1957,37 +1961,37 @@ impl Particle {
             Self::Rho0 => Some(17),
             Self::RhoPlus => Some(18),
             Self::RhoMinus => Some(19),
-            Self::omega => Some(20),
+            Self::Omega => Some(20),
             Self::EtaPrime => Some(21),
-            Self::phiMeson => Some(22),
-            Self::a0_980 => Some(23),
-            Self::f0_980 => Some(24),
-            Self::KStar_892_0 => Some(25),
-            Self::KStar_892_Plus => Some(26),
-            Self::KStar_892_Minus => Some(27),
-            Self::AntiKStar_892_0 => Some(28),
-            Self::K1_1400_Plus => Some(29),
-            Self::K1_1400_Minus => Some(30),
-            Self::b1_1235_Plus => Some(31),
-            Self::Sigma_1385_Minus => Some(32),
-            Self::Sigma_1385_0 => Some(33),
-            Self::Sigma_1385_Plus => Some(34),
+            Self::Phi => Some(22),
+            Self::A0_980 => Some(23),
+            Self::F0_980 => Some(24),
+            Self::KStar892Zero => Some(25),
+            Self::KStar892Plus => Some(26),
+            Self::KStar892Minus => Some(27),
+            Self::AntiKStar892Zero => Some(28),
+            Self::K1Plus1400 => Some(29),
+            Self::K1Minus1400 => Some(30),
+            Self::B1Plus1235 => Some(31),
+            Self::Sigma1385Minus => Some(32),
+            Self::Sigma1385Zero => Some(33),
+            Self::Sigma1385Plus => Some(34),
             Self::DeltaPlusPlus => Some(35),
             Self::Jpsi => Some(36),
-            Self::Eta_c => Some(37),
-            Self::Chi_c0 => Some(38),
-            Self::Chi_c1 => Some(39),
-            Self::Chi_c2 => Some(40),
+            Self::EtaC => Some(37),
+            Self::ChiC0 => Some(38),
+            Self::ChiC1 => Some(39),
+            Self::ChiC2 => Some(40),
             Self::Psi2s => Some(41),
             Self::D0 => Some(42),
             Self::DPlus => Some(43),
-            Self::Dstar0 => Some(44),
-            Self::DstarPlus => Some(45),
-            Self::Lambda_c => Some(46),
+            Self::DStar0 => Some(44),
+            Self::DStarPlus => Some(45),
+            Self::LambdaC => Some(46),
             Self::AntiD0 => Some(47),
             Self::DMinus => Some(48),
-            Self::DstarMinus => Some(49),
-            Self::Sigma_cPlusPlus => Some(50),
+            Self::DStarMinus => Some(49),
+            Self::SigmaCPlusPlus => Some(50),
             _ => None,
         }
     }
@@ -2035,47 +2039,47 @@ impl Particle {
                 17 => Self::Rho0,
                 18 => Self::RhoPlus,
                 19 => Self::RhoMinus,
-                20 => Self::omega,
+                20 => Self::Omega,
                 21 => Self::EtaPrime,
-                22 => Self::phiMeson,
-                23 => Self::a0_980,
-                24 => Self::f0_980,
-                25 => Self::KStar_892_0,
-                26 => Self::KStar_892_Plus,
-                27 => Self::KStar_892_Minus,
-                28 => Self::AntiKStar_892_0,
-                29 => Self::K1_1400_Plus,
-                30 => Self::K1_1400_Minus,
-                31 => Self::b1_1235_Plus,
-                32 => Self::Sigma_1385_Minus,
-                33 => Self::Sigma_1385_0,
-                34 => Self::Sigma_1385_Plus,
+                22 => Self::Phi,
+                23 => Self::A0_980,
+                24 => Self::F0_980,
+                25 => Self::KStar892Zero,
+                26 => Self::KStar892Plus,
+                27 => Self::KStar892Minus,
+                28 => Self::AntiKStar892Zero,
+                29 => Self::K1Plus1400,
+                30 => Self::K1Minus1400,
+                31 => Self::B1Plus1235,
+                32 => Self::Sigma1385Minus,
+                33 => Self::Sigma1385Zero,
+                34 => Self::Sigma1385Plus,
                 35 => Self::DeltaPlusPlus,
                 36 => Self::Jpsi,
-                37 => Self::Eta_c,
-                38 => Self::Chi_c0,
-                39 => Self::Chi_c1,
-                40 => Self::Chi_c2,
+                37 => Self::EtaC,
+                38 => Self::ChiC0,
+                39 => Self::ChiC1,
+                40 => Self::ChiC2,
                 41 => Self::Psi2s,
                 42 => Self::D0,
                 43 => Self::DPlus,
-                44 => Self::Dstar0,
-                45 => Self::DstarPlus,
-                46 => Self::Lambda_c,
+                44 => Self::DStar0,
+                45 => Self::DStarPlus,
+                46 => Self::LambdaC,
                 47 => Self::AntiD0,
                 48 => Self::DMinus,
-                49 => Self::DstarMinus,
-                50 => Self::Sigma_cPlusPlus,
+                49 => Self::DStarMinus,
+                50 => Self::SigmaCPlusPlus,
                 _ => Self::UnknownParticle,
             }
         }
     }
 
-    pub fn get_charge(&self) -> Charge {
+    pub fn charge(&self) -> Charge {
         if self.is_unknown() {
             return Charge::AllCharges;
         }
-        let charge_value = self.particle_charge();
+        let charge_value = self.charge_number();
         if charge_value == 0 {
             Charge::Neutral
         } else if charge_value > 0 {
@@ -2087,7 +2091,8 @@ impl Particle {
         }
     }
 
-    pub fn id_track(charge: f64, mass: f64) -> Particle {
+    /// Deduce a reconstructed track's particle type from charge and mass.
+    pub fn from_charge_and_mass(charge: f64, mass: f64) -> Particle {
         let m_tol = 0.010;
         if charge > 0.1 {
             if (mass - Self::Triton.particle_mass()).abs() < m_tol {
@@ -2137,6 +2142,24 @@ impl Particle {
             }
         }
         Self::UnknownParticle
+    }
+}
+
+impl fmt::Display for Particle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.enum_name())
+    }
+}
+
+impl FromStr for Particle {
+    type Err = crate::GlueXCoreError;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        Self::VARIANTS
+            .iter()
+            .copied()
+            .find(|particle| particle.enum_name() == name)
+            .ok_or_else(|| crate::GlueXCoreError::ParticleParse(name.to_owned()))
     }
 }
 
@@ -2238,36 +2261,36 @@ impl From<Particle> for hddm::Particle {
             Particle::Rho0 => hddm::Particle::Rho0,
             Particle::RhoPlus => hddm::Particle::RhoPlus,
             Particle::RhoMinus => hddm::Particle::RhoMinus,
-            Particle::omega => hddm::Particle::omega,
-            Particle::phiMeson => hddm::Particle::phiMeson,
+            Particle::Omega => hddm::Particle::omega,
+            Particle::Phi => hddm::Particle::phiMeson,
             Particle::EtaPrime => hddm::Particle::EtaPrime,
-            Particle::a0_980 => hddm::Particle::a0_980,
-            Particle::f0_980 => hddm::Particle::f0_980,
-            Particle::KStar_892_0 => hddm::Particle::KStar_892_0,
-            Particle::KStar_892_Plus => hddm::Particle::KStar_892_Plus,
-            Particle::KStar_892_Minus => hddm::Particle::KStar_892_Minus,
-            Particle::AntiKStar_892_0 => hddm::Particle::AntiKStar_892_0,
-            Particle::K1_1400_Plus => hddm::Particle::K1_1400_Plus,
-            Particle::K1_1400_Minus => hddm::Particle::K1_1400_Minus,
-            Particle::b1_1235_Plus => hddm::Particle::b1_1235_Plus,
-            Particle::Sigma_1385_Minus => hddm::Particle::Sigma_1385_Minus,
-            Particle::Sigma_1385_0 => hddm::Particle::Sigma_1385_0,
-            Particle::Sigma_1385_Plus => hddm::Particle::Sigma_1385_Plus,
+            Particle::A0_980 => hddm::Particle::a0_980,
+            Particle::F0_980 => hddm::Particle::f0_980,
+            Particle::KStar892Zero => hddm::Particle::KStar_892_0,
+            Particle::KStar892Plus => hddm::Particle::KStar_892_Plus,
+            Particle::KStar892Minus => hddm::Particle::KStar_892_Minus,
+            Particle::AntiKStar892Zero => hddm::Particle::AntiKStar_892_0,
+            Particle::K1Plus1400 => hddm::Particle::K1_1400_Plus,
+            Particle::K1Minus1400 => hddm::Particle::K1_1400_Minus,
+            Particle::B1Plus1235 => hddm::Particle::b1_1235_Plus,
+            Particle::Sigma1385Minus => hddm::Particle::Sigma_1385_Minus,
+            Particle::Sigma1385Zero => hddm::Particle::Sigma_1385_0,
+            Particle::Sigma1385Plus => hddm::Particle::Sigma_1385_Plus,
             Particle::Jpsi => hddm::Particle::Jpsi,
-            Particle::Eta_c => hddm::Particle::Eta_c,
-            Particle::Chi_c0 => hddm::Particle::Chi_c0,
-            Particle::Chi_c1 => hddm::Particle::Chi_c1,
-            Particle::Chi_c2 => hddm::Particle::Chi_c2,
+            Particle::EtaC => hddm::Particle::Eta_c,
+            Particle::ChiC0 => hddm::Particle::Chi_c0,
+            Particle::ChiC1 => hddm::Particle::Chi_c1,
+            Particle::ChiC2 => hddm::Particle::Chi_c2,
             Particle::Psi2s => hddm::Particle::Psi2s,
             Particle::D0 => hddm::Particle::D0,
             Particle::DPlus => hddm::Particle::DPlus,
-            Particle::Dstar0 => hddm::Particle::Dstar0,
-            Particle::DstarPlus => hddm::Particle::DstarPlus,
-            Particle::Lambda_c => hddm::Particle::Lambda_c,
+            Particle::DStar0 => hddm::Particle::Dstar0,
+            Particle::DStarPlus => hddm::Particle::DstarPlus,
+            Particle::LambdaC => hddm::Particle::Lambda_c,
             Particle::AntiD0 => hddm::Particle::AntiD0,
             Particle::DMinus => hddm::Particle::DMinus,
-            Particle::DstarMinus => hddm::Particle::DstarMinus,
-            Particle::Sigma_cPlusPlus => hddm::Particle::Sigma_cPlusPlus,
+            Particle::DStarMinus => hddm::Particle::DstarMinus,
+            Particle::SigmaCPlusPlus => hddm::Particle::Sigma_cPlusPlus,
             Particle::DeltaPlusPlus => hddm::Particle::DeltaPlusPlus,
         }
     }
@@ -2377,36 +2400,36 @@ impl From<hddm::Particle> for Particle {
             hddm::Particle::Rho0 => Particle::Rho0,
             hddm::Particle::RhoPlus => Particle::RhoPlus,
             hddm::Particle::RhoMinus => Particle::RhoMinus,
-            hddm::Particle::omega => Particle::omega,
-            hddm::Particle::phiMeson => Particle::phiMeson,
+            hddm::Particle::omega => Particle::Omega,
+            hddm::Particle::phiMeson => Particle::Phi,
             hddm::Particle::EtaPrime => Particle::EtaPrime,
-            hddm::Particle::a0_980 => Particle::a0_980,
-            hddm::Particle::f0_980 => Particle::f0_980,
-            hddm::Particle::KStar_892_0 => Particle::KStar_892_0,
-            hddm::Particle::KStar_892_Plus => Particle::KStar_892_Plus,
-            hddm::Particle::KStar_892_Minus => Particle::KStar_892_Minus,
-            hddm::Particle::AntiKStar_892_0 => Particle::AntiKStar_892_0,
-            hddm::Particle::K1_1400_Plus => Particle::K1_1400_Plus,
-            hddm::Particle::K1_1400_Minus => Particle::K1_1400_Minus,
-            hddm::Particle::b1_1235_Plus => Particle::b1_1235_Plus,
-            hddm::Particle::Sigma_1385_Minus => Particle::Sigma_1385_Minus,
-            hddm::Particle::Sigma_1385_0 => Particle::Sigma_1385_0,
-            hddm::Particle::Sigma_1385_Plus => Particle::Sigma_1385_Plus,
+            hddm::Particle::a0_980 => Particle::A0_980,
+            hddm::Particle::f0_980 => Particle::F0_980,
+            hddm::Particle::KStar_892_0 => Particle::KStar892Zero,
+            hddm::Particle::KStar_892_Plus => Particle::KStar892Plus,
+            hddm::Particle::KStar_892_Minus => Particle::KStar892Minus,
+            hddm::Particle::AntiKStar_892_0 => Particle::AntiKStar892Zero,
+            hddm::Particle::K1_1400_Plus => Particle::K1Plus1400,
+            hddm::Particle::K1_1400_Minus => Particle::K1Minus1400,
+            hddm::Particle::b1_1235_Plus => Particle::B1Plus1235,
+            hddm::Particle::Sigma_1385_Minus => Particle::Sigma1385Minus,
+            hddm::Particle::Sigma_1385_0 => Particle::Sigma1385Zero,
+            hddm::Particle::Sigma_1385_Plus => Particle::Sigma1385Plus,
             hddm::Particle::Jpsi => Particle::Jpsi,
-            hddm::Particle::Eta_c => Particle::Eta_c,
-            hddm::Particle::Chi_c0 => Particle::Chi_c0,
-            hddm::Particle::Chi_c1 => Particle::Chi_c1,
-            hddm::Particle::Chi_c2 => Particle::Chi_c2,
+            hddm::Particle::Eta_c => Particle::EtaC,
+            hddm::Particle::Chi_c0 => Particle::ChiC0,
+            hddm::Particle::Chi_c1 => Particle::ChiC1,
+            hddm::Particle::Chi_c2 => Particle::ChiC2,
             hddm::Particle::Psi2s => Particle::Psi2s,
             hddm::Particle::D0 => Particle::D0,
             hddm::Particle::DPlus => Particle::DPlus,
-            hddm::Particle::Dstar0 => Particle::Dstar0,
-            hddm::Particle::DstarPlus => Particle::DstarPlus,
-            hddm::Particle::Lambda_c => Particle::Lambda_c,
+            hddm::Particle::Dstar0 => Particle::DStar0,
+            hddm::Particle::DstarPlus => Particle::DStarPlus,
+            hddm::Particle::Lambda_c => Particle::LambdaC,
             hddm::Particle::AntiD0 => Particle::AntiD0,
             hddm::Particle::DMinus => Particle::DMinus,
-            hddm::Particle::DstarMinus => Particle::DstarMinus,
-            hddm::Particle::Sigma_cPlusPlus => Particle::Sigma_cPlusPlus,
+            hddm::Particle::DstarMinus => Particle::DStarMinus,
+            hddm::Particle::Sigma_cPlusPlus => Particle::SigmaCPlusPlus,
             hddm::Particle::DeltaPlusPlus => Particle::DeltaPlusPlus,
         }
     }
@@ -2415,5 +2438,57 @@ impl From<hddm::Particle> for Particle {
 impl From<&hddm::Particle> for Particle {
     fn from(value: &hddm::Particle) -> Self {
         (*value).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Charge, Particle};
+
+    #[test]
+    fn idiomatic_particle_names_preserve_external_conversions() {
+        assert_eq!(Particle::Omega, Particle::from_particle_type("Omega"));
+        assert_eq!(Particle::Phi, Particle::from_pdg(333));
+        assert_eq!(Particle::KStar892Zero.to_string(), "KStar_892_0");
+        assert_eq!(Particle::EtaC.to_string(), "Eta_c");
+        assert_eq!(
+            "KStar_892_0".parse::<Particle>().unwrap(),
+            Particle::KStar892Zero
+        );
+        assert_eq!(
+            hddm::Particle::from(Particle::SigmaCPlusPlus),
+            hddm::Particle::Sigma_cPlusPlus
+        );
+    }
+
+    #[test]
+    fn particle_type_labels_round_trip_separately_from_enum_names() {
+        assert_eq!(
+            Particle::from_particle_type(Particle::K1Plus1400.to_particle_type()),
+            Particle::K1Plus1400
+        );
+        assert_eq!(
+            Particle::from_particle_type(Particle::C12.to_particle_type()),
+            Particle::C12
+        );
+    }
+
+    #[test]
+    fn named_particle_conversions_preserve_external_values() {
+        assert_eq!(Particle::Phi.to_evtgen(), "phi");
+        assert_eq!(Particle::Phi.to_geant4().as_deref(), Some("phi"));
+        assert_eq!(Particle::from_geant4("phi"), Some(Particle::Phi));
+        assert!(Particle::Phi.is_decaying());
+        assert!(Particle::Proton.is_final_state());
+        assert_eq!(Particle::SigmaCPlusPlus.to_multiplex_power(), Some(50));
+        assert_eq!(
+            Particle::from_multiplex_power(50, true),
+            Particle::SigmaCPlusPlus
+        );
+        assert_eq!(Particle::Proton.charge(), Charge::Positive);
+        assert_eq!(
+            Particle::from_charge_and_mass(1.0, Particle::Proton.particle_mass()),
+            Particle::Proton
+        );
     }
 }

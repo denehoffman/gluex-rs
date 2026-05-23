@@ -59,7 +59,7 @@ pub enum GlueXGenerationError {
 
 /// Configuration for exporting generated events to `GlueX` simulation HDDM.
 #[derive(Clone, Debug)]
-pub struct GluexHddmConfig {
+pub struct GlueXHddmConfig {
     beam_id: String,
     target_id: String,
     run_number: i32,
@@ -68,7 +68,7 @@ pub struct GluexHddmConfig {
     vertex: Vec3,
 }
 
-impl GluexHddmConfig {
+impl GlueXHddmConfig {
     /// Construct a `GlueX` HDDM export configuration.
     ///
     /// The `beam_id` and `target_id` identify generated initial-state particles. Transport
@@ -128,22 +128,26 @@ impl GluexHddmConfig {
     }
 }
 
+/// Backwards-compatible spelling for [`GlueXHddmConfig`].
+#[deprecated(note = "use GlueXHddmConfig")]
+pub type GluexHddmConfig = GlueXHddmConfig;
+
 /// Writer for converting generated laddu batches into `GlueX` simulation HDDM files.
 #[derive(Clone, Debug)]
-pub struct GluexHddmWriter {
-    config: GluexHddmConfig,
+pub struct GlueXHddmWriter {
+    config: GlueXHddmConfig,
 }
 
-impl GluexHddmWriter {
+impl GlueXHddmWriter {
     /// Construct a writer from an export configuration.
     #[must_use]
-    pub const fn new(config: GluexHddmConfig) -> Self {
+    pub const fn new(config: GlueXHddmConfig) -> Self {
         Self { config }
     }
 
     /// Return this writer's export configuration.
     #[must_use]
-    pub const fn config(&self) -> &GluexHddmConfig {
+    pub const fn config(&self) -> &GlueXHddmConfig {
         &self.config
     }
 
@@ -217,7 +221,7 @@ impl GluexHddmWriter {
     ///
     /// # Errors
     ///
-    /// Returns the same conversion errors as [`GluexHddmWriter::write_batch`].
+    /// Returns the same conversion errors as [`GlueXHddmWriter::write_batch`].
     fn records(
         &self,
         batch: &GeneratedBatch,
@@ -428,7 +432,7 @@ fn product_from_particle(id: usize, particle: GluexParticle, p4: Vec4) -> Produc
 
 fn properties(particle: GluexParticle) -> Properties {
     Properties {
-        charge: particle.particle_charge() as i32,
+        charge: particle.charge_number() as i32,
         mass: particle.particle_mass() as f32,
     }
 }
@@ -456,7 +460,7 @@ mod tests {
         },
     };
 
-    use super::{GluexHddmConfig, GluexHddmWriter};
+    use super::{GlueXHddmConfig, GlueXHddmWriter};
 
     fn ksks_batch() -> laddu::LadduResult<laddu::GeneratedBatch> {
         let beam = GeneratedParticle::initial(
@@ -536,8 +540,8 @@ mod tests {
     #[test]
     fn exports_selected_transport_products_only() {
         let batch = ksks_batch().unwrap();
-        let writer = GluexHddmWriter::new(
-            GluexHddmConfig::new("beam", "target")
+        let writer = GlueXHddmWriter::new(
+            GlueXHddmConfig::new("beam", "target")
                 .with_run_number(90_000)
                 .with_first_event_number(7)
                 .with_vertex(Vec3::new(0.1, 0.2, 50.0)),
@@ -571,7 +575,7 @@ mod tests {
     #[test]
     fn writes_selected_transport_products_to_hddm_file() {
         let batch = ksks_batch().unwrap();
-        let writer = GluexHddmWriter::new(GluexHddmConfig::new("beam", "target"));
+        let writer = GlueXHddmWriter::new(GlueXHddmConfig::new("beam", "target"));
         let path = PathBuf::from(format!(
             "/tmp/gluex-rs-ksks-demo-{}-{}.hddm",
             process::id(),
@@ -586,7 +590,7 @@ mod tests {
     fn appends_batches_to_existing_hddm_file() {
         let first = ksks_batch().unwrap();
         let second = ksks_batch().unwrap();
-        let writer = GluexHddmWriter::new(GluexHddmConfig::new("beam", "target"));
+        let writer = GlueXHddmWriter::new(GlueXHddmConfig::new("beam", "target"));
         let path = PathBuf::from(format!(
             "/tmp/gluex-rs-ksks-append-{}-{}.hddm",
             process::id(),

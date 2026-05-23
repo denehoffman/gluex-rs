@@ -64,6 +64,9 @@ pub enum RCDBError {
     /// Required environment variable is not set.
     #[error("missing {0} environment variable for RCDB connection")]
     MissingConnectionEnv(String),
+    /// No approved-production alias has been defined for the run period.
+    #[error("approved-production selection is not defined for run period {0:?}")]
+    UnsupportedApprovedProductionRunPeriod(gluex_core::RunPeriod),
 }
 
 pub use crate::conditions::{BoolField, Expr, FloatField, IntField, StringField, TimeField};

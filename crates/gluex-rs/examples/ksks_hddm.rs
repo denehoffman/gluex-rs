@@ -1,8 +1,8 @@
-//! Generate `gamma p -> KShort KShort p` and write GlueX simulation HDDM.
+//! Generate `gamma p -> KShort KShort p` and write `GlueX` simulation HDDM.
 
 use std::{collections::HashMap, env, error::Error, path::PathBuf};
 
-use gluex_rs::generation::{GluexHddmConfig, GluexHddmWriter};
+use gluex_rs::generation::{GlueXHddmConfig, GlueXHddmWriter};
 use laddu::{
     Vec3,
     generation::{
@@ -15,11 +15,10 @@ use laddu::{
 fn main() -> Result<(), Box<dyn Error>> {
     let output_path = env::args_os()
         .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("laddu_ksks_demo.hddm"));
+        .map_or_else(|| PathBuf::from("laddu_ksks_demo.hddm"), PathBuf::from);
 
-    let writer = GluexHddmWriter::new(
-        GluexHddmConfig::new("beam", "target")
+    let writer = GlueXHddmWriter::new(
+        GlueXHddmConfig::new("beam", "target")
             .with_run_number(40_000)
             .with_first_event_number(1)
             .with_random_seed(0)

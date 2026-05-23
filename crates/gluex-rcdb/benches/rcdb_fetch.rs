@@ -6,10 +6,10 @@ use gluex_core::{run_periods::RunPeriod, utils::resolve_path};
 use gluex_rcdb::{RCDB, conditions::aliases::approved_production, context::RCDBContext};
 
 fn rcdb_path() -> PathBuf {
-    if let Ok(path) = std::env::var("RCDB_BENCH_CONNECTION") {
-        if let Ok(candidate) = resolve_path(&path) {
-            return candidate;
-        }
+    if let Ok(path) = std::env::var("RCDB_BENCH_CONNECTION")
+        && let Ok(candidate) = resolve_path(&path)
+    {
+        return candidate;
     }
     resolve_path(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../rcdb.sqlite"))
         .expect("failed to resolve default RCDB benchmark path")
@@ -23,7 +23,7 @@ fn bench_polarimeter_fetch(c: &mut Criterion) {
     let end_run = start_run + 500;
     let context = RCDBContext::default()
         .with_run_range(start_run..=end_run)
-        .filter(approved_production(run_period));
+        .filter(approved_production(run_period).expect("supported production run period"));
 
     c.bench_function("rcdb_fetch/polarimeter_converter_rp2018_08", |b| {
         let rcdb = rcdb.clone();
