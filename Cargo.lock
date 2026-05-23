@@ -1238,6 +1238,9 @@ dependencies = [
 name = "gluex-rs-py"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "gluex-core",
+ "gluex-lumi",
  "pyo3",
 ]
 

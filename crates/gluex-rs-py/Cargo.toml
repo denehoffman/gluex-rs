@@ -12,8 +12,11 @@ readme = "README.md"
 keywords = ["gluex", "rcdb", "python"]
 
 [lib]
-name = "gluex"
+name = "_gluex"
 crate-type = ["cdylib"]
 
 [dependencies]
+chrono.workspace = true
+gluex-core.workspace = true
+gluex-lumi.workspace = true
 pyo3.workspace = true
