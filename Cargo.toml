@@ -22,7 +22,7 @@ fastrand = "2.4.1"
 hddm = { version = "0.2.1", path = "../hddm-rs/crates/hddm" }
 hddm-rs = { version = "0.2.1", path = "../hddm-rs/crates/hddm-rs" }
 itertools = "0.14.0"
-laddu = { version = "0.18.0", path = "../laddu/crates/laddu" }
+laddu = { version = "0.19.6", path = "../laddu/crates/laddu" }
 lazy_static = "1.5.0"
 memchr = "2.8.0"
 parking_lot = "0.12.5"

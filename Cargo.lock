@@ -977,9 +977,9 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "ganesh"
-version = "0.27.0"
+version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2485bdd7225b958b65ff84d70d72b2425f5e036c11f86cf052d4bbb36fc59e13"
+checksum = "b7b2b4316b59dc1b149d996dd43ad99f5b9e0d7e7bbb59a9da4c831d3d7aa7bc"
 dependencies = [
  "ctrlc",
  "dyn-clone",
@@ -1484,7 +1484,7 @@ dependencies = [
 
 [[package]]
 name = "laddu"
-version = "0.18.0"
+version = "0.19.6"
 dependencies = [
  "fastrand",
  "laddu-amplitudes",
@@ -1499,7 +1499,7 @@ dependencies = [
 
 [[package]]
 name = "laddu-amplitudes"
-version = "0.18.0"
+version = "0.19.6"
 dependencies = [
  "dyn-clone",
  "errorfunctions",
@@ -1514,7 +1514,7 @@ dependencies = [
 
 [[package]]
 name = "laddu-core"
-version = "0.18.0"
+version = "0.19.6"
 dependencies = [
  "accurate",
  "approx",
@@ -1542,7 +1542,7 @@ dependencies = [
 
 [[package]]
 name = "laddu-extensions"
-version = "0.18.0"
+version = "0.19.6"
 dependencies = [
  "accurate",
  "approx",
@@ -1561,7 +1561,7 @@ dependencies = [
 
 [[package]]
 name = "laddu-generation"
-version = "0.18.0"
+version = "0.19.6"
 dependencies = [
  "fastrand",
  "fastrand-contrib",

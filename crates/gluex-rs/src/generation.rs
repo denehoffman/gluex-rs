@@ -237,16 +237,16 @@ impl GluexHddmWriter {
 
         let mut rng = Rng::with_seed(self.config.random_seed);
         let mut records = Vec::with_capacity(batch.dataset().n_events_local());
-        for (event_index, event) in batch.dataset().events_global().iter().enumerate() {
-            let beam_p4 = stored_p4(batch, beam_layout, event)?;
-            let target_p4 = optional_stored_p4(batch, target_layout, event)?
+        for (event_index, event) in batch.dataset().events_global().enumerate() {
+            let beam_p4 = stored_p4(batch, beam_layout, &event)?;
+            let target_p4 = optional_stored_p4(batch, target_layout, &event)?
                 .unwrap_or_else(|| Vec4::new(0.0, 0.0, 0.0, target_particle.particle_mass()));
             let products = product_layouts
                 .iter()
                 .zip(product_particles.iter().copied())
                 .enumerate()
                 .map(|(index, (layout, particle))| {
-                    let p4 = stored_p4(batch, layout, event)?;
+                    let p4 = stored_p4(batch, layout, &event)?;
                     Ok(product_from_particle(index + 1, particle, p4))
                 })
                 .collect::<Result<Vec<_>, GlueXGenerationError>>()?;
