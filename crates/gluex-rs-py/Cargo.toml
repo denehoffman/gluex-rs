@@ -17,6 +17,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 chrono.workspace = true
+gluex-ccdb.workspace = true
 gluex-core.workspace = true
 gluex-lumi.workspace = true
+gluex-rcdb.workspace = true
 pyo3.workspace = true
