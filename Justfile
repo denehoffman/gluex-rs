@@ -19,6 +19,7 @@ build-python: create-venv
     uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --release --uv --manifest-path crates/gluex-ccdb-py/Cargo.toml
     uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --release --uv --manifest-path crates/gluex-rcdb-py/Cargo.toml
     uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --release --uv --manifest-path crates/gluex-lumi-py/Cargo.toml
+    uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --release --uv --manifest-path crates/gluex-rs-py/Cargo.toml
 
 build: build-rust build-python
 

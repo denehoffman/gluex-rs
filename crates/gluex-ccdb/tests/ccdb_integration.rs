@@ -3,12 +3,16 @@
 use chrono::{Datelike, Timelike};
 use gluex_ccdb::{CCDBResult, context::CCDBContext, database::CCDB, models::ColumnMeta};
 use gluex_core::{GlueXCoreError, parsers::parse_timestamp};
+
+#[path = "../../../tests/fixtures/rust.rs"]
+mod fixtures;
+
 const TABLE_PATH: &str = "/test/demo/mytable";
 
-fn open_db() -> CCDB {
-    let path =
-        std::env::var("CCDB_CONNECTION").expect("CCDB_CONNECTION must be set for CCDB tests");
-    CCDB::open(path).expect("failed to open CCDB test database")
+fn open_db() -> (fixtures::TestDatabase, CCDB) {
+    let fixture = fixtures::ccdb();
+    let db = CCDB::open(fixture.path()).expect("failed to open CCDB test database");
+    (fixture, db)
 }
 
 #[test]
@@ -44,7 +48,7 @@ fn parse_timestamp_infers_and_validates_inputs() -> CCDBResult<()> {
 
 #[test]
 fn directory_and_table_metadata_can_be_discovered() -> CCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
 
     let root = db.root();
     assert_eq!(root.full_path(), "/");
@@ -72,7 +76,7 @@ fn directory_and_table_metadata_can_be_discovered() -> CCDBResult<()> {
 
 #[test]
 fn fetch_respects_runs_variations_and_timestamps() -> CCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
     let before_first = parse_timestamp("2013-02-22 19:40:34")?;
     let first_available = parse_timestamp("2013-02-22 19:40:35")?;
     let updated = parse_timestamp("2020-02-01 00:00:00")?;

@@ -1179,6 +1179,7 @@ dependencies = [
  "gluex-ccdb",
  "gluex-core",
  "gluex-rcdb",
+ "rusqlite",
  "serde",
  "serde_json",
  "strum",

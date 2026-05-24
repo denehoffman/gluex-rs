@@ -5,15 +5,18 @@ use gluex_rcdb::{
     RCDB, RCDBContext, RCDBError, RCDBResult, RunPeriod, Value, ValueType, conditions,
 };
 
-fn open_db() -> RCDB {
-    let path =
-        std::env::var("RCDB_CONNECTION").expect("RCDB_CONNECTION must be set for RCDB tests");
-    RCDB::open(path).expect("failed to open RCDB test database")
+#[path = "../../../tests/fixtures/rust.rs"]
+mod fixtures;
+
+fn open_db() -> (fixtures::TestDatabase, RCDB) {
+    let fixture = fixtures::rcdb();
+    let db = RCDB::open(fixture.path()).expect("failed to open RCDB test database");
+    (fixture, db)
 }
 
 #[test]
 fn fetch_single_run_int_condition() -> RCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
     let values = db.fetch(["event_count"], &RCDBContext::default().with_run(2))?;
     let run_entry = values.get(&2).expect("missing run 2");
     let value = run_entry
@@ -26,7 +29,7 @@ fn fetch_single_run_int_condition() -> RCDBResult<()> {
 
 #[test]
 fn fetch_run_range_collects_multiple_rows() -> RCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
     let ctx = RCDBContext::default().with_run_range(2..=5);
     let values = db.fetch(["event_count"], &ctx)?;
     assert_eq!(values.len(), 4);
@@ -43,7 +46,7 @@ fn fetch_run_range_collects_multiple_rows() -> RCDBResult<()> {
 
 #[test]
 fn fetch_bool_condition() -> RCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
     let ctx = RCDBContext::default().with_runs([2, 3, 4]);
     let values = db.fetch(["is_valid_run_end"], &ctx)?;
     assert_eq!(
@@ -65,7 +68,7 @@ fn fetch_bool_condition() -> RCDBResult<()> {
 
 #[test]
 fn fetch_time_condition() -> RCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
     let ctx = RCDBContext::default().with_run(2);
     let values = db.fetch(["run_start_time"], &ctx)?;
     let run_entry = values.get(&2).expect("missing run");
@@ -80,7 +83,7 @@ fn fetch_time_condition() -> RCDBResult<()> {
 
 #[test]
 fn fetch_with_predicates() -> RCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
     let ctx = RCDBContext::default()
         .with_run_range(1000..=1100)
         .filter(conditions::all([
@@ -114,7 +117,7 @@ fn fetch_with_predicates() -> RCDBResult<()> {
 
 #[test]
 fn fetch_runs_with_filters() -> RCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
     let ctx = RCDBContext::default()
         .with_run_range(1000..=1100)
         .filter(conditions::all([
@@ -129,7 +132,7 @@ fn fetch_runs_with_filters() -> RCDBResult<()> {
 
 #[test]
 fn fetch_runs_with_alias() -> RCDBResult<()> {
-    let db = open_db();
+    let (_fixture, db) = open_db();
     let alias_expr = conditions::aliases::is_production();
     let ctx = RCDBContext::default()
         .with_run_range(10_000..=10_300)
