@@ -8,7 +8,10 @@ mod gluex {
     #[pymodule_export]
     use crate::ccdb::ccdb;
     #[pymodule_export]
-    use crate::core::PyHistogram;
+    use crate::core::{
+        PyCharge, PyDetectorSystem, PyHistogram, PyParticle, PyPolarization,
+        PyRESTVersionSelection, PyRunPeriod, py_coherent_peak, py_parse_timestamp,
+    };
     #[pymodule_export]
     use crate::lumi::lumi;
     #[pymodule_export]

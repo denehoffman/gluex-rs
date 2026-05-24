@@ -8,7 +8,7 @@ pub(crate) mod rcdb {
     };
     use chrono::{DateTime, Utc};
     use gluex_core::{
-        GlueXCoreError, RunNumber,
+        RunNumber,
         constants::{MAX_RUN_NUMBER, MIN_RUN_NUMBER},
         utils::resolve_path,
     };
@@ -18,6 +18,8 @@ pub(crate) mod rcdb {
         prelude::*,
         types::{PyDict, PyFloat, PyInt, PyList, PyString, PyTuple},
     };
+
+    use crate::core::parse_run_period_object;
 
     fn py_rcdb_error(err: RCDBError) -> PyErr {
         PyRuntimeError::new_err(err.to_string())
@@ -77,7 +79,7 @@ pub(crate) mod rcdb {
             &self,
             py: Python<'_>,
             condition_names: Bound<'_, PyAny>,
-            run_period: Option<String>,
+            run_period: Option<Bound<'_, PyAny>>,
             runs: Option<Vec<RunNumber>>,
             run_min: Option<RunNumber>,
             run_max: Option<RunNumber>,
@@ -103,7 +105,7 @@ pub(crate) mod rcdb {
         fn fetch_runs(
             &self,
             py: Python<'_>,
-            run_period: Option<String>,
+            run_period: Option<Bound<'_, PyAny>>,
             runs: Option<Vec<RunNumber>>,
             run_min: Option<RunNumber>,
             run_max: Option<RunNumber>,
@@ -372,10 +374,8 @@ pub(crate) mod rcdb {
             PyExpr(conditions::aliases::status_reject())
         }
 
-        fn approved_production(&self, run_period: String) -> PyResult<PyExpr> {
-            let run_period = run_period
-                .parse()
-                .map_err(|err: GlueXCoreError| PyRuntimeError::new_err(err.to_string()))?;
+        fn approved_production(&self, run_period: Bound<'_, PyAny>) -> PyResult<PyExpr> {
+            let run_period = parse_run_period_object(&run_period)?;
             conditions::aliases::approved_production(run_period)
                 .map(PyExpr)
                 .map_err(py_rcdb_error)
@@ -389,7 +389,7 @@ pub(crate) mod rcdb {
 
     fn build_context(
         py: Python<'_>,
-        run_period: Option<String>,
+        run_period: Option<Bound<'_, PyAny>>,
         runs: Option<Vec<RunNumber>>,
         run_min: Option<RunNumber>,
         run_max: Option<RunNumber>,
@@ -406,11 +406,7 @@ pub(crate) mod rcdb {
 
         let mut context = RCDBContext::default();
         if let Some(run_period) = run_period {
-            context = context.with_run_period(
-                run_period
-                    .parse()
-                    .map_err(|err: GlueXCoreError| PyRuntimeError::new_err(err.to_string()))?,
-            );
+            context = context.with_run_period(parse_run_period_object(&run_period)?);
         } else if let Some(runs) = runs {
             context = context.with_runs(runs);
         } else if run_min.is_some() || run_max.is_some() {

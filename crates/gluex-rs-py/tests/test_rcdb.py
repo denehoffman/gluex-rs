@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import cast
 import datetime as dt
 
-from gluex import rcdb
+from gluex import RunPeriod, rcdb
 import pytest
 
 
@@ -53,6 +53,11 @@ def test_fetch_runs_with_alias(db: rcdb.RCDB) -> None:
     )
     assert runs
     assert all(10000 <= run <= 10300 for run in runs)
+
+
+def test_run_period_object_can_select_runs(db: rcdb.RCDB) -> None:
+    assert db.fetch_runs(run_period=RunPeriod.RP2017_01) == db.fetch_runs(run_period="s17")
+    assert isinstance(rcdb.aliases.approved_production(RunPeriod.RP2017_01), rcdb.Expr)
 
 
 def test_invalid_selectors_and_filters_raise(db: rcdb.RCDB) -> None:

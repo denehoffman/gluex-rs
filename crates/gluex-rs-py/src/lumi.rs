@@ -1,6 +1,6 @@
 #[pyo3::pymodule(submodule)]
 pub(crate) mod lumi {
-    use std::{collections::HashMap, env, str::FromStr};
+    use std::{collections::HashMap, env};
 
     use ::gluex_lumi::{FluxHistograms, Luminosity, LuminosityContext, LuminosityError};
     use chrono::{DateTime, Utc};
@@ -9,7 +9,10 @@ pub(crate) mod lumi {
     };
     use pyo3::{exceptions::PyRuntimeError, prelude::*, types::PyDict};
 
-    use crate::core::{PyHistogram, histogram_to_dict, histogram_to_py};
+    use crate::core::{
+        PyHistogram, PyRESTVersionSelection, histogram_to_dict, histogram_to_py,
+        parse_run_period_object,
+    };
 
     /// Flux and luminosity histograms aggregated across selected runs.
     #[pyclass(name = "FluxHistograms", module = "gluex.lumi")]
@@ -64,13 +67,13 @@ pub(crate) mod lumi {
         })?;
         let mut selection = HashMap::with_capacity(mapping.len());
         for (name, rest_version) in mapping.iter() {
-            let name = name
-                .extract::<String>()
-                .map_err(|_| PyRuntimeError::new_err("run-period names must be strings"))?;
-            let period = RunPeriod::from_str(&name)
-                .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
+            let period = parse_run_period_object(&name)?;
             let request = if rest_version.is_none() {
                 RESTVersionSelection::Current
+            } else if let Ok(selection) =
+                rest_version.extract::<PyRef<'_, PyRESTVersionSelection>>()
+            {
+                selection.0
             } else if let Ok(version) = rest_version.extract::<RESTVersion>() {
                 RESTVersionSelection::try_new(period, version)
                     .map_err(|err| PyRuntimeError::new_err(err.to_string()))?
@@ -78,7 +81,7 @@ pub(crate) mod lumi {
                 RESTVersionSelection::from_timestamp(timestamp)
             } else {
                 return Err(PyRuntimeError::new_err(
-                    "rest_version must map run-period names to REST versions (int), datetime, or None",
+                    "rest_version must map RunPeriod or string keys to RESTVersionSelection, REST versions (int), datetime, or None",
                 ));
             };
             selection.insert(period, request);

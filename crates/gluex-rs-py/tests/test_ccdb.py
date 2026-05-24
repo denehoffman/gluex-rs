@@ -6,7 +6,7 @@ import datetime as dt
 import os
 from pathlib import Path
 
-from gluex import ccdb
+from gluex import RESTVersionSelection, RunPeriod, ccdb
 import pytest
 
 TABLE_PATH = "/test/demo/mytable"
@@ -95,6 +95,13 @@ def test_fetch_run_period_accepts_datetime_rest_version(db: ccdb.CCDB) -> None:
     table_by_rest = table.fetch_run_period(run_period="s17", rest_version=timestamp)
     table_by_timestamp = table.fetch_run_period(run_period="s17", timestamp=timestamp)
     assert set(table_by_rest) == set(table_by_timestamp)
+
+    typed = db.fetch_run_period(
+        TABLE_PATH,
+        run_period=RunPeriod.RP2017_01,
+        rest_version=RESTVersionSelection.timestamp(timestamp),
+    )
+    assert set(typed) == set(by_timestamp)
 
 
 def test_data_indexing_is_strict_while_value_can_probe(db: ccdb.CCDB) -> None:

@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 
-from . import Histogram
+from . import Histogram, RESTVersionSelection, RunPeriod
 
 class FluxHistograms:
     tagged_flux: Histogram
@@ -18,7 +18,9 @@ class Luminosity:
         edges: Sequence[float],
         *,
         runs: Sequence[int],
-        rest_version: Mapping[str, int | datetime | None] | None = None,
+        rest_version: Mapping[
+            str | RunPeriod, RESTVersionSelection | int | datetime | None
+        ] | None = None,
         coherent_peak: bool = False,
         polarized: bool = False,
         exclude_runs: Sequence[int] | None = None,

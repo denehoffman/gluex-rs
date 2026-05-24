@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
+from . import RunPeriod
 
 class Expr:
     def __invert__(self) -> Expr: ...
@@ -13,7 +14,7 @@ class RCDB:
         self,
         condition_names: Sequence[str],
         *,
-        run_period: str | None = None,
+        run_period: str | RunPeriod | None = None,
         runs: Sequence[int] | None = None,
         run_min: int | None = None,
         run_max: int | None = None,
@@ -22,7 +23,7 @@ class RCDB:
     def fetch_runs(
         self,
         *,
-        run_period: str | None = None,
+        run_period: str | RunPeriod | None = None,
         runs: Sequence[int] | None = None,
         run_min: int | None = None,
         run_max: int | None = None,
@@ -107,7 +108,7 @@ class Aliases:
     def status_unchecked(self) -> Expr: ...
     @property
     def status_reject(self) -> Expr: ...
-    def approved_production(self, run_period: str) -> Expr: ...
+    def approved_production(self, run_period: str | RunPeriod) -> Expr: ...
 
 aliases: Aliases
 __all__: list[str]

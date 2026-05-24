@@ -8,8 +8,8 @@ pub(crate) mod ccdb {
     };
     use chrono::{DateTime, Utc};
     use gluex_core::{
-        GlueXCoreError, RESTVersion, RESTVersionSelection, RunNumber, RunPeriod,
-        parsers::parse_timestamp, utils::resolve_path,
+        RESTVersion, RESTVersionSelection, RunNumber, RunPeriod, parsers::parse_timestamp,
+        utils::resolve_path,
     };
     use pyo3::{
         conversion::IntoPyObject,
@@ -17,6 +17,8 @@ pub(crate) mod ccdb {
         prelude::*,
         types::{PyDict, PyFloat, PyInt, PyString},
     };
+
+    use crate::core::{PyRESTVersionSelection, parse_run_period_object};
 
     fn py_ccdb_error(err: CCDBError) -> PyErr {
         PyRuntimeError::new_err(err.to_string())
@@ -415,7 +417,7 @@ pub(crate) mod ccdb {
         #[pyo3(signature = (*, run_period, rest_version=None, variation=None, timestamp=None))]
         fn fetch_run_period(
             &self,
-            run_period: &str,
+            run_period: Bound<'_, PyAny>,
             rest_version: Option<Bound<'_, PyAny>>,
             variation: Option<String>,
             timestamp: Option<Bound<'_, PyAny>>,
@@ -521,7 +523,7 @@ pub(crate) mod ccdb {
         fn fetch_run_period(
             &self,
             path: &str,
-            run_period: &str,
+            run_period: Bound<'_, PyAny>,
             rest_version: Option<Bound<'_, PyAny>>,
             variation: Option<String>,
             timestamp: Option<Bound<'_, PyAny>>,
@@ -584,6 +586,9 @@ pub(crate) mod ccdb {
         let Some(rest_version) = rest_version else {
             return Ok(RESTVersionSelection::Current);
         };
+        if let Ok(selection) = rest_version.extract::<PyRef<'_, PyRESTVersionSelection>>() {
+            return Ok(selection.0);
+        }
         if let Ok(version) = rest_version.extract::<RESTVersion>() {
             return RESTVersionSelection::try_new(run_period, version)
                 .map_err(|err| PyRuntimeError::new_err(err.to_string()));
@@ -592,7 +597,7 @@ pub(crate) mod ccdb {
             return Ok(RESTVersionSelection::from_timestamp(timestamp));
         }
         Err(PyRuntimeError::new_err(
-            "rest_version must be int, datetime, or None",
+            "rest_version must be a RESTVersionSelection, int, datetime, or None",
         ))
     }
 
@@ -665,14 +670,12 @@ pub(crate) mod ccdb {
     }
 
     fn build_run_period_context(
-        run_period: &str,
+        run_period: Bound<'_, PyAny>,
         rest_version: Option<Bound<'_, PyAny>>,
         variation: Option<String>,
         timestamp: Option<Bound<'_, PyAny>>,
     ) -> PyResult<CCDBContext> {
-        let run_period = run_period
-            .parse()
-            .map_err(|err: GlueXCoreError| py_ccdb_error(CCDBError::GlueXCoreError(err)))?;
+        let run_period = parse_run_period_object(&run_period)?;
         let rest_version = parse_rest_version(run_period, rest_version)?;
         let mut context = CCDBContext::default()
             .with_run_period(run_period, rest_version)

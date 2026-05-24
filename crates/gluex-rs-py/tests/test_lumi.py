@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from gluex import lumi
+from gluex import RESTVersionSelection, RunPeriod, lumi
 import pytest
 
 
@@ -22,4 +22,10 @@ def test_luminosity_fetch_uses_keyword_selection_api() -> None:
         ccdb=str(_db_path("CCDB_CONNECTION")),
     )
     with pytest.raises(RuntimeError, match="at least one run number is required"):
-        calculator.fetch([8.0, 8.5, 9.0], runs=[])
+        calculator.fetch(
+            [8.0, 8.5, 9.0],
+            runs=[],
+            rest_version={
+                RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)
+            },
+        )

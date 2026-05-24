@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import overload
+from . import RESTVersionSelection, RunPeriod
 
 class ColumnType:
     @property
@@ -88,8 +89,8 @@ class TypeTableHandle:
     def fetch_run_period(
         self,
         *,
-        run_period: str,
-        rest_version: int | datetime | None = None,
+        run_period: str | RunPeriod,
+        rest_version: RESTVersionSelection | int | datetime | None = None,
         variation: str | None = None,
         timestamp: str | datetime | None = None,
     ) -> dict[int, Data]: ...
@@ -121,8 +122,8 @@ class CCDB:
         self,
         path: str,
         *,
-        run_period: str,
-        rest_version: int | datetime | None = None,
+        run_period: str | RunPeriod,
+        rest_version: RESTVersionSelection | int | datetime | None = None,
         variation: str | None = None,
         timestamp: str | datetime | None = None,
     ) -> dict[int, Data]: ...
