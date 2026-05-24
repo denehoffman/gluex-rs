@@ -15,9 +15,6 @@ use std::{
 };
 use thiserror::Error;
 
-/// Command-line entry points for the `gluex-lumi` executable.
-pub mod cli;
-
 /// Radiation length of beryllium in meters.
 pub const BERILLIUM_RADIATION_LENGTH_METERS: f64 = 35.28e-2;
 

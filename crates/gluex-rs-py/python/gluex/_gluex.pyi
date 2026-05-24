@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from types import ModuleType
 
+def _console_main() -> int: ...
+
 class Histogram:
     counts: list[float]
     edges: list[float]

@@ -1164,15 +1164,12 @@ name = "gluex-lumi"
 version = "0.3.2"
 dependencies = [
  "chrono",
- "clap",
  "criterion",
  "gluex-ccdb",
  "gluex-core",
  "gluex-rcdb",
  "rusqlite",
  "serde",
- "serde_json",
- "strum",
  "thiserror",
 ]
 
@@ -1193,6 +1190,8 @@ name = "gluex-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "approx",
+ "clap",
  "fastrand",
  "gluex-ccdb",
  "gluex-core",
@@ -1201,6 +1200,9 @@ dependencies = [
  "hddm",
  "hddm-rs",
  "laddu",
+ "rusqlite",
+ "serde_json",
+ "strum",
  "thiserror",
 ]
 
@@ -1213,6 +1215,7 @@ dependencies = [
  "gluex-core",
  "gluex-lumi",
  "gluex-rcdb",
+ "gluex-rs",
  "pyo3",
 ]
 

@@ -1,6 +1,9 @@
 # gluex-lumi
 
-Luminosity calculators for GlueX analyses. This crate can take a set of runs (optionally selecting a REST version for each run period) and produce histogram distributions of luminosity and flux in the hodoscope/microscope. It ships with a CLI that has similar inputs but prints JSON data for the histograms to stdout to be read by other tools (plotters, etc.).
+Luminosity calculators for GlueX analyses. This crate can take a set of runs
+(optionally selecting a REST version for each run period) and produce
+histogram distributions of luminosity and flux in the hodoscope/microscope.
+The unified `gluex-rs` facade owns the `gluex lumi` command-line interface.
 
 ## Installation
 
@@ -8,12 +11,6 @@ Add to an existing Rust project:
 
 ```bash
 cargo add gluex-lumi
-```
-
-or install as a CLI tool:
-
-```bash
-cargo install gluex-lumi
 ```
 
 ## Example

@@ -1,5 +1,8 @@
 //! A Rust library for unified `GlueX` data analysis.
 
+/// Command-line entry points for the `gluex` executable.
+pub mod cli;
+
 /// Monte Carlo generation utilities
 pub mod generation;
 

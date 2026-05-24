@@ -27,6 +27,9 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[project.scripts]
+gluex = "gluex._gluex:_console_main"
+
 [project.optional-dependencies]
 tests = [
     "pytest",

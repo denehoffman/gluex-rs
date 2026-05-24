@@ -8,10 +8,17 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "gluex"
+path = "src/main.rs"
+
 [dependencies]
+clap.workspace = true
 fastrand.workspace = true
 hddm.workspace = true
 laddu.workspace = true
+serde_json.workspace = true
+strum.workspace = true
 thiserror.workspace = true
 
 gluex-core.workspace = true
@@ -19,6 +26,9 @@ gluex-rcdb.workspace = true
 gluex-ccdb.workspace = true
 gluex-lumi.workspace = true
 
+[dev-dependencies]
+approx.workspace = true
+rusqlite.workspace = true
 
 [build-dependencies]
 anyhow.workspace = true
