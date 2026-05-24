@@ -35,7 +35,7 @@ tests = [
 [project.urls]
 Homepage = "https://github.com/denehoffman/gluex-rs"
 Repository = "https://github.com/denehoffman/gluex-rs"
-Documentation = "https://github.com/denehoffman/gluex-rs/tree/main/crates/gluex-rcdb-py"
+Documentation = "https://github.com/denehoffman/gluex-rs/tree/main/crates/gluex-rs-py"
 Issues = "https://github.com/denehoffman/gluex-rs/issues"
 
 [tool.ruff]

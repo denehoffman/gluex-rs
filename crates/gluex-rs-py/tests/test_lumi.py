@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, cast
 
 from gluex import RESTVersionSelection, RunPeriod, lumi
 import pytest
@@ -55,3 +56,16 @@ def test_luminosity_fetch_matches_seeded_detector_aggregation() -> None:
     assert histograms.tagh_flux.counts[1] == pytest.approx(TAGH_FLUX)
     assert histograms.tagged_flux.counts[1] == pytest.approx(TAGGED_FLUX)
     assert histograms.tagged_luminosity.counts[1] == pytest.approx(TAGGED_LUMINOSITY)
+
+
+def test_luminosity_rejects_invalid_rest_selection_values() -> None:
+    calculator = lumi.Luminosity(
+        rcdb=str(_db_path("RCDB_CONNECTION")),
+        ccdb=str(_db_path("CCDB_CONNECTION")),
+    )
+    with pytest.raises(RuntimeError, match="rest_version"):
+        calculator.fetch(
+            [8.0, 8.5, 9.0],
+            runs=[50685],
+            rest_version=cast(Any, {RunPeriod.RP2018_08: object()}),
+        )

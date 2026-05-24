@@ -1,7 +1,21 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
-default-members = ["crates/*"]
+members = [
+    "crates/gluex-core",
+    "crates/gluex-ccdb",
+    "crates/gluex-rcdb",
+    "crates/gluex-lumi",
+    "crates/gluex-rs",
+    "crates/gluex-rs-py",
+]
+default-members = [
+    "crates/gluex-core",
+    "crates/gluex-ccdb",
+    "crates/gluex-rcdb",
+    "crates/gluex-lumi",
+    "crates/gluex-rs",
+    "crates/gluex-rs-py",
+]
 
 [workspace.package]
 authors = ["Nathaniel Dene Hoffman <nhoffman@wm.edu>"]
@@ -40,9 +54,6 @@ gluex-ccdb = { version = "0.2.1", path = "crates/gluex-ccdb" }
 gluex-lumi = { version = "0.3.1", path = "crates/gluex-lumi" }
 gluex-rs = { version = "0.1.0", path = "crates/gluex-rs" }
 
-gluex-rcdb-py = { version = "0.2.1", path = "crates/gluex-rcdb-py" }
-gluex-ccdb-py = { version = "0.2.1", path = "crates/gluex-ccdb-py" }
-gluex-lumi-py = { version = "0.3.1", path = "crates/gluex-lumi-py" }
 gluex-rs-py = { version = "0.1.0", path = "crates/gluex-rs-py" }
 
 [profile.profiling]

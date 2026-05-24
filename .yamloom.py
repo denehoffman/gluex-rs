@@ -292,7 +292,5 @@ release_please_workflow = Workflow(
 )
 
 if __name__ == '__main__':
-    generate_python_release('gluex-ccdb-py').dump('.github/workflows/maturin_gluex_ccdb.yml')
-    generate_python_release('gluex-rcdb-py').dump('.github/workflows/maturin_gluex_rcdb.yml')
-    generate_python_release('gluex-lumi-py').dump('.github/workflows/maturin_gluex_lumi.yml')
+    generate_python_release('gluex-rs-py').dump('.github/workflows/maturin_gluex_rs.yml')
     release_please_workflow.dump('.github/workflows/release-please.yml')

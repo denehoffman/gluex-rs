@@ -1146,16 +1146,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gluex-ccdb-py"
-version = "0.2.2"
-dependencies = [
- "chrono",
- "gluex-ccdb",
- "gluex-core",
- "pyo3",
-]
-
-[[package]]
 name = "gluex-core"
 version = "0.2.2"
 dependencies = [
@@ -1187,17 +1177,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gluex-lumi-py"
-version = "0.3.2"
-dependencies = [
- "chrono",
- "gluex-core",
- "gluex-lumi",
- "pyo3",
- "serde_json",
-]
-
-[[package]]
 name = "gluex-rcdb"
 version = "0.2.2"
 dependencies = [
@@ -1207,16 +1186,6 @@ dependencies = [
  "parking_lot",
  "rusqlite",
  "thiserror",
-]
-
-[[package]]
-name = "gluex-rcdb-py"
-version = "0.2.2"
-dependencies = [
- "chrono",
- "gluex-core",
- "gluex-rcdb",
- "pyo3",
 ]
 
 [[package]]

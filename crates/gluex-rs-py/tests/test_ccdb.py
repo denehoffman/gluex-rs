@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 from pathlib import Path
+from typing import cast
 
 from gluex import RESTVersionSelection, RunPeriod, ccdb
 import pytest
@@ -113,3 +114,14 @@ def test_data_indexing_is_strict_while_value_can_probe(db: ccdb.CCDB) -> None:
         _ = data[10]
     with pytest.raises(KeyError):
         _ = data[0]["missing"]
+
+
+def test_invalid_timestamp_and_rest_version_inputs_raise(db: ccdb.CCDB) -> None:
+    with pytest.raises(RuntimeError, match="timestamp"):
+        db.fetch(TABLE_PATH, runs=[0], timestamp=cast(str, object()))
+    with pytest.raises(RuntimeError, match="rest_version"):
+        db.fetch_run_period(
+            TABLE_PATH,
+            run_period=RunPeriod.RP2017_01,
+            rest_version=cast(int, object()),
+        )

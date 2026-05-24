@@ -1,11 +1,11 @@
 ---
-name: Build and Release gluex-lumi-py
+name: Build and Release gluex-rs-py
 "on":
   push:
     branches:
       - main
     tags:
-      - gluex-lumi-py*
+      - gluex-rs-py*
   pull_request: ~
   workflow_dispatch: ~
 jobs:
@@ -30,7 +30,7 @@ jobs:
           . .venv/bin/activate
           echo PATH=$PATH >> $GITHUB_ENV
           uv pip install pytest
-          uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --uv --manifest-path crates/gluex-lumi-py/Cargo.toml
+          uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --uv --manifest-path crates/gluex-rs-py/Cargo.toml
       - run: |-
           uvx ruff check . --extend-exclude=.yamloom.py
           uvx ty check . --exclude=.yamloom.py
@@ -40,7 +40,7 @@ jobs:
       contents: read
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-lumi-py') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rs-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -132,7 +132,7 @@ jobs:
           manylinux: auto
           target: ${{ matrix.platform.target }}
           sccache: ${{ !(startsWith(github.ref, 'refs/tags/')) }}
-          args: --release --out dist --manifest-path crates/gluex-lumi-py/Cargo.toml --interpreter ${{ join(matrix.platform.python_versions, ' ') }}
+          args: --release --out dist --manifest-path crates/gluex-rs-py/Cargo.toml --interpreter ${{ join(matrix.platform.python_versions, ' ') }}
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
@@ -144,7 +144,7 @@ jobs:
       contents: read
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-lumi-py') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rs-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -212,7 +212,7 @@ jobs:
           manylinux: musllinux_1_2
           target: ${{ matrix.platform.target }}
           sccache: ${{ !(startsWith(github.ref, 'refs/tags/')) }}
-          args: --release --out dist --manifest-path crates/gluex-lumi-py/Cargo.toml --interpreter ${{ join(matrix.platform.python_versions, ' ') }}
+          args: --release --out dist --manifest-path crates/gluex-rs-py/Cargo.toml --interpreter ${{ join(matrix.platform.python_versions, ' ') }}
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
@@ -224,7 +224,7 @@ jobs:
       contents: read
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-lumi-py') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rs-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -275,7 +275,7 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           sccache: ${{ !(startsWith(github.ref, 'refs/tags/')) }}
-          args: --release --out dist --manifest-path crates/gluex-lumi-py/Cargo.toml --interpreter ${{ join(matrix.platform.python_versions, ' ') }}
+          args: --release --out dist --manifest-path crates/gluex-rs-py/Cargo.toml --interpreter ${{ join(matrix.platform.python_versions, ' ') }}
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
@@ -287,7 +287,7 @@ jobs:
       contents: read
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-lumi-py') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rs-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -330,7 +330,7 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           sccache: ${{ !(startsWith(github.ref, 'refs/tags/')) }}
-          args: --release --out dist --manifest-path crates/gluex-lumi-py/Cargo.toml --interpreter ${{ join(matrix.platform.python_versions, ' ') }}
+          args: --release --out dist --manifest-path crates/gluex-rs-py/Cargo.toml --interpreter ${{ join(matrix.platform.python_versions, ' ') }}
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
@@ -342,7 +342,7 @@ jobs:
       contents: read
     needs:
       - build-check
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-lumi-py') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rs-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Repository
@@ -351,7 +351,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
-          args: "--out dist --manifest-path crates/gluex-lumi-py/Cargo.toml"
+          args: "--out dist --manifest-path crates/gluex-rs-py/Cargo.toml"
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
@@ -368,7 +368,7 @@ jobs:
       - windows
       - macos
       - sdist
-    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-lumi-py') || (github.event_name == 'workflow_dispatch')) }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/gluex-rs-py') || (github.event_name == 'workflow_dispatch')) }}
     runs-on: ubuntu-22.04
     environment: pypi
     steps:

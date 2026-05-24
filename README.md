@@ -11,9 +11,7 @@
 | [`gluex-rcdb`](crates/gluex-rcdb) | Rust | RCDB query layer with expression builders for run selection. |
 | [`gluex-lumi`](crates/gluex-lumi) | Rust | Luminosity calculators that combine CCDB and RCDB payloads and expose a CLI. |
 | [`gluex-rs`](crates/gluex-rs) | Rust | Main crate re-exporting the GlueX APIs and HDDM generation support. |
-| [`gluex-ccdb` (python)](crates/gluex-ccdb-py) | Python (PyO3) | Python bindings for the CCDB client |
-| [`gluex-rcdb` (python)](crates/gluex-rcdb-py) | Python (PyO3) | Python bindings for RCDB condition queries |
-| [`gluex-lumi` (python)](crates/gluex-lumi-py) | Python (PyO3) | Python wrappers and CLI shim for the luminosity tools. |
+| [`gluex-rs` (python)](crates/gluex-rs-py) | Python (PyO3) | Unified `gluex` package exposing core, CCDB, RCDB, and luminosity APIs. |
 
 ## License
 
