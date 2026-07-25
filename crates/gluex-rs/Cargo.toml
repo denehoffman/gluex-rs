@@ -16,6 +16,7 @@ path = "src/main.rs"
 clap.workspace = true
 fastrand.workspace = true
 hddm.workspace = true
+parking_lot.workspace = true
 laddu.workspace = true
 serde_json.workspace = true
 strum.workspace = true

@@ -3,7 +3,7 @@
 use std::{error::Error, fmt};
 
 use gluex_core::particles::Particle as GluexParticle;
-use laddu::ParticleSpecies;
+use laddu::quantum::ExternalId;
 
 /// Error returned when generic particle species metadata cannot be mapped to `GlueX`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -12,8 +12,8 @@ pub enum SpeciesMappingError {
     UnsupportedNamespace {
         /// Unsupported code namespace.
         namespace: String,
-        /// Numeric species code.
-        id: i64,
+        /// External ID.
+        id: ExternalId,
     },
     /// The species code cannot fit in the `GlueX` particle-code conversion path.
     CodeOutOfRange {
@@ -22,91 +22,101 @@ pub enum SpeciesMappingError {
     },
     /// The species code is not known to the `GlueX` particle table.
     UnknownCode {
+        /// Species namespace.
+        namespace: String,
         /// Numeric species code.
         id: i64,
-        /// Optional species code namespace.
-        namespace: Option<String>,
     },
     /// The species label is not known to the `GlueX` particle table.
     UnknownLabel {
+        /// Species namespace.
+        namespace: String,
         /// Species label.
         label: String,
     },
+    /// No valid namespace was found among all ids
+    NoValidNamespace,
 }
 
 impl fmt::Display for SpeciesMappingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnsupportedNamespace { namespace, id } => {
-                write!(
+            Self::UnsupportedNamespace { namespace, id } => match id {
+                ExternalId::Code { value } => write!(
                     f,
-                    "unsupported particle species namespace '{namespace}' for code {id}"
-                )
-            }
+                    "unsupported particle species namespace '{namespace}' for code {value}"
+                ),
+                ExternalId::Label { value } => write!(
+                    f,
+                    "unsupported particle species namespace '{namespace}' for label {value}"
+                ),
+            },
             Self::CodeOutOfRange { id } => {
                 write!(
                     f,
                     "particle species code {id} is out of range for GlueX mapping"
                 )
             }
-            Self::UnknownCode { id, namespace } => {
-                if let Some(namespace) = namespace {
-                    write!(
-                        f,
-                        "unknown particle species code {id} in namespace '{namespace}'"
-                    )
-                } else {
-                    write!(f, "unknown particle species code {id}")
-                }
+            Self::UnknownCode { namespace, id } => {
+                write!(
+                    f,
+                    "unknown particle species code {id} in namespace '{namespace}'"
+                )
             }
-            Self::UnknownLabel { label } => {
-                write!(f, "unknown particle species label '{label}'")
+            Self::UnknownLabel { namespace, label } => {
+                write!(
+                    f,
+                    "unknown particle species label '{label}' in namespace '{namespace}'"
+                )
             }
+            Self::NoValidNamespace => write!(
+                f,
+                "No valid namespace was found among particle ids, all particles must have a 'gluex' or 'pdg' identifier"
+            ),
         }
     }
 }
 
 impl Error for SpeciesMappingError {}
 
-/// Map experiment-neutral laddu species metadata to a `GlueX` particle ID.
-///
-/// Numeric codes are interpreted as PDG codes when the namespace is absent or equal to `"pdg"`
-/// ignoring ASCII case. Labels are interpreted with `GlueX`'s canonical particle-name table.
-///
-/// # Errors
-///
-/// Returns [`SpeciesMappingError`] when the namespace is unsupported or the code/label does not
-/// resolve to a known `GlueX` particle.
-pub fn gluex_particle_from_species(
-    species: &ParticleSpecies,
+fn gluex_particle_from_pdg_external_id(
+    id: &ExternalId,
 ) -> Result<GluexParticle, SpeciesMappingError> {
-    match species {
-        ParticleSpecies::Code { id, namespace } => {
-            if let Some(namespace) = namespace
-                && !namespace.eq_ignore_ascii_case("pdg")
-            {
-                return Err(SpeciesMappingError::UnsupportedNamespace {
-                    namespace: namespace.clone(),
-                    id: *id,
-                });
-            }
-            let pdg = isize::try_from(*id)
-                .map_err(|_| SpeciesMappingError::CodeOutOfRange { id: *id })?;
+    match id {
+        ExternalId::Code { value } => {
+            let pdg = isize::try_from(*value)
+                .map_err(|_| SpeciesMappingError::CodeOutOfRange { id: *value })?;
             let particle = GluexParticle::from_pdg(pdg);
-            if particle.is_unknown() && *id != 0 {
+            if particle.is_unknown() && *value != 0 {
                 Err(SpeciesMappingError::UnknownCode {
-                    id: *id,
-                    namespace: namespace.clone(),
+                    namespace: "pdg".to_string(),
+                    id: *value,
                 })
             } else {
                 Ok(particle)
             }
         }
-        ParticleSpecies::Label(label) => {
-            let particle = GluexParticle::from_particle_type(label);
-            if particle.is_unknown() && label != "Unknown" {
+        ExternalId::Label { value: _ } => Err(SpeciesMappingError::UnsupportedNamespace {
+            namespace: "pdg".to_string(),
+            id: id.clone(),
+        }),
+    }
+}
+
+fn gluex_particle_from_gluex_external_id(
+    id: &ExternalId,
+) -> Result<GluexParticle, SpeciesMappingError> {
+    match id {
+        ExternalId::Code { value: _ } => Err(SpeciesMappingError::UnsupportedNamespace {
+            namespace: "gluex".to_string(),
+            id: id.clone(),
+        }),
+        ExternalId::Label { value } => {
+            let particle = GluexParticle::from_particle_type(value);
+            if particle.is_unknown() && value != "Unknown" {
                 Err(SpeciesMappingError::UnknownLabel {
-                    label: label.clone(),
+                    namespace: "gluex".to_string(),
+                    label: value.clone(),
                 })
             } else {
                 Ok(particle)
@@ -115,23 +125,53 @@ pub fn gluex_particle_from_species(
     }
 }
 
-/// Map experiment-neutral laddu species metadata to an HDDM particle ID through `GlueX` metadata.
+/// Map experiment-neutral laddu external ID to  GlueX particle ID through `GlueX` metadata.
 ///
 /// # Errors
 ///
-/// Returns [`SpeciesMappingError`] when the species metadata cannot be mapped to a known `GlueX`
+/// Returns [`SpeciesMappingError`] when the external ID cannot be mapped to a known `GlueX`
 /// particle.
-pub fn hddm_particle_from_species(
-    species: &ParticleSpecies,
-) -> Result<hddm::Particle, SpeciesMappingError> {
-    Ok(gluex_particle_from_species(species)?.into())
+pub fn gluex_particle_from_external_id(
+    namespace: &str,
+    id: &ExternalId,
+) -> Result<GluexParticle, SpeciesMappingError> {
+    match namespace.to_lowercase().as_str() {
+        "pdg" => Ok(gluex_particle_from_pdg_external_id(id)?),
+        "gluex" => Ok(gluex_particle_from_gluex_external_id(id)?),
+        _ => Err(SpeciesMappingError::UnsupportedNamespace {
+            namespace: namespace.to_string(),
+            id: id.clone(),
+        }),
+    }
+}
+
+/// Checks all laddu ids sequentially and returns the first one which matches to a valid GlueX
+/// particle ID.
+///
+/// # Errors
+///
+/// Returns [`SpeciesMappingError`] if none of the ids have a valid namespace.
+pub fn gluex_particle_from_external_ids<'a, I>(ids: I) -> Result<GluexParticle, SpeciesMappingError>
+where
+    I: IntoIterator<Item = (&'a String, &'a ExternalId)>,
+{
+    for (namespace, id) in ids.into_iter() {
+        if let Ok(particle) = gluex_particle_from_external_id(namespace, id) {
+            return Ok(particle); // TODO: this needs work, right now it doesn't forward errors so
+            // they are lost
+        }
+    }
+    return Err(SpeciesMappingError::NoValidNamespace);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{SpeciesMappingError, gluex_particle_from_species, hddm_particle_from_species};
+    use super::{
+        SpeciesMappingError, gluex_particle_from_external_id,
+        gluex_particle_from_gluex_external_id, gluex_particle_from_pdg_external_id,
+    };
     use gluex_core::particles::Particle as GluexParticle;
-    use laddu::ParticleSpecies;
+    use laddu::quantum::ExternalId;
 
     #[test]
     fn maps_pdg_codes_to_gluex_particles() {
@@ -146,11 +186,7 @@ mod tests {
         ];
         for (pdg, expected) in cases {
             assert_eq!(
-                gluex_particle_from_species(&ParticleSpecies::code(pdg)).unwrap(),
-                expected
-            );
-            assert_eq!(
-                gluex_particle_from_species(&ParticleSpecies::with_namespace("pdg", pdg)).unwrap(),
+                gluex_particle_from_pdg_external_id(&ExternalId::code(pdg)).unwrap(),
                 expected
             );
         }
@@ -159,11 +195,11 @@ mod tests {
     #[test]
     fn maps_labels_to_gluex_particles() {
         assert_eq!(
-            gluex_particle_from_species(&ParticleSpecies::label("KShort")).unwrap(),
+            gluex_particle_from_gluex_external_id(&ExternalId::label("KShort")).unwrap(),
             GluexParticle::KShort
         );
         assert_eq!(
-            gluex_particle_from_species(&ParticleSpecies::label("Proton")).unwrap(),
+            gluex_particle_from_gluex_external_id(&ExternalId::label("Proton")).unwrap(),
             GluexParticle::Proton
         );
     }
@@ -171,34 +207,35 @@ mod tests {
     #[test]
     fn maps_species_to_hddm_particles() {
         assert_eq!(
-            hddm_particle_from_species(&ParticleSpecies::code(22)).unwrap(),
-            hddm::Particle::Gamma
+            gluex_particle_from_external_id("pdg", &ExternalId::code(22)).unwrap(),
+            GluexParticle::Gamma
         );
         assert_eq!(
-            hddm_particle_from_species(&ParticleSpecies::label("KShort")).unwrap(),
-            hddm::Particle::KShort
+            gluex_particle_from_external_id("gluex", &ExternalId::label("KShort")).unwrap(),
+            GluexParticle::KShort
         );
     }
 
     #[test]
     fn unknown_mapping_behavior_is_explicit() {
         assert_eq!(
-            gluex_particle_from_species(&ParticleSpecies::with_namespace("geant4", 2212)),
+            gluex_particle_from_external_id("geant4", &ExternalId::code(2212)),
             Err(SpeciesMappingError::UnsupportedNamespace {
                 namespace: "geant4".to_string(),
-                id: 2212,
+                id: ExternalId::code(2212),
             })
         );
         assert_eq!(
-            gluex_particle_from_species(&ParticleSpecies::code(999_999_999)),
+            gluex_particle_from_external_id("pdg", &ExternalId::code(1234567890)),
             Err(SpeciesMappingError::UnknownCode {
-                id: 999_999_999,
-                namespace: None,
+                namespace: "pdg".to_string(),
+                id: 1234567890
             })
         );
         assert_eq!(
-            gluex_particle_from_species(&ParticleSpecies::label("not-a-gluex-particle")),
+            gluex_particle_from_external_id("gluex", &ExternalId::label("not-a-gluex-particle")),
             Err(SpeciesMappingError::UnknownLabel {
+                namespace: "gluex".to_string(),
                 label: "not-a-gluex-particle".to_string(),
             })
         );

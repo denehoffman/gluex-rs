@@ -11,7 +11,25 @@
 | [`gluex-rcdb`](crates/gluex-rcdb) | Rust | RCDB query layer with expression builders for run selection. |
 | [`gluex-lumi`](crates/gluex-lumi) | Rust | Luminosity calculators that combine CCDB and RCDB payloads. |
 | [`gluex-rs`](crates/gluex-rs) | Rust | Main crate re-exporting the GlueX APIs, HDDM generation support, and the `gluex` CLI. |
-| [`gluex-rs` (python)](crates/gluex-rs-py) | Python (PyO3) | Unified `gluex` package and console command exposing core, CCDB, RCDB, and luminosity APIs. |
+| [`gluex-rs` (python)](crates/gluex-rs-py) | Python (PyO3) | Unified `gluex` package and console command exposing core, CCDB, RCDB, luminosity, and HDDM generation APIs. |
+
+## Python Generation
+
+The unified Python package can write accepted `laddu.GeneratedBatch` values to
+GlueX HDDM through bulk generated-data columns supplied by `laddu`:
+
+```python
+from gluex import generation
+
+writer = generation.GlueXHddmWriter(
+    generation.GlueXHddmConfig("beam", "target", run_number=50001)
+)
+writer.write_batches(batches, "accepted.hddm")
+```
+
+`laddu` remains responsible for defining reactions, generating events, and
+performing rejection sampling; `gluex` handles GlueX particle mapping and HDDM
+output.
 
 ## Command Line
 

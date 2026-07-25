@@ -10,7 +10,7 @@ from ._gluex import (
     coherent_peak,
     parse_timestamp,
 )
-from . import ccdb, lumi, rcdb
+from . import ccdb, generation, lumi, rcdb
 
 __all__ = [
     "Charge",
@@ -23,6 +23,7 @@ __all__ = [
     "__version__",
     "ccdb",
     "coherent_peak",
+    "generation",
     "lumi",
     "parse_timestamp",
     "rcdb",

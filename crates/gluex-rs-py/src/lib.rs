@@ -1,5 +1,6 @@
 mod ccdb;
 mod core;
+mod generation;
 mod lumi;
 mod rcdb;
 
@@ -20,6 +21,8 @@ mod gluex {
         PyCharge, PyDetectorSystem, PyHistogram, PyParticle, PyPolarization,
         PyRESTVersionSelection, PyRunPeriod, py_coherent_peak, py_parse_timestamp,
     };
+    #[pymodule_export]
+    use crate::generation::generation;
     #[pymodule_export]
     use crate::lumi::lumi;
     #[pymodule_export]

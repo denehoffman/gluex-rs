@@ -1,4 +1,5 @@
 from . import ccdb as ccdb
+from . import generation as generation
 from . import lumi as lumi
 from . import rcdb as rcdb
 from ._gluex import Charge as Charge

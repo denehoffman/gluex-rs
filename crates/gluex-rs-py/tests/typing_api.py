@@ -2,10 +2,11 @@
 
 from datetime import datetime, timezone
 
-from gluex import Histogram, Particle, RESTVersionSelection, RunPeriod, ccdb, lumi, rcdb
+from gluex import Histogram, Particle, RESTVersionSelection, RunPeriod, ccdb, generation, lumi, rcdb
+from laddu.generation import GeneratedBatch
 
 
-def typed_api_surface(ccdb_path: str, rcdb_path: str) -> None:
+def typed_api_surface(ccdb_path: str, rcdb_path: str, batch: GeneratedBatch) -> None:
     period: RunPeriod = RunPeriod.RP2018_08
     selection: RESTVersionSelection = RESTVersionSelection.timestamp(
         datetime(2019, 7, 21, 12, tzinfo=timezone.utc)
@@ -28,5 +29,9 @@ def typed_api_surface(ccdb_path: str, rcdb_path: str) -> None:
         runs=run_numbers,
         rest_version={period: selection},
     )
+    writer: generation.GlueXHddmWriter = generation.GlueXHddmWriter(
+        generation.GlueXHddmConfig("beam", "target")
+    )
+    next_event: int = writer.write_batch(batch, "events.hddm")
 
-    _ = (calibrations, particle, flux)
+    _ = (calibrations, particle, flux, next_event)
