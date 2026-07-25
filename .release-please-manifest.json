@@ -1,8 +1,8 @@
 {
-  "crates/gluex-core": "0.2.2",
-  "crates/gluex-ccdb": "0.2.2",
-  "crates/gluex-rcdb": "0.2.2",
-  "crates/gluex-lumi": "0.3.2",
-  "crates/gluex-rs": "0.1.0",
-  "crates/gluex-rs-py": "0.1.0"
+  "crates/gluex-core": "0.3.0",
+  "crates/gluex-ccdb": "0.3.0",
+  "crates/gluex-rcdb": "0.3.0",
+  "crates/gluex-lumi": "0.4.0",
+  "crates/gluex-rs": "0.1.7",
+  "crates/gluex-rs-py": "0.1.7"
 }

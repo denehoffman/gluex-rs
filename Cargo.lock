@@ -1132,7 +1132,7 @@ checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 
 [[package]]
 name = "gluex-ccdb"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "criterion",
@@ -1147,7 +1147,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-core"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "hddm",
@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-lumi"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "criterion",
@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-rcdb"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "criterion",
@@ -1187,7 +1187,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-rs"
-version = "0.1.0"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "approx",
@@ -1209,7 +1209,7 @@ dependencies = [
 
 [[package]]
 name = "gluex-rs-py"
-version = "0.1.0"
+version = "0.1.7"
 dependencies = [
  "chrono",
  "gluex-ccdb",
