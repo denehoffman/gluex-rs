@@ -1,6 +1,6 @@
 line-length = 120
 indent-width = 4
-target-version = "py38"
+target-version = "py310"
 
 exclude = [
   ".bzr",
@@ -35,6 +35,7 @@ ignore = [
   #### modules
   "ANN", # flake8-annotations
   "COM", # flake8-commas
+  "CPY", # copyright headers
   "C90", # mccabe complexity
   "DJ",  # django
   "EXE", # flake8-executable
@@ -94,6 +95,7 @@ ignore = [
 [lint.per-file-ignores]
 "__init__.py" = ["E402"]
 "**/{tests,docs,tools}/*" = ["E402"]
+"python/tests/*.py" = ["PLR2004", "PT011", "S101"]
 
 [format]
 # Use single quotes for non-triple-quoted strings.

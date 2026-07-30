@@ -16,7 +16,7 @@ build-rust:
     cargo build --release
 
 build-python: create-venv
-    uvx --with "maturin[patchelf]>=1.7,<2" maturin develop --release --uv --manifest-path crates/gluex-rs-py/Cargo.toml
+    uvx --with "maturin[patchelf]>=1.11,<2" maturin develop --release --uv --generate-stubs
 
 build: build-rust build-python
 
@@ -37,7 +37,7 @@ test-rust:
     cargo test --release
 
 test-python: build-python
-    pytest crates/gluex-rs-py/tests
+    pytest python/tests
 
 test: test-rust test-python
 

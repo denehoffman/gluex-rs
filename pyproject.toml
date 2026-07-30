@@ -1,0 +1,49 @@
+[build-system]
+requires = ["maturin>=1.11,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "gluex-rs"
+description = "A GlueX Utilities Library"
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "Apache-2.0 OR MIT" }
+authors = [{ name = "Nathaniel Dene Hoffman", email = "nhoffman@wm.edu" }]
+keywords = ["gluex", "physics"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+dependencies = ["laddu>=0.20,<0.21", "numpy>=2"]
+
+[project.scripts]
+gluex = "gluex:_console_main"
+
+[project.optional-dependencies]
+tests = [
+    "pytest",
+]
+
+[project.urls]
+Homepage = "https://github.com/denehoffman/gluex-rs"
+Repository = "https://github.com/denehoffman/gluex-rs"
+Documentation = "https://docs.rs/gluex-rs"
+Issues = "https://github.com/denehoffman/gluex-rs/issues"
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.maturin]
+bindings = "pyo3"
+features = ["python"]
+module-name = "gluex"
