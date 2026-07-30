@@ -1,55 +1,100 @@
 # gluex-rs
 
+`gluex-rs` is one library for GlueX analysis utilities. The same Cargo package
+provides:
 
+- the `gluex_rs` Rust library;
+- the `gluex` PyO3 extension module;
+- the `gluex` command-line executable.
 
-## Workspace members
+## Organization
 
-| Package | Language | Summary |
-| --- | --- | --- |
-| [`gluex-core`](crates/gluex-core) | Rust | Shared physics constants, run-period metadata, histogram helpers, and serialization primitives. |
-| [`gluex-ccdb`](crates/gluex-ccdb) | Rust | Read-only CCDB client with typed column accessors and caching. |
-| [`gluex-rcdb`](crates/gluex-rcdb) | Rust | RCDB query layer with expression builders for run selection. |
-| [`gluex-lumi`](crates/gluex-lumi) | Rust | Luminosity calculators that combine CCDB and RCDB payloads. |
-| [`gluex-rs`](crates/gluex-rs) | Rust | Main crate re-exporting the GlueX APIs, HDDM generation support, and the `gluex` CLI. |
-| [`gluex-rs` (python)](crates/gluex-rs-py) | Python (PyO3) | Unified `gluex` package and console command exposing core, CCDB, RCDB, luminosity, and HDDM generation APIs. |
+| Module | Purpose |
+| --- | --- |
+| `core` | Particles, detector metadata, run periods, constants, and parsers |
+| `ccdb` | Typed, read-only Calibration and Conditions Database access |
+| `rcdb` | Run Conditions Database access and composable run predicates |
+| `lumi` | Photon-flux and tagged-luminosity calculations |
+| `generation` | laddu 0.20 channels, event sinks, and GlueX HDDM output |
+| `cli` | Shared implementation of the native and Python console commands |
 
-## Python Generation
+The most common core types are also re-exported from the crate root.
 
-The unified Python package can write accepted `laddu.GeneratedBatch` values to
-GlueX HDDM through bulk generated-data columns supplied by `laddu`:
+## Rust
+
+```bash
+cargo add gluex-rs
+```
+
+```rust
+use gluex_rs::{
+    RunPeriod,
+    ccdb::{CCDB, CCDBContext},
+};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let ccdb = CCDB::new()?;
+    let data = ccdb.fetch(
+        "/PHOTON_BEAM/endpoint_energy",
+        &CCDBContext::default().with_run(RunPeriod::RP2018_08.min_run()),
+    )?;
+    println!("{data:#?}");
+    Ok(())
+}
+```
+
+## Python
+
+Maturin builds the Python module directly from the unified crate:
+
+```bash
+uvx maturin develop --uv --generate-stubs
+```
+
+```python
+import gluex
+
+period = gluex.RunPeriod("f18")
+print(period.min_run, period.max_run)
+```
+
+No Python API wrappers or handwritten `.pyi` files are maintained. Builds use
+PyO3 introspection and Maturin stub generation, so the installed package
+contains type information generated from the Rust API.
+
+laddu datasets can be streamed to HDDM through `gluex.generation`:
 
 ```python
 from gluex import generation
 
-writer = generation.GlueXHddmWriter(
-    generation.GlueXHddmConfig("beam", "target", run_number=50001)
+config = generation.GlueXHddmConfig(
+    channel,
+    beam="beam",
+    target="target",
+    run_number=90_000,
 )
-writer.write_batches(batches, "accepted.hddm")
+generation.GlueXHddmWriter(config).write(dataset, "events.hddm")
 ```
 
-`laddu` remains responsible for defining reactions, generating events, and
-performing rejection sampling; `gluex` handles GlueX particle mapping and HDDM
-output.
+## Command line
 
-## Command Line
-
-The `gluex` executable is owned by the facade crate and by the unified Python
-distribution. Luminosity output is JSON for downstream analysis:
+The native executable and Python console script share the same implementation:
 
 ```bash
-gluex lumi --run f18=2 --rcdb rcdb.sqlite --ccdb ccdb.sqlite > luminosity.json
-```
-
-REST-version and run-period metadata are available independently of the
-luminosity calculator:
-
-```bash
+gluex lumi --run f18=2 --rcdb rcdb.sqlite --ccdb ccdb.sqlite
 gluex info rest f18
 gluex info runs f18
 ```
 
+## Development
+
+```bash
+just test
+just lint
+```
+
+GitHub workflows are generated exclusively from `.yamloom.py`.
+
 ## License
 
-Unless noted otherwise, every crate and Python package in this repository is available under a dual
-[Apache-2.0](LICENSE-APACHE) and [MIT](LICENSE-MIT) license.
-option.
+Dual-licensed under [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).

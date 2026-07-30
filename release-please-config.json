@@ -1,76 +1,13 @@
 {
   "plugins": [
-    { "type": "cargo-workspace", "merge": false },
-    { "type": "sentence-case" },
-    {
-      "type": "linked-versions",
-      "groupName": "ALL",
-      "components": ["gluex-rs", "gluex-rs-py"]
-    }
+    { "type": "sentence-case" }
   ],
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "release-type": "rust",
   "packages": {
-    "crates/gluex-rs": {
-      "component": "gluex-rs",
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies['gluex-rs'].version"
-        }
-      ]
-    },
-    "crates/gluex-rs-py": {
-      "component": "gluex-rs-py",
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies['gluex-rs-py'].version"
-        }
-      ]
-    },
-    "crates/gluex-core": {
-      "component": "gluex-core",
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies['gluex-core'].version"
-        }
-      ]
-    },
-    "crates/gluex-ccdb": {
-      "component": "gluex-ccdb",
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies['gluex-ccdb'].version"
-        }
-      ]
-    },
-    "crates/gluex-rcdb": {
-      "component": "gluex-rcdb",
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies['gluex-rcdb'].version"
-        }
-      ]
-    },
-    "crates/gluex-lumi": {
-      "component": "gluex-lumi",
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies['gluex-lumi'].version"
-        }
-      ]
+    ".": {
+      "component": "gluex-rs"
     }
   }
 }
