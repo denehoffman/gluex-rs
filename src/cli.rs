@@ -9,8 +9,9 @@ use crate::core::{
     run_periods::{RunPeriod, coherent_peak, parse_rest_version_selection, rest_versions_for},
 };
 use crate::generation::{
-    GlueXHddmConfig, HddmSink,
+    GenerationRunOptions,
     config::{GenerationConfig, validate_hddm_species},
+    generate,
 };
 use crate::lumi::{Luminosity, LuminosityContext, RESTVersionSelection};
 use clap::{
@@ -18,7 +19,6 @@ use clap::{
     builder::{Styles, styling::AnsiColor},
     error::ErrorKind,
 };
-use laddu::prelude::{EnvelopeMode, EnvelopeOverflow, MemoryBudget, UnweightedConfig};
 use serde_json::to_writer_pretty;
 use strum::IntoEnumIterator;
 
@@ -370,50 +370,23 @@ fn run_gen(args: GenArgs) -> Result<(), Box<dyn std::error::Error>> {
             }
             let source = std::fs::read_to_string(&config)?;
             let parsed = GenerationConfig::from_json(&source)?;
-            let channel = parsed.to_channel()?;
-            validate_hddm_species(&channel)?;
-            let hddm_config = GlueXHddmConfig::new(&channel)?
-                .with_run_number(run_number)
-                .with_event_number(first_event)
-                .with_random_seed(seed);
-            let generator = parsed.to_generator()?;
-            let evaluator = parsed.model_evaluator()?;
-            let mut generation = UnweightedConfig::new(events);
-            generation.seed = seed;
-            generation.max_proposals = max_proposals;
-            let max_weight = max_weight.or(parsed.generation.max_weight);
-            let safety_scale = safety_scale.unwrap_or(parsed.generation.safety_scale);
-            if let Some(max_weight) = max_weight {
-                generation.envelope = EnvelopeMode::Strict { max_weight };
-                generation.envelope_overflow = EnvelopeOverflow::Grow {
-                    safety_factor: safety_scale,
-                };
-            } else if evaluator.is_some() {
-                generation.envelope = EnvelopeMode::Pilot {
-                    proposals: pilot_proposals.unwrap_or(parsed.generation.pilot_proposals),
-                    safety_factor: safety_scale,
-                };
-                generation.envelope_overflow = EnvelopeOverflow::Grow {
-                    safety_factor: safety_scale,
-                };
-            } else {
-                generation.envelope = EnvelopeMode::ProvenPhaseSpace;
-                generation.envelope_overflow = EnvelopeOverflow::Error;
-            }
-            if let Some(bytes) = memory {
-                generation.memory = MemoryBudget::Bytes(bytes);
-            }
-            let parent = output.parent().unwrap_or_else(|| std::path::Path::new("."));
-            let temporary = tempfile::Builder::new()
-                .prefix(".gluex-gen-")
-                .suffix(".hddm.tmp")
-                .tempfile_in(parent)?
-                .into_temp_path();
-            let mut sink = HddmSink::new(&temporary, hddm_config)?;
-            let generation_report =
-                generator.generate_unweighted_to(generation, evaluator.as_ref(), &mut sink)?;
-            drop(sink);
-            persist_temp(temporary, &output, force)?;
+            let generation_report = generate(
+                &parsed,
+                &output,
+                &GenerationRunOptions {
+                    events,
+                    run_number,
+                    seed,
+                    first_event_number: first_event,
+                    memory,
+                    max_proposals,
+                    max_weight,
+                    pilot_proposals,
+                    safety_scale,
+                    force,
+                },
+            )
+            .map_err(|error| io::Error::other(error.to_string()))?;
             if let Some(report_path) = report {
                 write_json_transactional(&report_path, &generation_report, force)?;
             }

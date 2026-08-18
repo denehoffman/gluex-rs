@@ -3,8 +3,9 @@ pub(crate) mod generation {
     use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
     use crate::generation::{
-        GlueXHddmConfig, HddmSink,
+        GenerationRunOptions, GlueXHddmConfig, HddmSink,
         config::{GenerationConfig, ScalarDistribution},
+        generate,
         species::gluex_particle_from_external_ids,
     };
     use laddu::prelude::{Channel, CompiledModel, Dataset, ParquetSource, RealVec3};
@@ -201,6 +202,61 @@ pub(crate) mod generation {
         fn write(&self, path: PathBuf, indent: usize) -> PyResult<()> {
             let json = serialize_config(&self.0, indent)?;
             std::fs::write(path, format!("{json}\n")).map_err(generation_error)
+        }
+
+        /// Generate unweighted events directly to an HDDM file.
+        #[pyo3(signature = (
+            output,
+            *,
+            events,
+            run_number,
+            seed=0,
+            first_event_number=0,
+            memory=None,
+            max_proposals=None,
+            max_weight=None,
+            pilot_proposals=None,
+            safety_scale=None,
+            force=false
+        ))]
+        #[allow(clippy::too_many_arguments)]
+        fn run(
+            &self,
+            py: Python<'_>,
+            output: PathBuf,
+            events: usize,
+            run_number: i64,
+            seed: u64,
+            first_event_number: i32,
+            memory: Option<u64>,
+            max_proposals: Option<usize>,
+            max_weight: Option<f64>,
+            pilot_proposals: Option<usize>,
+            safety_scale: Option<f64>,
+            force: bool,
+        ) -> PyResult<Py<PyAny>> {
+            let config = self.0.clone();
+            let report = py.detach(move || {
+                generate(
+                    &config,
+                    output,
+                    &GenerationRunOptions {
+                        events,
+                        run_number,
+                        seed,
+                        first_event_number,
+                        memory,
+                        max_proposals,
+                        max_weight,
+                        pilot_proposals,
+                        safety_scale,
+                        force,
+                    },
+                )
+                .map_err(generation_error)
+            })?;
+            let json = serde_json::to_string(&report).map_err(generation_error)?;
+            Ok(py.import("json")?.call_method1("loads", (json,))?.unbind())
         }
 
         /// Optional manually supplied maximum event weight.

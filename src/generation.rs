@@ -10,7 +10,10 @@ use laddu::{
         channel::{Channel, EdgeHandle},
         vectors::RealVec3,
     },
-    prelude::{EventBatch, LadduDataResult, Schema, WritePlan},
+    prelude::{
+        EnvelopeMode, EnvelopeOverflow, EventBatch, GenerationReport, LadduDataResult,
+        MemoryBudget, Schema, UnweightedConfig, WritePlan,
+    },
 };
 use thiserror::Error;
 
@@ -23,6 +26,113 @@ use crate::generation::hddm_s::{
 pub mod config;
 pub(crate) mod hddm_s;
 pub mod species;
+
+/// Runtime options for standalone Monte Carlo generation.
+#[derive(Clone, Debug)]
+pub struct GenerationRunOptions {
+    /// Number of accepted events to generate.
+    pub events: usize,
+    /// Run number stored in the HDDM output.
+    pub run_number: RunNumber,
+    /// Deterministic generation and HDDM seed.
+    pub seed: u64,
+    /// First event number stored in the HDDM output.
+    pub first_event_number: i32,
+    /// Optional generation memory cap in bytes.
+    pub memory: Option<u64>,
+    /// Optional production proposal limit.
+    pub max_proposals: Option<usize>,
+    /// Optional manual maximum target weight, overriding the manifest.
+    pub max_weight: Option<f64>,
+    /// Optional pilot proposal count, overriding the manifest.
+    pub pilot_proposals: Option<usize>,
+    /// Optional rejection-envelope safety factor, overriding the manifest.
+    pub safety_scale: Option<f64>,
+    /// Whether an existing output file may be replaced.
+    pub force: bool,
+}
+
+/// Run standalone Monte Carlo generation from an in-memory configuration.
+///
+/// The HDDM output is written transactionally, so a failed run does not leave
+/// a partial destination file behind.
+///
+/// # Errors
+///
+/// Returns an error when the configuration is invalid, generation fails, or
+/// the output cannot be written.
+pub fn generate(
+    config: &config::GenerationConfig,
+    output: impl AsRef<Path>,
+    options: &GenerationRunOptions,
+) -> Result<GenerationReport, Box<dyn std::error::Error + Send + Sync>> {
+    let output = output.as_ref();
+    if output.exists() && !options.force {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!(
+                "{} already exists; enable replacement to overwrite it",
+                output.display()
+            ),
+        )
+        .into());
+    }
+    let channel = config.to_channel()?;
+    config::validate_hddm_species(&channel)?;
+    config.validate_execution()?;
+    let hddm_config = GlueXHddmConfig::new(&channel)?
+        .with_run_number(options.run_number)
+        .with_event_number(options.first_event_number)
+        .with_random_seed(options.seed);
+    let generator = config.to_generator()?;
+    let evaluator = config.model_evaluator()?;
+    let mut generation = UnweightedConfig::new(options.events);
+    generation.seed = options.seed;
+    generation.max_proposals = options.max_proposals;
+    let max_weight = options.max_weight.or(config.generation.max_weight);
+    let safety_scale = options
+        .safety_scale
+        .unwrap_or(config.generation.safety_scale);
+    if let Some(max_weight) = max_weight {
+        generation.envelope = EnvelopeMode::Strict { max_weight };
+        generation.envelope_overflow = EnvelopeOverflow::Grow {
+            safety_factor: safety_scale,
+        };
+    } else if evaluator.is_some() {
+        generation.envelope = EnvelopeMode::Pilot {
+            proposals: options
+                .pilot_proposals
+                .unwrap_or(config.generation.pilot_proposals),
+            safety_factor: safety_scale,
+        };
+        generation.envelope_overflow = EnvelopeOverflow::Grow {
+            safety_factor: safety_scale,
+        };
+    } else {
+        generation.envelope = EnvelopeMode::ProvenPhaseSpace;
+        generation.envelope_overflow = EnvelopeOverflow::Error;
+    }
+    if let Some(bytes) = options.memory {
+        generation.memory = MemoryBudget::Bytes(bytes);
+    }
+    let parent = output.parent().unwrap_or_else(|| Path::new("."));
+    let temporary = tempfile::Builder::new()
+        .prefix(".gluex-gen-")
+        .suffix(".hddm.tmp")
+        .tempfile_in(parent)?
+        .into_temp_path();
+    let mut sink = HddmSink::new(&temporary, hddm_config)?;
+    let report = generator.generate_unweighted_to(generation, evaluator.as_ref(), &mut sink)?;
+    drop(sink);
+    if options.force {
+        temporary.persist(output).map_err(|error| error.error)?;
+    } else {
+        temporary
+            .persist_noclobber(output)
+            .map_err(|error| error.error)?;
+    }
+    Ok(report)
+}
 
 /// A result type for `GlueX` Monte Carlo generators.
 pub type GlueXGenerationResult<T> = Result<T, GlueXGenerationError>;

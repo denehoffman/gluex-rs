@@ -182,6 +182,23 @@ def test_cli_executes_python_authored_model_config(tmp_path: Path) -> None:
     assert 'wrote 5 events' in result.stdout
 
 
+def test_python_generation_config_runs_directly(tmp_path: Path) -> None:
+    config = generation.GenerationConfig(_generation_channel())
+    output = tmp_path / 'python-events.hddm'
+
+    report = config.run(
+        output,
+        events=5,
+        run_number=90_000,
+        seed=1234,
+    )
+
+    assert output.stat().st_size > 0
+    assert report['requested'] == 5
+    assert report['produced'] == 5
+    assert report['seed'] == 1234
+
+
 def test_generation_writer_consumes_laddu_dataset(tmp_path: Path) -> None:
     config = generation.GlueXHddmConfig(
         _channel(),
