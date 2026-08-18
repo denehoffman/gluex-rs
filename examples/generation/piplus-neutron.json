@@ -1,0 +1,35 @@
+{
+  "$schema": "../../schemas/generation-v1.schema.json",
+  "version": 1,
+  "name": "gamma p -> pi+ n",
+  "beam": {
+    "name": "beam",
+    "energy": {
+      "kind": "uniform",
+      "min": 8.0,
+      "max": 9.0
+    }
+  },
+  "target": {
+    "name": "target"
+  },
+  "production": {
+    "name": "production",
+    "products": [
+      {
+        "name": "pi_plus",
+        "particle": "PiPlus"
+      },
+      {
+        "name": "neutron",
+        "particle": 2112
+      }
+    ],
+    "transfer": {
+      "outgoing": "pi_plus",
+      "distribution": {
+        "kind": "uniform"
+      }
+    }
+  }
+}

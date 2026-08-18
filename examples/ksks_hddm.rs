@@ -376,7 +376,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             envelope_overflow: EnvelopeOverflow::default(),
             memory: MemoryBudget::Auto,
         },
-        &evaluator,
+        Some(&evaluator),
         &mut sink,
     )?;
 
