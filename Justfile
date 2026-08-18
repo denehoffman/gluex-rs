@@ -37,7 +37,7 @@ test-rust:
     cargo test --release
 
 test-python: build-python
-    pytest python/tests
+    {{python}} -m pytest python/tests
 
 test: test-rust test-python
 
