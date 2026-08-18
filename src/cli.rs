@@ -8,12 +8,17 @@ use crate::core::{
     GlueXCoreError, RunNumber,
     run_periods::{RunPeriod, coherent_peak, parse_rest_version_selection, rest_versions_for},
 };
+use crate::generation::{
+    GlueXHddmConfig, HddmSink,
+    config::{GenerationConfig, validate_hddm_species},
+};
 use crate::lumi::{Luminosity, LuminosityContext, RESTVersionSelection};
 use clap::{
     Args, CommandFactory, Parser, Subcommand,
     builder::{Styles, styling::AnsiColor},
     error::ErrorKind,
 };
+use laddu::prelude::{EnvelopeMode, EnvelopeOverflow, MemoryBudget, UnweightedConfig};
 use serde_json::to_writer_pretty;
 use strum::IntoEnumIterator;
 
@@ -34,10 +39,80 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Validate and run standalone Monte Carlo generation.
+    Gen(GenArgs),
     /// Calculate photon flux and tagged luminosity histograms.
     Lumi(FluxArgs),
     /// Print reference metadata for `GlueX` analysis inputs.
     Info(InfoArgs),
+}
+
+#[derive(Args)]
+struct GenArgs {
+    #[command(subcommand)]
+    command: GenCommand,
+}
+
+#[derive(Subcommand)]
+enum GenCommand {
+    /// Print the generation JSON Schema.
+    Schema {
+        /// Write the schema to a file instead of standard output.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Parse, semantically validate, and compile a generation file.
+    Check {
+        /// Generation manifest.
+        config: PathBuf,
+        /// Emit a machine-readable success result.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Generate unweighted events from a validated manifest.
+    Run {
+        /// Generation manifest.
+        config: PathBuf,
+        /// Number of accepted events.
+        #[arg(long)]
+        events: usize,
+        /// `GlueX` run number stored in HDDM.
+        #[arg(long)]
+        run_number: RunNumber,
+        /// Deterministic generation and HDDM seed.
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        /// Destination HDDM file. Defaults to the manifest path with `.hddm`.
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// First HDDM event number.
+        #[arg(long, default_value_t = 0)]
+        first_event: i32,
+        /// Optional generation memory cap in bytes.
+        #[arg(long)]
+        memory: Option<u64>,
+        /// Optional production proposal limit.
+        #[arg(long)]
+        max_proposals: Option<usize>,
+        /// Manually supplied maximum target weight, overriding the manifest.
+        ///
+        /// Without this option, model-less generation uses a certified bound;
+        /// model-backed generation estimates one from pilot proposals.
+        #[arg(long)]
+        max_weight: Option<f64>,
+        /// Pilot proposals used to estimate a model-weighted envelope.
+        #[arg(long)]
+        pilot_proposals: Option<usize>,
+        /// Scale applied to pilot estimates and grown envelopes.
+        #[arg(long)]
+        safety_scale: Option<f64>,
+        /// Optional JSON generation report.
+        #[arg(long)]
+        report: Option<PathBuf>,
+        /// Replace an existing HDDM or report file.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Args)]
@@ -193,6 +268,7 @@ where
     let cli = Cli::try_parse_from(args_vec)?;
 
     match cli.command {
+        Some(Command::Gen(args)) => run_gen(args),
         Some(Command::Lumi(args)) => run_flux(args).map_err(lumi_error),
         Some(Command::Info(args)) => match args.command {
             InfoCommand::Rest {
@@ -232,6 +308,175 @@ where
             Ok(())
         }
     }
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_gen(args: GenArgs) -> Result<(), Box<dyn std::error::Error>> {
+    match args.command {
+        GenCommand::Schema { output } => {
+            let schema = GenerationConfig::json_schema();
+            if let Some(path) = output {
+                let file = std::fs::File::create(path)?;
+                serde_json::to_writer_pretty(file, &schema)?;
+            } else {
+                serde_json::to_writer_pretty(io::stdout().lock(), &schema)?;
+                println!();
+            }
+            Ok(())
+        }
+        GenCommand::Check { config, json } => {
+            let source = std::fs::read_to_string(&config)?;
+            let parsed = GenerationConfig::from_json(&source)?;
+            let channel = parsed.to_channel()?;
+            validate_hddm_species(&channel)?;
+            parsed.validate_execution()?;
+            if json {
+                serde_json::to_writer_pretty(
+                    io::stdout().lock(),
+                    &serde_json::json!({
+                        "valid": true,
+                        "config_sha256": parsed.semantic_sha256()?,
+                    }),
+                )?;
+                println!();
+            } else {
+                println!(
+                    "{} is valid (sha256 {})",
+                    config.display(),
+                    parsed.semantic_sha256()?
+                );
+            }
+            Ok(())
+        }
+        GenCommand::Run {
+            config,
+            events,
+            run_number,
+            seed,
+            output,
+            first_event,
+            memory,
+            max_proposals,
+            max_weight,
+            pilot_proposals,
+            safety_scale,
+            report,
+            force,
+        } => {
+            let output = output.unwrap_or_else(|| config.with_extension("hddm"));
+            require_new_output(&output, force)?;
+            if let Some(report) = &report {
+                require_new_output(report, force)?;
+            }
+            let source = std::fs::read_to_string(&config)?;
+            let parsed = GenerationConfig::from_json(&source)?;
+            let channel = parsed.to_channel()?;
+            validate_hddm_species(&channel)?;
+            let hddm_config = GlueXHddmConfig::new(&channel)?
+                .with_run_number(run_number)
+                .with_event_number(first_event)
+                .with_random_seed(seed);
+            let generator = parsed.to_generator()?;
+            let evaluator = parsed.model_evaluator()?;
+            let mut generation = UnweightedConfig::new(events);
+            generation.seed = seed;
+            generation.max_proposals = max_proposals;
+            let max_weight = max_weight.or(parsed.generation.max_weight);
+            let safety_scale = safety_scale.unwrap_or(parsed.generation.safety_scale);
+            if let Some(max_weight) = max_weight {
+                generation.envelope = EnvelopeMode::Strict { max_weight };
+                generation.envelope_overflow = EnvelopeOverflow::Grow {
+                    safety_factor: safety_scale,
+                };
+            } else if evaluator.is_some() {
+                generation.envelope = EnvelopeMode::Pilot {
+                    proposals: pilot_proposals.unwrap_or(parsed.generation.pilot_proposals),
+                    safety_factor: safety_scale,
+                };
+                generation.envelope_overflow = EnvelopeOverflow::Grow {
+                    safety_factor: safety_scale,
+                };
+            } else {
+                generation.envelope = EnvelopeMode::ProvenPhaseSpace;
+                generation.envelope_overflow = EnvelopeOverflow::Error;
+            }
+            if let Some(bytes) = memory {
+                generation.memory = MemoryBudget::Bytes(bytes);
+            }
+            let parent = output.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let temporary = tempfile::Builder::new()
+                .prefix(".gluex-gen-")
+                .suffix(".hddm.tmp")
+                .tempfile_in(parent)?
+                .into_temp_path();
+            let mut sink = HddmSink::new(&temporary, hddm_config)?;
+            let generation_report =
+                generator.generate_unweighted_to(generation, evaluator.as_ref(), &mut sink)?;
+            drop(sink);
+            persist_temp(temporary, &output, force)?;
+            if let Some(report_path) = report {
+                write_json_transactional(&report_path, &generation_report, force)?;
+            }
+            if generation_report.envelope_updates > 0 {
+                eprintln!(
+                    "warning: rejection envelope was exceeded {} time(s); grew the envelope to {:.6e} and retrospectively thinned accepted events",
+                    generation_report.envelope_updates,
+                    generation_report.envelope.unwrap_or_default(),
+                );
+            }
+            println!(
+                "wrote {} events to {} ({:.3}% acceptance)",
+                generation_report.produced,
+                output.display(),
+                100.0 * generation_report.acceptance_rate()
+            );
+            Ok(())
+        }
+    }
+}
+
+fn require_new_output(path: &std::path::Path, force: bool) -> io::Result<()> {
+    if path.exists() && !force {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!(
+                "{} already exists; pass --force to replace it",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn persist_temp(
+    temporary: tempfile::TempPath,
+    output: &std::path::Path,
+    force: bool,
+) -> io::Result<()> {
+    if force {
+        temporary.persist(output).map_err(|error| error.error)
+    } else {
+        temporary
+            .persist_noclobber(output)
+            .map_err(|error| error.error)
+    }
+}
+
+fn write_json_transactional(
+    output: &std::path::Path,
+    value: &impl serde::Serialize,
+    force: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    require_new_output(output, force)?;
+    let parent = output.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".gluex-gen-")
+        .suffix(".json.tmp")
+        .tempfile_in(parent)?;
+    serde_json::to_writer_pretty(&mut temporary, value)?;
+    temporary.as_file_mut().sync_all()?;
+    persist_temp(temporary.into_temp_path(), output, force)?;
+    Ok(())
 }
 
 /// Render command output or errors and return the process exit status.

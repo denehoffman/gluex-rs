@@ -1,0 +1,643 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenerationConfig",
+  "description": "A standalone generation configuration.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "Optional schema URI used by JSON-aware editors.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "beam": {
+      "description": "Photon beam specification.",
+      "$ref": "#/$defs/BeamConfig"
+    },
+    "generation": {
+      "description": "Optional manual rejection-envelope override.\n\nWhen omitted, Laddu computes a certified model-less phase-space bound.",
+      "$ref": "#/$defs/GenerationSettings"
+    },
+    "model": {
+      "description": "Optional serialized Laddu model used as the event intensity."
+    },
+    "name": {
+      "description": "Human-readable channel name.",
+      "type": "string"
+    },
+    "parameters": {
+      "description": "Free model parameters in Laddu's parameter order.",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "number",
+        "format": "double"
+      }
+    },
+    "production": {
+      "description": "Two-to-two production vertex and its subsequent decay trees.",
+      "$ref": "#/$defs/ProductionConfig"
+    },
+    "scalars": {
+      "description": "Additional generated scalar columns available to the model.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ScalarDistribution"
+      }
+    },
+    "target": {
+      "description": "Fixed proton target specification.",
+      "$ref": "#/$defs/TargetConfig",
+      "default": {
+        "name": "target"
+      }
+    },
+    "version": {
+      "description": "Configuration format version. Currently this must be `1`.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "name",
+    "beam",
+    "production"
+  ],
+  "$defs": {
+    "BeamConfig": {
+      "description": "Photon beam configuration.",
+      "type": "object",
+      "properties": {
+        "energy": {
+          "description": "Beam-energy proposal in `GeV`.",
+          "$ref": "#/$defs/ScalarDistribution"
+        },
+        "name": {
+          "description": "Unique channel edge name.",
+          "type": "string",
+          "default": "beam"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "energy"
+      ]
+    },
+    "DecayConfig": {
+      "description": "A one-to-two isotropic decay.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Name of the decay vertex.",
+          "type": "string"
+        },
+        "products": {
+          "description": "Exactly two decay products.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ParticleNode"
+          },
+          "maxItems": 2,
+          "minItems": 2
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "products"
+      ]
+    },
+    "GenerationSettings": {
+      "description": "Rejection-envelope settings for unweighted generation.\n\nBy default, Laddu computes a certified phase-space envelope. The manual\nmaximum is retained as an expert override for unit-model generation.",
+      "type": "object",
+      "properties": {
+        "max_weight": {
+          "description": "Manually supplied maximum target weight.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "pilot_proposals": {
+          "description": "Number of proposals used to estimate an envelope for model-weighted generation.",
+          "type": "integer",
+          "format": "uint",
+          "default": 10000,
+          "minimum": 0
+        },
+        "safety_scale": {
+          "description": "Factor used when growing an explicitly supplied envelope.",
+          "type": "number",
+          "format": "double",
+          "default": 2.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "MassDistribution": {
+      "description": "Invariant-mass proposal for an intermediate state.",
+      "oneOf": [
+        {
+          "description": "Use one invariant mass in `GeV`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "fixed"
+            },
+            "value": {
+              "description": "Fixed mass.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "description": "Draw uniformly in a mass range, clipped to kinematic support.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "uniform"
+            },
+            "max": {
+              "description": "Upper mass bound.",
+              "type": "number",
+              "format": "double"
+            },
+            "min": {
+              "description": "Lower mass bound.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "min",
+            "max"
+          ]
+        }
+      ]
+    },
+    "ParticleNode": {
+      "description": "A named particle, optionally followed by a binary decay.",
+      "type": "object",
+      "properties": {
+        "decay": {
+          "description": "Optional binary decay.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecayConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mass": {
+          "description": "Optional fixed or sampled invariant mass.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MassDistribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "description": "Unique edge name used in diagnostics and Laddu expressions.",
+          "type": "string"
+        },
+        "particle": {
+          "description": "`GlueX` enum name, common particle label, or PDG code.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParticleReference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "ParticleReference": {
+      "description": "A particle identifier accepted by generation JSON.",
+      "anyOf": [
+        {
+          "description": "`GlueX` enum name or a recognized `GlueX` particle label.",
+          "type": "string"
+        },
+        {
+          "description": "PDG Monte Carlo identifier.",
+          "type": "integer",
+          "format": "int"
+        }
+      ]
+    },
+    "ProductionConfig": {
+      "description": "The primary two-to-two production vertex.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Name of the production vertex.",
+          "type": "string",
+          "default": "production"
+        },
+        "products": {
+          "description": "Exactly two outgoing particles or resonances.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ParticleNode"
+          },
+          "maxItems": 2,
+          "minItems": 2
+        },
+        "transfer": {
+          "description": "Momentum-transfer proposal and beam-to-product pairing.",
+          "$ref": "#/$defs/TransferConfig"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "products",
+        "transfer"
+      ]
+    },
+    "ScalarDistribution": {
+      "description": "A scalar proposal distribution.",
+      "oneOf": [
+        {
+          "description": "Use one value.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "fixed"
+            },
+            "value": {
+              "description": "Fixed value.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "description": "Draw uniformly from `[min, max)`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "uniform"
+            },
+            "max": {
+              "description": "Upper bound.",
+              "type": "number",
+              "format": "double"
+            },
+            "min": {
+              "description": "Lower bound.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "min",
+            "max"
+          ]
+        },
+        {
+          "description": "Draw from an inline piecewise-constant histogram.",
+          "type": "object",
+          "properties": {
+            "edges": {
+              "description": "Bin edges, with one more edge than weight.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "histogram"
+            },
+            "weights": {
+              "description": "Nonnegative bin weights.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "edges",
+            "weights"
+          ]
+        }
+      ]
+    },
+    "TargetConfig": {
+      "description": "Fixed proton target configuration.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Unique channel edge name.",
+          "type": "string",
+          "default": "target"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransferComponent": {
+      "description": "A non-mixture transfer-density component.",
+      "oneOf": [
+        {
+          "description": "Uniform in `t`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "uniform"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "Proportional to `exp(slope * t)`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "exponential"
+            },
+            "slope": {
+              "description": "Exponential slope.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": [
+            "kind",
+            "slope"
+          ]
+        },
+        {
+          "description": "Pole-like density.",
+          "type": "object",
+          "properties": {
+            "exchange_mass": {
+              "description": "Exchanged-particle mass in `GeV`.",
+              "type": "number",
+              "format": "double"
+            },
+            "kind": {
+              "type": "string",
+              "const": "pole"
+            },
+            "power": {
+              "description": "Positive denominator power.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": [
+            "kind",
+            "exchange_mass",
+            "power"
+          ]
+        },
+        {
+          "description": "Piecewise-constant histogram density.",
+          "type": "object",
+          "properties": {
+            "edges": {
+              "description": "Histogram bin edges.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "histogram"
+            },
+            "weights": {
+              "description": "Nonnegative histogram weights.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "edges",
+            "weights"
+          ]
+        }
+      ]
+    },
+    "TransferConfig": {
+      "description": "Momentum-transfer configuration for production.",
+      "type": "object",
+      "properties": {
+        "distribution": {
+          "description": "Transfer-density proposal.",
+          "$ref": "#/$defs/TransferDistribution"
+        },
+        "outgoing": {
+          "description": "Outgoing product paired with the photon beam in Mandelstam `t`.",
+          "type": "string"
+        },
+        "t_max": {
+          "description": "Optional upper `t` limit.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "t_min": {
+          "description": "Optional lower `t` limit.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "outgoing",
+        "distribution"
+      ]
+    },
+    "TransferDistribution": {
+      "description": "A normalized momentum-transfer density.",
+      "oneOf": [
+        {
+          "description": "Uniform in `t`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "uniform"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "Proportional to `exp(slope * t)`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "exponential"
+            },
+            "slope": {
+              "description": "Exponential slope.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": [
+            "kind",
+            "slope"
+          ]
+        },
+        {
+          "description": "Pole-like density.",
+          "type": "object",
+          "properties": {
+            "exchange_mass": {
+              "description": "Exchanged-particle mass in `GeV`.",
+              "type": "number",
+              "format": "double"
+            },
+            "kind": {
+              "type": "string",
+              "const": "pole"
+            },
+            "power": {
+              "description": "Positive denominator power.",
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": [
+            "kind",
+            "exchange_mass",
+            "power"
+          ]
+        },
+        {
+          "description": "Piecewise-constant histogram density.",
+          "type": "object",
+          "properties": {
+            "edges": {
+              "description": "Histogram bin edges.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "histogram"
+            },
+            "weights": {
+              "description": "Nonnegative histogram weights.",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "edges",
+            "weights"
+          ]
+        },
+        {
+          "description": "Positive weighted mixture of component densities.",
+          "type": "object",
+          "properties": {
+            "components": {
+              "description": "Mixture components.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TransferMixtureComponent"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "mixture"
+            }
+          },
+          "required": [
+            "kind",
+            "components"
+          ]
+        }
+      ]
+    },
+    "TransferMixtureComponent": {
+      "description": "One weighted component in a transfer-density mixture.",
+      "type": "object",
+      "properties": {
+        "component": {
+          "description": "Component density.",
+          "$ref": "#/$defs/TransferComponent"
+        },
+        "weight": {
+          "description": "Positive mixture weight.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "weight",
+        "component"
+      ]
+    }
+  }
+}

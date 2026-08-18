@@ -19,6 +19,8 @@ use crate::generation::hddm_s::{
     Vertex,
 };
 
+/// Strict standalone-generation configuration and validation.
+pub mod config;
 pub(crate) mod hddm_s;
 pub mod species;
 
