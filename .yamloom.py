@@ -25,7 +25,7 @@ build_jobs = MaturinBuildSuite(
     needs=['build-test-check'],
     condition=build_condition,
     sccache=~context.github.ref.startswith('refs/tags/'),
-    minimum_python='3.10',
+    minimum_python='3.11',
     args=('--release', '--out', 'dist', '--generate-stubs'),
     manifest_path='Cargo.toml',
 ).jobs()
@@ -43,7 +43,7 @@ release_workflow = Workflow(
             steps=[
                 Checkout(),
                 SetupRust(components=['clippy']),
-                SetupUV(python_version='3.10'),
+                SetupUV(python_version='3.11'),
                 script('cargo clippy --all-targets --all-features -- -D warnings'),
                 script('cargo test'),
                 script('cargo check --all-targets --features python'),
