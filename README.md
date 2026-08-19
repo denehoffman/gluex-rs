@@ -4,7 +4,7 @@ Python tools for GlueX analysis, conditions data, luminosity calculations, and H
 
 ## Install
 
-Use Python 3.10 or newer. With pip:
+Use Python 3.11 or newer. With pip:
 
 ```bash
 python -m pip install gluex-rs
