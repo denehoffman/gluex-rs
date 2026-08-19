@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "gluex-rs"
 description = "A GlueX Utilities Library"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "Apache-2.0 OR MIT" }
 authors = [{ name = "Nathaniel Dene Hoffman", email = "nhoffman@wm.edu" }]
@@ -14,7 +14,6 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -43,7 +42,7 @@ Documentation = "https://github.com/denehoffman/gluex-rs#readme"
 Issues = "https://github.com/denehoffman/gluex-rs/issues"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 
 [tool.maturin]
 bindings = "pyo3"
