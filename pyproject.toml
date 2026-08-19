@@ -23,7 +23,10 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
-dependencies = ["laddu>=0.21.2,<0.22", "numpy>=2"]
+dependencies = [
+    "laddu>=0.21.3,<0.22",
+    "numpy>=2",
+]
 
 [project.scripts]
 gluex = "gluex:_console_main"

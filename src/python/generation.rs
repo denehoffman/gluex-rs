@@ -3,12 +3,10 @@ pub(crate) mod generation {
     use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
     use crate::generation::{
-        GenerationRunOptions, GlueXHddmConfig, HddmSink,
-        config::{GenerationConfig, ScalarDistribution},
-        generate,
+        GenerationRunOptions, GlueXHddmConfig, HddmSink, config::GenerationConfig, generate,
         species::gluex_particle_from_external_ids,
     };
-    use laddu::prelude::{Channel, CompiledModel, Dataset, ParquetSource, RealVec3};
+    use laddu::prelude::{Channel, CompiledModel, Dataset, ParquetSource, RealVec3, ScalarSource};
     use pyo3::{
         exceptions::{PyRuntimeError, PyValueError},
         prelude::*,
@@ -61,40 +59,6 @@ pub(crate) mod generation {
         String::from_utf8(output).map_err(generation_error)
     }
 
-    /// Distribution for an additional generated scalar branch.
-    #[pyclass(
-        name = "Scalar",
-        module = "gluex.generation",
-        frozen,
-        skip_from_py_object
-    )]
-    #[derive(Clone)]
-    pub struct PyScalar(ScalarDistribution);
-
-    #[pymethods]
-    impl PyScalar {
-        /// Construct a scalar with one fixed value.
-        #[staticmethod]
-        fn fixed(value: f64) -> Self {
-            Self(ScalarDistribution::Fixed { value })
-        }
-
-        /// Construct a scalar uniformly distributed on ``[low, high)``.
-        #[staticmethod]
-        fn uniform(low: f64, high: f64) -> Self {
-            Self(ScalarDistribution::Uniform {
-                min: low,
-                max: high,
-            })
-        }
-
-        /// Construct a piecewise-constant histogram scalar.
-        #[staticmethod]
-        fn histogram(edges: Vec<f64>, weights: Vec<f64>) -> Self {
-            Self(ScalarDistribution::Histogram { edges, weights })
-        }
-    }
-
     fn config_from_python(
         channel: &Bound<'_, PyAny>,
         model: Option<&Bound<'_, PyAny>>,
@@ -121,8 +85,10 @@ pub(crate) mod generation {
         if let Some(scalars) = scalars {
             for (name, source) in scalars {
                 let name: String = name.extract()?;
-                let source = source.extract::<PyRef<'_, PyScalar>>()?;
-                config.scalars.insert(name, source.0.clone());
+                let source_json: String = source.call_method0("to_json")?.extract()?;
+                let source: ScalarSource =
+                    serde_json::from_str(&source_json).map_err(generation_error)?;
+                config.scalars.insert(name, source);
             }
         }
         config.validate().map_err(generation_error)?;
@@ -147,7 +113,7 @@ pub(crate) mod generation {
             *,
             model: "laddu.Model | None" = None,
             parameters: "Sequence[float] | dict[str, float] | None" = None,
-            scalars: "dict[str, Scalar] | None" = None,
+            scalars: "dict[str, laddu.ScalarSource] | None" = None,
             max_weight=None,
             pilot_proposals=10_000,
             safety_scale=2.0,
@@ -178,9 +144,11 @@ pub(crate) mod generation {
         }
 
         /// Add or replace a named scalar branch.
-        fn add_scalar(&mut self, name: String, source: &PyScalar) -> PyResult<()> {
+        fn add_scalar(&mut self, name: String, source: &Bound<'_, PyAny>) -> PyResult<()> {
             let mut updated = self.0.clone();
-            updated.scalars.insert(name, source.0.clone());
+            let source_json: String = source.call_method0("to_json")?.extract()?;
+            let source = serde_json::from_str(&source_json).map_err(generation_error)?;
+            updated.scalars.insert(name, source);
             updated.validate().map_err(generation_error)?;
             self.0 = updated;
             Ok(())
@@ -315,7 +283,7 @@ pub(crate) mod generation {
         *,
         model: "laddu.Model | None" = None,
         parameters: "Sequence[float] | dict[str, float] | None" = None,
-        scalars: "dict[str, Scalar] | None" = None,
+        scalars: "dict[str, laddu.ScalarSource] | None" = None,
         max_weight=None,
         pilot_proposals=10_000,
         safety_scale=2.0,

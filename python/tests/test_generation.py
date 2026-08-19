@@ -106,15 +106,17 @@ def test_python_generation_config_includes_model_parameters_and_scalars(
         model=model,
         parameters={'scale': 3.0},
         scalars={
-            'polarization': generation.Scalar.uniform(-0.5, 0.5),
-            'setting': generation.Scalar.fixed(7.0),
+            'polarization': laddu.ScalarSource.uniform(-0.5, 0.5),
+            'setting': laddu.ScalarSource.fixed(7.0),
         },
         pilot_proposals=250,
         safety_scale=1.5,
     )
     config.add_scalar(
         'calibration',
-        generation.Scalar.histogram([0.0, 1.0, 2.0], [1.0, 3.0]),
+        laddu.ScalarSource.histogram(
+            laddu.Histogram([1.0, 3.0], bin_edges=[0.0, 1.0, 2.0])
+        ),
     )
     config.max_weight = 100.0
     config.validate()
@@ -144,7 +146,7 @@ def test_cli_executes_python_authored_model_config(tmp_path: Path) -> None:
     config = generation.GenerationConfig(
         _generation_channel(),
         model=model,
-        scalars={'intensity': generation.Scalar.uniform(0.0, 1.0)},
+        scalars={'intensity': laddu.ScalarSource.uniform(0.0, 1.0)},
         pilot_proposals=100,
     )
     manifest = tmp_path / 'generation.json'

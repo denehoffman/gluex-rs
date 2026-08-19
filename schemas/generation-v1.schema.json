@@ -45,7 +45,7 @@
       "description": "Additional generated scalar columns available to the model.",
       "type": "object",
       "additionalProperties": {
-        "$ref": "#/$defs/ScalarDistribution"
+        "$ref": "#/$defs/ScalarSource"
       }
     },
     "target": {
@@ -76,7 +76,7 @@
       "properties": {
         "energy": {
           "description": "Beam-energy proposal in `GeV`.",
-          "$ref": "#/$defs/ScalarDistribution"
+          "$ref": "#/$defs/ScalarSource"
         },
         "name": {
           "description": "Unique channel edge name.",
@@ -282,8 +282,7 @@
         "transfer"
       ]
     },
-    "ScalarDistribution": {
-      "description": "A scalar proposal distribution.",
+    "ScalarSource": {
       "oneOf": [
         {
           "description": "Use one value.",
@@ -294,7 +293,7 @@
               "const": "fixed"
             },
             "value": {
-              "description": "Fixed value.",
+              "description": "Fixed scalar value.",
               "type": "number",
               "format": "double"
             }

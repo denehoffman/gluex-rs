@@ -84,7 +84,7 @@ pub struct GenerationConfig {
     pub parameters: Option<Vec<f64>>,
     /// Additional generated scalar columns available to the model.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub scalars: BTreeMap<String, ScalarDistribution>,
+    pub scalars: BTreeMap<String, ScalarSource>,
     /// Optional manual rejection-envelope override.
     ///
     /// When omitted, Laddu computes a certified model-less phase-space bound.
@@ -100,7 +100,7 @@ pub struct BeamConfig {
     #[serde(default = "default_beam_name")]
     pub name: String,
     /// Beam-energy proposal in `GeV`.
-    pub energy: ScalarDistribution,
+    pub energy: ScalarSource,
 }
 
 fn default_beam_name() -> String {
@@ -126,31 +126,6 @@ impl Default for TargetConfig {
             name: default_target_name(),
         }
     }
-}
-
-/// A scalar proposal distribution.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ScalarDistribution {
-    /// Use one value.
-    Fixed {
-        /// Fixed value.
-        value: f64,
-    },
-    /// Draw uniformly from `[min, max)`.
-    Uniform {
-        /// Lower bound.
-        min: f64,
-        /// Upper bound.
-        max: f64,
-    },
-    /// Draw from an inline piecewise-constant histogram.
-    Histogram {
-        /// Bin edges, with one more edge than weight.
-        edges: Vec<f64>,
-        /// Nonnegative bin weights.
-        weights: Vec<f64>,
-    },
 }
 
 /// The primary two-to-two production vertex.
@@ -482,7 +457,7 @@ impl GenerationConfig {
             .edge(&self.beam.name)
             .p4(Vec4::event(&self.beam.name))
             .properties(&beam_properties)
-            .initial_energy_source_direction(scalar_source(&self.beam.energy)?, RealVec3::z())
+            .initial_energy_source_direction(self.beam.energy.clone(), RealVec3::z())
             .output()
             .set_beam_id()
             .map_err(|error| GenerationConfigError::Laddu(error.to_string()))?;
@@ -528,7 +503,7 @@ impl GenerationConfig {
             .map_err(|error| GenerationConfigError::Laddu(error.to_string()))?;
         for (name, source) in &self.scalars {
             generator
-                .add_scalar(name, scalar_source(source)?)
+                .add_scalar(name, source.clone())
                 .map_err(|error| GenerationConfigError::Laddu(error.to_string()))?;
         }
         Ok(generator)
@@ -601,7 +576,7 @@ impl GenerationConfig {
             Some(laddu::prelude::InitialMomentum::EnergyDirection { energy, direction })
                 if direction.x == 0.0 && direction.y == 0.0 && direction.z > 0.0 =>
             {
-                Ok(scalar_distribution(energy))
+                Ok(energy.clone())
             }
             _ => Err(invalid(
                 format!("channel edge `{}`", beam.name()),
@@ -737,20 +712,6 @@ fn require_particle(
         ));
     }
     Ok(())
-}
-
-fn scalar_distribution(source: &ScalarSource) -> ScalarDistribution {
-    match source {
-        ScalarSource::Constant(value) => ScalarDistribution::Fixed { value: *value },
-        ScalarSource::Uniform { low, high } => ScalarDistribution::Uniform {
-            min: *low,
-            max: *high,
-        },
-        ScalarSource::Histogram(histogram) => ScalarDistribution::Histogram {
-            edges: histogram.bin_edges().to_vec(),
-            weights: histogram.counts().to_vec(),
-        },
-    }
 }
 
 fn node_from_channel(channel: &Channel, edge_name: &str) -> GenerationConfigResult<ParticleNode> {
@@ -994,29 +955,27 @@ fn validate_mass(path: &str, mass: &MassDistribution) -> GenerationConfigResult<
     }
 }
 
-fn validate_scalar(path: &str, source: &ScalarDistribution) -> GenerationConfigResult<()> {
+fn validate_scalar(path: &str, source: &ScalarSource) -> GenerationConfigResult<()> {
     match source {
-        ScalarDistribution::Fixed { value } if value.is_finite() && *value > 0.0 => Ok(()),
-        ScalarDistribution::Uniform { min, max }
-            if min.is_finite() && max.is_finite() && *min > 0.0 && max > min =>
+        ScalarSource::Constant(value) if value.is_finite() && *value > 0.0 => Ok(()),
+        ScalarSource::Uniform { low, high }
+            if low.is_finite() && high.is_finite() && *low > 0.0 && high > low =>
         {
             Ok(())
         }
-        ScalarDistribution::Histogram { edges, weights } => {
-            validate_histogram(path, edges, weights)
+        ScalarSource::Histogram(histogram) => {
+            validate_histogram(path, histogram.bin_edges(), histogram.counts())
         }
-        ScalarDistribution::Fixed { .. } => {
-            Err(invalid(path, "beam energy must be positive and finite"))
-        }
-        ScalarDistribution::Uniform { .. } => Err(invalid(
+        ScalarSource::Constant(_) => Err(invalid(path, "beam energy must be positive and finite")),
+        ScalarSource::Uniform { .. } => Err(invalid(
             path,
             "uniform beam energy requires finite 0 < min < max",
         )),
     }
 }
 
-fn validate_extra_scalar(path: &str, source: &ScalarDistribution) -> GenerationConfigResult<()> {
-    scalar_source(source)?
+fn validate_extra_scalar(path: &str, source: &ScalarSource) -> GenerationConfigResult<()> {
+    source
         .support()
         .map(|_| ())
         .map_err(|error| invalid(path, error.to_string()))
@@ -1170,17 +1129,6 @@ fn particle_properties(particle: Particle) -> ParticleProperties {
             i64::try_from(particle.to_pdg()).expect("PDG code fits i64"),
         )
         .with_id("gluex", particle.to_particle_type())
-}
-
-fn scalar_source(source: &ScalarDistribution) -> GenerationConfigResult<ScalarSource> {
-    match source {
-        ScalarDistribution::Fixed { value } => Ok(ScalarSource::constant(*value)),
-        ScalarDistribution::Uniform { min, max } => Ok(ScalarSource::uniform(*min, *max)),
-        ScalarDistribution::Histogram { edges, weights } => Ok(ScalarSource::histogram(
-            Histogram::new(weights.clone(), edges.clone())
-                .map_err(|error| GenerationConfigError::Laddu(error.to_string()))?,
-        )),
-    }
 }
 
 fn add_node(channel: &mut Channel, node: &ParticleNode) -> GenerationConfigResult<()> {
