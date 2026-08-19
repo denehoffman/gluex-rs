@@ -1,8 +1,6 @@
 # gluex-rs
 
-Python tools for GlueX analysis, conditions data, luminosity calculations, and
-HDDM event generation. The package installs the `gluex` Python module and the
-matching `gluex` command-line program.
+Python tools for GlueX analysis, conditions data, luminosity calculations, and HDDM event generation. The package installs the `gluex` Python module and the matching `gluex` command-line program.
 
 ## Install
 
@@ -18,8 +16,7 @@ Or add it to a uv project:
 uv add gluex-rs
 ```
 
-The package installs [laddu](https://github.com/denehoffman/laddu) for channel
-construction and generation. Confirm the installation:
+The package installs [laddu](https://github.com/denehoffman/laddu) for channel construction and generation. Confirm the installation:
 
 ```bash
 python -c "import gluex; print(gluex.__version__)"
@@ -35,9 +32,7 @@ period = gluex.RunPeriod("f18")
 print(period.min_run, period.max_run)
 ```
 
-GlueX conditions and luminosity utilities are exposed through the `gluex.ccdb`,
-`gluex.rcdb`, and `gluex.lumi` modules. The command-line interface is useful for
-common one-off tasks:
+GlueX conditions and luminosity utilities are exposed through the `gluex.ccdb`, `gluex.rcdb`, and `gluex.lumi` modules. The command-line interface is useful for common one-off tasks:
 
 ```bash
 gluex info runs f18
@@ -47,13 +42,9 @@ gluex lumi --run f18=2 --rcdb rcdb.sqlite --ccdb ccdb.sqlite
 
 ## Event generation
 
-Generation configurations are authored in Python. GlueX turns a Laddu channel,
-an optional model, its parameter values, and any additional scalar branches into
-a versioned JSON execution manifest. The JSON is an interchange artifact for
-`gluex gen check` and `gluex gen run`; users do not need to write or edit it.
+Generation configurations are authored in Python. GlueX turns a Laddu channel, an optional model, its parameter values, and any additional scalar branches into a versioned JSON execution manifest. The JSON is an interchange artifact for `gluex gen check` and `gluex gen run`; users do not need to write or edit it.
 
-This example creates \(\gamma p \to \pi^+ n\) and writes a model-less
-configuration:
+This example creates \(\gamma p \to \pi^+ n\) and writes a model-less configuration:
 
 ```python
 import laddu as ld
@@ -96,21 +87,28 @@ config = generation.GenerationConfig(channel)
 config.write("generation.json")
 ```
 
-`generation.config_json(channel)` remains available when a JSON string is more
-convenient. `GenerationConfig.write(...)` is preferred for complete scripts
-because the same object can configure and validate every generation option.
+`generation.config_json(channel)` remains available when a JSON string is more convenient. `GenerationConfig.write(...)` is preferred for complete scripts because the same object can configure and validate every generation option.
 
 ```bash
 gluex gen check generation.json
 gluex gen run generation.json --events 100000 --run-number 90000
 ```
 
-The default seed is `0`, and this command writes `generation.hddm` beside the
-manifest. Use `--seed` or `--output` to override either default.
+The default seed is `0`, and this command writes `generation.hddm` beside the manifest. Use `--seed` or `--output` to override either default.
 
-The optional model and additional scalar branches are configured in the same
-Python script. Parameters may be supplied by name or in
-`model.parameter_names` order:
+Users can also run a Monte Carlo generation in Python rather than using the CLI:
+
+```python
+report = config.run(
+    "events.hddm",
+    events=10_000,
+    run_number=30_000,
+    seed=1,
+)
+print(report["acceptance_rate"])
+```
+
+The optional model and additional scalar branches are configured in the same Python script. Parameters may be supplied by name or in `model.parameter_names` order:
 
 ```python
 scale = ld.parameter("scale", initial=1.0)
@@ -138,40 +136,20 @@ config.validate()
 config.write("generation.json")
 ```
 
-`Scalar.uniform(low, high)` samples on `[low, high)`. Scalar branches are
-available to Laddu expressions through `ld.scalar(name)` while the model is
-evaluated; fixed and histogram-backed scalar sources are also supported. Set
-`config.max_weight` if you have an independently known bound, or leave it unset
-to use the pilot estimate for a model-backed configuration.
+`Scalar.uniform(low, high)` samples on `[low, high)`. Scalar branches are available to Laddu expressions through `ld.scalar(name)` while the model is evaluated; fixed and histogram-backed scalar sources are also supported. Set `config.max_weight` if you have an independently known bound, or leave it unset to use the pilot estimate for a model-backed configuration.
 
 ### Transfer proposals
 
-The production vertex above pairs the incoming `beam` with outgoing `pi_plus`.
-`t_exchange(...)` with no `slope` samples uniformly in the corresponding Mandelstam transfer
-\(t=(p_\gamma-p_{\pi^+})^2\). The range is the physical \(t\) interval for that
-event’s sampled beam energy and final-state masses, so it changes across the
-8–9 GeV beam-energy range. It is not a fixed interval and it is not a separate
-uniform angular proposal.
+The production vertex above pairs the incoming `beam` with outgoing `pi_plus`. `t_exchange(...)` with no `slope` samples uniformly in the corresponding Mandelstam transfer \(t=(p_\gamma-p_{\pi^+})^2\). The range is the physical \(t\) interval for that event’s sampled beam energy and final-state masses, so it changes across the 8–9 GeV beam-energy range. It is not a fixed interval and it is not a separate uniform angular proposal.
 
-To restrict the proposal, provide `t_min` and/or `t_max`; they are intersected
-with the physical interval. For example, use
-`t_min=-4.0, t_max=0.0` in `ld.VertexProposal.t_exchange(...)`. The example’s
-unconstrained uniform proposal uses the entire physical interval.
+To restrict the proposal, provide `t_min` and/or `t_max`; they are intersected with the physical interval. For example, use `t_min=-4.0, t_max=0.0` in `ld.VertexProposal.t_exchange(...)`. The example’s unconstrained uniform proposal uses the entire physical interval.
 
 ### Certified unweighting
 
-For unit-model generation, GlueX uses Laddu 0.21.2's branch-and-bound envelope
-solver to obtain a certified finite upper bound for the proposal weight. This
-avoids tuning a pilot sample or relying on an observed maximum. The generation
-report records the certified envelope and proof statistics when available; HDDM
-output is written transactionally.
+For unit-model generation, this library uses a branch-and-bound envelope solver to obtain a certified finite upper bound for the proposal weight. This avoids tuning a pilot sample or relying on an observed maximum. The generation report records the certified envelope and proof statistics when available.
 
-When a model is present and no manual bound is supplied, GlueX estimates the
-envelope from `config.pilot_proposals` proposals and multiplies the observed
-maximum by `config.safety_scale`. These values can also be overridden for one
-run with `--pilot-proposals`, `--max-weight`, and `--safety-scale`. If a pilot or
-manual envelope is exceeded, GlueX grows it, retrospectively thins buffered
-events, and prints a warning instead of failing.
+When a model is present and no manual bound is supplied, the generator estimates the envelope from `config.pilot_proposals` proposals and multiplies the observed maximum by `config.safety_scale`. These values can also be overridden for one
+run with `--pilot-proposals`, `--max-weight`, and `--safety-scale`. If a pilot or manual envelope is exceeded, GlueX grows it, retrospectively thins buffered events, and prints a warning instead of failing.
 
 ## License
 
