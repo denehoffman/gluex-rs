@@ -26,10 +26,17 @@ gluex --help
 ## Python
 
 ```python
-import gluex
+from gluex import RunPeriod
+from gluex.ccdb import CCDB
+from gluex.lumi import Luminosity
+from gluex.rcdb import RCDB
 
-period = gluex.RunPeriod("f18")
+period = RunPeriod("f18")
 print(period.min_run, period.max_run)
+
+rcdb = RCDB()
+ccdb = CCDB()
+luminosity = Luminosity()
 ```
 
 GlueX conditions and luminosity utilities are exposed through the `gluex.ccdb`, `gluex.rcdb`, and `gluex.lumi` modules. The command-line interface is useful for common one-off tasks:
@@ -38,6 +45,12 @@ GlueX conditions and luminosity utilities are exposed through the `gluex.ccdb`, 
 gluex info runs f18
 gluex info rest f18
 gluex lumi --run f18=2 --rcdb rcdb.sqlite --ccdb ccdb.sqlite
+```
+
+REST-version metadata is bundled in `data/rest_versions.tsv`, so normal lookups do not require network access. Refresh it from the Hall-D `data_monitoring.version_info` catalog before a release:
+
+```bash
+python scripts/sync_rest_versions.py
 ```
 
 ## Event generation

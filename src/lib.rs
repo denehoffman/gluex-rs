@@ -42,6 +42,6 @@ mod python;
 
 pub use core::{
     Charge, DetectorSystem, GlueXCoreError, Histogram, Id, Particle, Polarization, RESTVersion,
-    RESTVersionSelection, RunNumber, RunPeriod, constants, enums, parsers, particles, run_periods,
-    utils,
+    RESTVersionContext, RESTVersionInfo, RESTVersionSelection, RunNumber, RunPeriod, constants,
+    enums, parsers, particles, run_periods, utils,
 };

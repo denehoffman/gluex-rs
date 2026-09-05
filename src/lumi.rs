@@ -310,7 +310,7 @@ fn get_flux_cache(
     run_period: RunPeriod,
     runs: &[RunNumber],
     polarized: bool,
-    timestamp: DateTime<Utc>,
+    rest_context: &crate::core::RESTVersionContext,
     rcdb_path: &Path,
     ccdb_path: &Path,
 ) -> Result<HashMap<RunNumber, FluxCache>, LuminosityError> {
@@ -351,7 +351,10 @@ fn get_flux_cache(
         .collect::<Result<HashMap<RunNumber, Converter>, LuminosityError>>()?;
     let ccdb = CCDB::open(ccdb_path)?;
     let ccdb_context = CCDBContext::default().with_runs(runs.iter().copied());
-    let ccdb_context_restver = ccdb_context.clone().with_timestamp(timestamp);
+    let ccdb_context_restver = ccdb_context
+        .clone()
+        .with_variation(&rest_context.variation)
+        .with_timestamp(rest_context.timestamp);
     let livetime_ratio: HashMap<RunNumber, f64> = ccdb
         .fetch(
             "/PHOTON_BEAM/pair_spectrometer/lumi/trig_live",
@@ -665,14 +668,14 @@ impl Luminosity {
                 .get(rp)
                 .copied()
                 .unwrap_or(RESTVersionSelection::Current);
-            let timestamp = selection.resolve_timestamp(*rp)?;
+            let rest_context = selection.resolve_context(*rp)?;
             cache.extend(get_flux_cache(
                 *rp,
                 runs_by_period
                     .get(rp)
                     .map_or(&[][..], |runs| runs.as_slice()),
                 ctx.polarized(),
-                timestamp,
+                &rest_context,
                 &self.rcdb,
                 &self.ccdb,
             )?);

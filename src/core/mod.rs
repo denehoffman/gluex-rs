@@ -87,5 +87,7 @@ pub enum GlueXCoreError {
 
 pub use self::enums::{DetectorSystem, Polarization};
 pub use self::particles::{Charge, Particle};
-pub use crate::core::run_periods::{RESTVersionSelection, RunPeriod};
+pub use crate::core::run_periods::{
+    RESTVersionContext, RESTVersionInfo, RESTVersionSelection, RunPeriod,
+};
 pub use laddu::physics::histogram::Histogram;

@@ -2,7 +2,11 @@
 
 from datetime import datetime, timezone
 
-from gluex import Histogram, Particle, RESTVersionSelection, RunPeriod, ccdb, generation, lumi, rcdb
+from gluex import Histogram, Particle, RESTVersionSelection, RunPeriod, generation
+from gluex.ccdb import CCDB, Data
+from gluex.lumi import FluxHistograms, Luminosity
+from gluex.rcdb import RCDB, Expr, aliases, float_cond
+from gluex.rcdb import all as all_conditions
 from laddu import Channel, Dataset
 
 
@@ -17,17 +21,17 @@ def typed_api_surface(
     histogram: Histogram = Histogram([1.0], [8.0, 9.0])
     particle: Particle = Particle.Phi
 
-    calibrations: dict[int, ccdb.Data] = ccdb.CCDB(ccdb_path).fetch_run_period(
+    calibrations: dict[int, Data] = CCDB(ccdb_path).fetch_run_period(
         '/test/demo/mytable',
         run_period=period,
         rest_version=selection,
     )
-    filter_expression: rcdb.Expr = rcdb.all(
-        rcdb.aliases.approved_production(period),
-        rcdb.float_cond('beam_current').gt(2.0),
+    filter_expression: Expr = all_conditions(
+        aliases.approved_production(period),
+        float_cond('beam_current').gt(2.0),
     )
-    run_numbers: list[int] = rcdb.RCDB(rcdb_path).fetch_runs(filters=filter_expression)
-    flux: lumi.FluxHistograms = lumi.Luminosity(rcdb_path, ccdb_path).fetch(
+    run_numbers: list[int] = RCDB(rcdb_path).fetch_runs(filters=filter_expression)
+    flux: FluxHistograms = Luminosity(rcdb_path, ccdb_path).fetch(
         histogram.edges,
         runs=run_numbers,
         rest_version={period: selection},

@@ -1,10 +1,13 @@
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
-use std::{collections::HashMap, str::FromStr};
+use std::str::FromStr;
 
 use strum::{EnumIter, IntoEnumIterator};
 
+use crate::core::parsers::parse_timestamp;
 use crate::core::{GlueXCoreError, RESTVersion, RunNumber};
+
+const REST_VERSION_DATA: &str = include_str!("../../data/rest_versions.tsv");
 
 #[derive(Copy, Clone, Debug, EnumIter, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RunPeriod {
@@ -46,6 +49,28 @@ pub enum RESTVersionSelection {
     Timestamp(DateTime<Utc>),
 }
 
+/// CCDB metadata associated with a reconstruction REST version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RESTVersionInfo {
+    /// Run period reconstructed by this version.
+    pub run_period: RunPeriod,
+    /// Reconstruction revision number.
+    pub version: RESTVersion,
+    /// CCDB variation used during reconstruction.
+    pub variation: String,
+    /// CCDB calibration timestamp used during reconstruction.
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Resolved CCDB selection for a REST version request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RESTVersionContext {
+    /// CCDB variation to query.
+    pub variation: String,
+    /// CCDB calibration timestamp to query.
+    pub timestamp: DateTime<Utc>,
+}
+
 impl RESTVersionSelection {
     /// Returns a selection for a specific REST version after validating against known metadata.
     ///
@@ -56,10 +81,13 @@ impl RESTVersionSelection {
         run_period: RunPeriod,
         rest_version: RESTVersion,
     ) -> Result<Self, GlueXCoreError> {
-        let Some(versions) = REST_VERSION_TIMESTAMPS.get(&run_period) else {
+        if !REST_VERSION_CATALOG
+            .iter()
+            .any(|info| info.run_period == run_period)
+        {
             return Err(GlueXCoreError::MissingRESTVersions(run_period));
-        };
-        if versions.contains_key(&rest_version) {
+        }
+        if rest_version_info(run_period, rest_version).is_some() {
             Ok(Self::Version(rest_version))
         } else {
             Err(GlueXCoreError::UnknownRESTVersion {
@@ -82,20 +110,37 @@ impl RESTVersionSelection {
     /// Returns an error if the requested REST version is not defined for the run period or
     /// if the run period has no REST metadata.
     pub fn resolve_timestamp(self, run_period: RunPeriod) -> Result<DateTime<Utc>, GlueXCoreError> {
+        Ok(self.resolve_context(run_period)?.timestamp)
+    }
+
+    /// Resolve the CCDB variation and timestamp for this selection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the requested REST version is not defined for the run period or
+    /// if the run period has no REST metadata.
+    pub fn resolve_context(
+        self,
+        run_period: RunPeriod,
+    ) -> Result<RESTVersionContext, GlueXCoreError> {
         match self {
-            Self::Current => Ok(Utc::now()),
-            Self::Timestamp(timestamp) => Ok(timestamp),
-            Self::Version(rest_version) => {
-                let rest_versions = REST_VERSION_TIMESTAMPS
-                    .get(&run_period)
-                    .ok_or(GlueXCoreError::MissingRESTVersions(run_period))?;
-                rest_versions.get(&rest_version).copied().ok_or(
-                    GlueXCoreError::UnknownRESTVersion {
-                        run_period,
-                        requested: rest_version,
-                    },
-                )
-            }
+            Self::Current => Ok(RESTVersionContext {
+                variation: "default".to_string(),
+                timestamp: Utc::now(),
+            }),
+            Self::Timestamp(timestamp) => Ok(RESTVersionContext {
+                variation: "default".to_string(),
+                timestamp,
+            }),
+            Self::Version(rest_version) => rest_version_info(run_period, rest_version)
+                .map(|info| RESTVersionContext {
+                    variation: info.variation.clone(),
+                    timestamp: info.timestamp,
+                })
+                .ok_or(GlueXCoreError::UnknownRESTVersion {
+                    run_period,
+                    requested: rest_version,
+                }),
         }
     }
 }
@@ -117,6 +162,25 @@ impl TryFrom<(RunPeriod, &RESTVersion)> for RESTVersionSelection {
 }
 
 impl RunPeriod {
+    /// Canonical run-period name used by Hall-D production metadata.
+    #[must_use]
+    pub const fn data_name(&self) -> &'static str {
+        match self {
+            Self::RP2016_02 => "RunPeriod-2016-02",
+            Self::RP2017_01 => "RunPeriod-2017-01",
+            Self::RP2018_01 => "RunPeriod-2018-01",
+            Self::RP2018_08 => "RunPeriod-2018-08",
+            Self::RP2019_01 => "RunPeriod-2019-01",
+            Self::RP2019_11 => "RunPeriod-2019-11",
+            Self::RP2021_08 => "RunPeriod-2021-08",
+            Self::RP2021_11 => "RunPeriod-2021-11",
+            Self::RP2022_05 => "RunPeriod-2022-05",
+            Self::RP2022_08 => "RunPeriod-2022-08",
+            Self::RP2023_01 => "RunPeriod-2023-01",
+            Self::RP2025_01 => "RunPeriod-2025-01",
+        }
+    }
+
     pub fn min_run(&self) -> RunNumber {
         match self {
             Self::RP2016_02 => 10000,
@@ -216,19 +280,19 @@ impl FromStr for RunPeriod {
     type Err = GlueXCoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "s16" => Ok(Self::RP2016_02),
-            "s17" => Ok(Self::RP2017_01),
-            "s18" => Ok(Self::RP2018_01),
-            "f18" => Ok(Self::RP2018_08),
-            "s19" => Ok(Self::RP2019_01),
-            "s20" => Ok(Self::RP2019_11),
-            "src" => Ok(Self::RP2021_08),
-            "cpp" | "npp" | "cpp/npp" => Ok(Self::RP2021_11),
-            "s22" => Ok(Self::RP2022_05),
-            "f22" => Ok(Self::RP2022_08),
-            "s23" => Ok(Self::RP2023_01),
-            "s25" => Ok(Self::RP2025_01),
+        match s.to_ascii_lowercase().as_str() {
+            "s16" | "runperiod-2016-02" => Ok(Self::RP2016_02),
+            "s17" | "runperiod-2017-01" => Ok(Self::RP2017_01),
+            "s18" | "runperiod-2018-01" => Ok(Self::RP2018_01),
+            "f18" | "runperiod-2018-08" => Ok(Self::RP2018_08),
+            "s19" | "runperiod-2019-01" => Ok(Self::RP2019_01),
+            "s20" | "runperiod-2019-11" => Ok(Self::RP2019_11),
+            "src" | "runperiod-2021-08" => Ok(Self::RP2021_08),
+            "cpp" | "npp" | "cpp/npp" | "runperiod-2021-11" => Ok(Self::RP2021_11),
+            "s22" | "runperiod-2022-05" => Ok(Self::RP2022_05),
+            "f22" | "runperiod-2022-08" => Ok(Self::RP2022_08),
+            "s23" | "runperiod-2023-01" => Ok(Self::RP2023_01),
+            "s25" | "runperiod-2025-01" => Ok(Self::RP2025_01),
             _ => Err(GlueXCoreError::RunPeriodParse(s.to_string())),
         }
     }
@@ -245,79 +309,71 @@ impl TryFrom<RunNumber> for RunPeriod {
 }
 
 lazy_static! {
-    /// REST version timestamps sourced from hallddb
-    pub static ref REST_VERSION_TIMESTAMPS: HashMap<RunPeriod, HashMap<RESTVersion, DateTime<Utc>>> = {
-        let mut m = HashMap::new();
-        let mut m_s16 = HashMap::new();
-        m_s16.insert(1, Utc.with_ymd_and_hms(2016, 7, 5, 14, 20, 0).unwrap());
-        m_s16.insert(2, Utc.with_ymd_and_hms(2016, 9, 2, 14, 42, 0).unwrap());
-        m_s16.insert(3, Utc.with_ymd_and_hms(2016, 11, 4, 14, 57, 0).unwrap());
-        m_s16.insert(4, Utc.with_ymd_and_hms(2017, 5, 19, 11, 58, 0).unwrap());
-        m_s16.insert(5, Utc.with_ymd_and_hms(2018, 1, 24, 17, 10, 0).unwrap());
-        m_s16.insert(6, Utc.with_ymd_and_hms(2018, 7, 27, 17, 14, 0).unwrap());
-        m.insert(RunPeriod::RP2016_02, m_s16);
-        let mut m_s17 = HashMap::new();
-        m_s17.insert(1, Utc.with_ymd_and_hms(2017, 6, 12, 18, 2, 0).unwrap());
-        m_s17.insert(2, Utc.with_ymd_and_hms(2017, 11, 27, 19, 5, 0).unwrap());
-        m_s17.insert(3, Utc.with_ymd_and_hms(2018, 7, 27, 17, 14, 0).unwrap());
-        m_s17.insert(4, Utc.with_ymd_and_hms(2020, 7, 24, 0, 0, 1).unwrap());
-        m.insert(RunPeriod::RP2017_01, m_s17);
-        let mut m_s18 = HashMap::new();
-        m_s18.insert(0, Utc.with_ymd_and_hms(2018, 12, 29, 17, 52, 0).unwrap());
-        m_s18.insert(1, Utc.with_ymd_and_hms(2018, 12, 29, 17, 52, 0).unwrap());
-        m_s18.insert(2, Utc.with_ymd_and_hms(2019, 2, 14, 12, 0, 0).unwrap());
-        m.insert(RunPeriod::RP2018_01, m_s18);
-        let mut m_f18 = HashMap::new();
-        m_f18.insert(0, Utc.with_ymd_and_hms(2019, 4, 24, 17, 18, 0).unwrap());
-        m_f18.insert(1, Utc.with_ymd_and_hms(2019, 5, 16, 11, 4, 0).unwrap());
-        m_f18.insert(2, Utc.with_ymd_and_hms(2019, 7, 21, 12, 0, 0).unwrap());
-        m.insert(RunPeriod::RP2018_08, m_f18);
-        let mut m_s19 = HashMap::new();
-        m_s19.insert(1, Utc.with_ymd_and_hms(2019, 9, 13, 14, 41, 0).unwrap());
-        m_s19.insert(2, Utc.with_ymd_and_hms(2019, 10, 16, 10, 55, 0).unwrap());
-        m_s19.insert(7, Utc.with_ymd_and_hms(2022, 8, 10, 12, 0, 1).unwrap());
-        m.insert(RunPeriod::RP2019_01, m_s19);
-        let mut m_s20 = HashMap::new();
-        m_s20.insert(1, Utc.with_ymd_and_hms(2020, 7, 24, 0, 0, 1).unwrap());
-        m.insert(RunPeriod::RP2019_11, m_s20);
-        let mut m_src = HashMap::new();
-        m_src.insert(2, Utc.with_ymd_and_hms(2022, 12, 14, 0, 0, 1).unwrap());
-        m.insert(RunPeriod::RP2021_08, m_src);
-        let mut m_cpp_npp = HashMap::new();
-        m_cpp_npp.insert(1, Utc.with_ymd_and_hms(2022, 8, 10, 0, 0, 1).unwrap());
-        m_cpp_npp.insert(2, Utc.with_ymd_and_hms(2024, 2, 23, 0, 0, 1).unwrap());
-        m_cpp_npp.insert(3, Utc.with_ymd_and_hms(2025, 7, 18, 0, 0, 1).unwrap());
-        m_cpp_npp.insert(4, Utc.with_ymd_and_hms(2025, 7, 18, 0, 0, 1).unwrap());
-        m.insert(RunPeriod::RP2021_11, m_cpp_npp);
-        let mut m_s22 = HashMap::new();
-        m_s22.insert(1, Utc.with_ymd_and_hms(2024, 6, 24, 0, 0, 1).unwrap());
-        m.insert(RunPeriod::RP2022_05, m_s22);
-        let mut m_f22 = HashMap::new();
-        m_f22.insert(1, Utc.with_ymd_and_hms(2024, 8, 31, 16, 13, 8).unwrap());
-        m.insert(RunPeriod::RP2022_08, m_f22);
-        let mut m_s23 = HashMap::new();
-        m_s23.insert(1, Utc.with_ymd_and_hms(2023, 12, 7, 0, 0, 1).unwrap());
-        m_s23.insert(2, Utc.with_ymd_and_hms(2023, 12, 7, 0, 0, 1).unwrap());
-        m_s23.insert(3, Utc.with_ymd_and_hms(2024, 1, 21, 16, 0, 1).unwrap());
-        m_s23.insert(4, Utc.with_ymd_and_hms(2025, 5, 10, 0, 0, 1).unwrap());
-        m.insert(RunPeriod::RP2023_01, m_s23);
-        let mut m_s25 = HashMap::new();
-        m_s25.insert(1, Utc.with_ymd_and_hms(2025, 8, 27, 12, 0, 1).unwrap());
-        m_s25.insert(2, Utc.with_ymd_and_hms(2025, 10, 19, 2, 0, 1).unwrap());
-        m.insert(RunPeriod::RP2025_01, m_s25);
-        m
+    static ref REST_VERSION_CATALOG: Vec<RESTVersionInfo> = {
+        let mut catalog = REST_VERSION_DATA
+            .lines()
+            .skip(1)
+            .filter(|line| !line.trim().is_empty())
+            .filter_map(|line| {
+                let mut fields = line.split('\t');
+                let run_period = fields.next()?.parse::<RunPeriod>().ok()?;
+                let version = fields
+                    .next()
+                    .expect("REST catalog row is missing its revision")
+                    .parse::<RESTVersion>()
+                    .expect("REST catalog revision is invalid");
+                let variation = fields
+                    .next()
+                    .expect("REST catalog row is missing its variation")
+                    .to_string();
+                let timestamp = parse_timestamp(
+                    fields
+                        .next()
+                        .expect("REST catalog row is missing its timestamp"),
+                )
+                .expect("REST catalog timestamp is invalid");
+                Some(RESTVersionInfo {
+                    run_period,
+                    version,
+                    variation,
+                    timestamp,
+                })
+            })
+            .collect::<Vec<_>>();
+        catalog.sort_unstable_by_key(|info| (info.run_period, info.version));
+        catalog
     };
+}
+
+fn rest_version_info(
+    run_period: RunPeriod,
+    version: RESTVersion,
+) -> Option<&'static RESTVersionInfo> {
+    REST_VERSION_CATALOG
+        .binary_search_by_key(&(run_period, version), |info| {
+            (info.run_period, info.version)
+        })
+        .ok()
+        .map(|index| &REST_VERSION_CATALOG[index])
+}
+
+/// Return the available REST metadata for `run_period`, ordered by version.
+#[must_use]
+pub fn rest_version_info_for(run_period: RunPeriod) -> Vec<RESTVersionInfo> {
+    REST_VERSION_CATALOG
+        .iter()
+        .filter(|info| info.run_period == run_period)
+        .cloned()
+        .collect()
 }
 
 /// Return the available REST versions and timestamps for `run_period` ordered by version.
 pub fn rest_versions_for(run_period: RunPeriod) -> Option<Vec<(RESTVersion, DateTime<Utc>)>> {
-    let mut versions: Vec<(RESTVersion, DateTime<Utc>)> = REST_VERSION_TIMESTAMPS
-        .get(&run_period)?
-        .iter()
-        .map(|(&version, &timestamp)| (version, timestamp))
-        .collect();
-    versions.sort_unstable_by_key(|(version, _)| *version);
-    Some(versions)
+    let versions = rest_version_info_for(run_period)
+        .into_iter()
+        .map(|info| (info.version, info.timestamp))
+        .collect::<Vec<_>>();
+    (!versions.is_empty()).then_some(versions)
 }
 
 /// Parse an optional REST version for the given run period into a selection.
@@ -328,5 +384,53 @@ pub fn parse_rest_version_selection(
     match rest_version {
         Some(version) => RESTVersionSelection::try_new(run_period, version),
         None => Ok(RESTVersionSelection::Current),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_run_period_names_round_trip() {
+        for run_period in RunPeriod::iter() {
+            assert_eq!(
+                run_period.data_name().parse::<RunPeriod>().unwrap(),
+                run_period
+            );
+        }
+    }
+
+    #[test]
+    fn catalog_keys_are_unique() {
+        assert!(REST_VERSION_CATALOG.windows(2).all(|pair| {
+            (pair[0].run_period, pair[0].version) != (pair[1].run_period, pair[1].version)
+        }));
+    }
+
+    #[test]
+    fn resolves_legacy_default_context() {
+        let resolved = RESTVersionSelection::try_new(RunPeriod::RP2018_08, 2)
+            .unwrap()
+            .resolve_context(RunPeriod::RP2018_08)
+            .unwrap();
+        assert_eq!(resolved.variation, "default");
+        assert_eq!(
+            resolved.timestamp,
+            parse_timestamp("2019-07-21T12:00:00Z").unwrap()
+        );
+    }
+
+    #[test]
+    fn resolves_non_default_variation() {
+        let resolved = RESTVersionSelection::try_new(RunPeriod::RP2017_01, 5)
+            .unwrap()
+            .resolve_context(RunPeriod::RP2017_01)
+            .unwrap();
+        assert_eq!(resolved.variation, "recon_2017_01_ver05");
+        assert_eq!(
+            resolved.timestamp,
+            parse_timestamp("2025-11-26T13:41:24Z").unwrap()
+        );
     }
 }

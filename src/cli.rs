@@ -6,7 +6,7 @@ use std::{
 
 use crate::core::{
     GlueXCoreError, RunNumber,
-    run_periods::{RunPeriod, coherent_peak, parse_rest_version_selection, rest_versions_for},
+    run_periods::{RunPeriod, coherent_peak, parse_rest_version_selection, rest_version_info_for},
 };
 use crate::generation::{
     GenerationRunOptions,
@@ -213,10 +213,15 @@ fn print_rest_versions(run_period: RunPeriod) {
         run_period.min_run(),
         run_period.max_run()
     );
-    match rest_versions_for(run_period) {
-        Some(versions) if !versions.is_empty() => {
-            for (version, timestamp) in versions {
-                println!("  ver{version:02}: {}", timestamp.to_rfc3339());
+    match rest_version_info_for(run_period) {
+        versions if !versions.is_empty() => {
+            for info in versions {
+                println!(
+                    "  ver{:02}: {} (variation={})",
+                    info.version,
+                    info.timestamp.to_rfc3339(),
+                    info.variation
+                );
             }
         }
         _ => println!("  (no REST versions available)"),
