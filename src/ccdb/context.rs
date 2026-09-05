@@ -102,7 +102,7 @@ impl CCDBContext {
     ///
     /// # Errors
     ///
-    /// This method will return an error if the run period is not found in the [`REST_VERSION_TIMESTAMPS`] map
+    /// This method will return an error if the run period is missing from the bundled REST catalog
     /// or if the requested REST version is not defined for the run period.
     pub fn with_run_period(
         mut self,
@@ -110,7 +110,9 @@ impl CCDBContext {
         rest_version: RESTVersionSelection,
     ) -> CCDBResult<Self> {
         self.runs = run_period.run_range().collect();
-        self.timestamp = rest_version.resolve_timestamp(run_period)?;
+        let resolved = rest_version.resolve_context(run_period)?;
+        self.variation = resolved.variation;
+        self.timestamp = resolved.timestamp;
         Ok(self)
     }
     /// Returns a context scoped to a single run number.

@@ -14,6 +14,8 @@ fn _console_main(py: Python<'_>) -> PyResult<u8> {
 
 #[pyo3::pymodule(name = "gluex")]
 mod gluex {
+    use pyo3::types::PyAnyMethods;
+
     #[pymodule_export]
     use super::_console_main;
     #[pymodule_export]
@@ -33,4 +35,13 @@ mod gluex {
     #[allow(non_upper_case_globals)]
     #[pymodule_export]
     const __version__: &str = env!("CARGO_PKG_VERSION");
+
+    #[pymodule_init]
+    fn init(module: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
+        let modules = module.py().import("sys")?.getattr("modules")?;
+        for name in ["ccdb", "generation", "lumi", "rcdb"] {
+            modules.set_item(format!("gluex.{name}"), module.getattr(name)?)?;
+        }
+        Ok(())
+    }
 }
