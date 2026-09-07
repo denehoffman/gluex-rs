@@ -74,6 +74,21 @@ impl RCDB {
         self.connection.lock()
     }
 
+    pub(crate) fn validate_read_schema(&self) -> RCDBResult<()> {
+        let connection = self.connection();
+        // Opening already validated schema_versions and loaded condition_types.
+        // Preparing these projections verifies the remaining read schema
+        // without fetching condition values or requiring any recorded runs.
+        for query in [
+            "SELECT number FROM runs LIMIT 0",
+            "SELECT run_number, condition_type_id, text_value, int_value,
+                    float_value, bool_value, time_value FROM conditions LIMIT 0",
+        ] {
+            drop(connection.prepare(query)?);
+        }
+        Ok(())
+    }
+
     /// Reloads the `condition_types` table into memory.
     ///
     /// # Errors

@@ -3,6 +3,7 @@ mod core;
 mod generation;
 mod lumi;
 mod rcdb;
+mod session;
 
 use pyo3::prelude::*;
 
@@ -31,6 +32,12 @@ mod gluex {
     use super::lumi::lumi;
     #[pymodule_export]
     use super::rcdb::rcdb;
+
+    #[pymodule_export]
+    use super::session::{PyCapabilities, PyDisabled, PyGlueX, PySources, open};
+
+    #[pymodule_export]
+    const DISABLED: super::session::PyDisabled = super::session::PyDisabled;
 
     #[allow(non_upper_case_globals)]
     #[pymodule_export]

@@ -49,6 +49,7 @@ fn normalize_path(base: &str, path: &str) -> String {
 pub struct CCDB {
     connection: Arc<Mutex<Connection>>,
     connection_path: String,
+    opened_at: DateTime<Utc>,
     variation_cache: Arc<DashMap<String, VariationMeta>>,
     variation_chain_cache: Arc<DashMap<Id, Vec<VariationMeta>>>,
     directory_meta: Arc<DashMap<Id, DirectoryMeta>>,
@@ -90,6 +91,7 @@ impl CCDB {
             table_by_dir_name: Arc::new(DashMap::new()),
             column_layouts: Arc::new(DashMap::new()),
             connection_path: path_str,
+            opened_at: Utc::now(),
         };
         db.load_directories()?;
         db.load_tables()?;
@@ -103,6 +105,47 @@ impl CCDB {
     #[must_use]
     pub fn connection_path(&self) -> &str {
         &self.connection_path
+    }
+
+    /// Time captured once when this reader opened, shared by all clones.
+    ///
+    /// This is an exploratory calibration default, not a historical snapshot.
+    #[must_use]
+    pub const fn opened_at(&self) -> DateTime<Utc> {
+        self.opened_at
+    }
+
+    /// Build an independent context using `default` variation and opening time.
+    ///
+    /// Supply explicit numeric runs. Subsequent context overrides do not change
+    /// this reader's defaults. [`CCDBContext::default`] remains a standalone
+    /// context using its construction time.
+    #[must_use]
+    pub fn default_context(&self, runs: impl IntoIterator<Item = RunNumber>) -> CCDBContext {
+        CCDBContext {
+            runs: runs.into_iter().collect(),
+            variation: "default".into(),
+            timestamp: self.opened_at,
+        }
+    }
+
+    pub(crate) fn validate_read_schema(&self) -> CCDBResult<()> {
+        let connection = self.connection();
+        // Opening already loaded directories and typeTables. Prepare the other
+        // read projections to validate their tables/columns without reading rows
+        // or decoding calibration payloads. Empty but valid tables are allowed.
+        for query in [
+            "SELECT id, created, modified, name, typeId, columnType, `order`, comment FROM columns LIMIT 0",
+            "SELECT id, created, modified, name, description, authorId, comment,
+                    parentId, isLocked, lockTime, lockedByUserId, goBackBehavior,
+                    goBackTime, isDeprecated, deprecatedByUserId FROM variations LIMIT 0",
+            "SELECT id, created, constantSetId, runRangeId, variationId FROM assignments LIMIT 0",
+            "SELECT id, created, modified, vault, constantTypeId FROM constantSets LIMIT 0",
+            "SELECT id, runMin, runMax FROM runRanges LIMIT 0",
+        ] {
+            drop(connection.prepare(query)?);
+        }
+        Ok(())
     }
     fn load_directories(&self) -> CCDBResult<()> {
         let connection = self.connection();
@@ -471,6 +514,14 @@ pub struct TypeTableHandle {
     pub(crate) meta: TypeTableMeta,
 }
 impl TypeTableHandle {
+    /// Build a context with this table's source opening time and `default` variation.
+    ///
+    /// Context overrides do not change the source defaults.
+    #[must_use]
+    pub fn default_context(&self, runs: impl IntoIterator<Item = RunNumber>) -> CCDBContext {
+        self.db.default_context(runs)
+    }
+
     /// Returns the table metadata as loaded from CCDB.
     #[must_use]
     pub const fn meta(&self) -> &TypeTableMeta {
