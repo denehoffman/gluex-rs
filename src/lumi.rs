@@ -8,12 +8,14 @@ use crate::core::Histogram;
 use crate::rcdb::{RCDB, RCDBContext, RCDBError};
 use chrono::{DateTime, TimeZone, Utc};
 use laddu::LadduPhysicsError;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     env,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 use thiserror::Error;
 
@@ -254,17 +256,33 @@ impl LuminosityContext {
 
 #[derive(Debug, Clone)]
 /// Entry point for tagged flux and luminosity calculations.
+///
+/// Clones share lazily opened readers and their metadata caches. Keep database
+/// files unchanged while using the calculator; create a new calculator to reopen
+/// sources. Calibration selections and flux data are evaluated on each fetch.
 pub struct Luminosity {
     rcdb: PathBuf,
     ccdb: PathBuf,
+    readers: Arc<Mutex<Option<LuminosityReaders>>>,
+}
+
+/// The existing backend readers form one reusable luminosity read session.
+#[derive(Debug, Clone)]
+struct LuminosityReaders {
+    rcdb: RCDB,
+    ccdb: CCDB,
 }
 
 impl Luminosity {
     /// Create a calculator from RCDB and CCDB `SQLite` paths.
+    ///
+    /// Databases open on the first fetch that needs them. Failed opens are retried
+    /// on subsequent fetches, while successful readers are shared by clones.
     pub fn new(rcdb: impl AsRef<Path>, ccdb: impl AsRef<Path>) -> Self {
         Self {
             rcdb: rcdb.as_ref().to_path_buf(),
             ccdb: ccdb.as_ref().to_path_buf(),
+            readers: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -279,6 +297,18 @@ impl Luminosity {
         let ccdb = env::var("CCDB_CONNECTION")
             .map_err(|_| LuminosityError::MissingConnectionEnv("CCDB_CONNECTION".to_string()))?;
         Ok(Self::new(rcdb, ccdb))
+    }
+
+    fn readers(&self) -> Result<LuminosityReaders, LuminosityError> {
+        let mut readers = self.readers.lock();
+        if readers.is_none() {
+            *readers = Some(LuminosityReaders {
+                rcdb: RCDB::open(&self.rcdb)?,
+                ccdb: CCDB::open(&self.ccdb)?,
+            });
+        }
+        // Release the initialization lock before any query or computation.
+        Ok(readers.as_ref().expect("readers initialized above").clone())
     }
 }
 
@@ -311,13 +341,12 @@ fn get_flux_cache(
     runs: &[RunNumber],
     polarized: bool,
     rest_context: &crate::core::RESTVersionContext,
-    rcdb_path: &Path,
-    ccdb_path: &Path,
+    rcdb: &RCDB,
+    ccdb: &CCDB,
 ) -> Result<HashMap<RunNumber, FluxCache>, LuminosityError> {
     if runs.is_empty() {
         return Ok(HashMap::new());
     }
-    let rcdb = RCDB::open(rcdb_path)?;
     let mut rcdb_filters = crate::rcdb::conditions::aliases::approved_production(run_period)?;
     if polarized {
         rcdb_filters = crate::rcdb::conditions::all([
@@ -349,7 +378,6 @@ fn get_flux_cache(
             Ok((r, converter))
         })
         .collect::<Result<HashMap<RunNumber, Converter>, LuminosityError>>()?;
-    let ccdb = CCDB::open(ccdb_path)?;
     let ccdb_context = CCDBContext::default().with_runs(runs.iter().copied());
     let ccdb_context_restver = ccdb_context
         .clone()
@@ -383,16 +411,16 @@ fn get_flux_cache(
             livetime_ratio.get(&run).unwrap_or(&1.0) * 9.0 / (7.0 * radiation_lengths),
         );
     }
-    let pair_spectrometer_parameters = fetch_pair_spectrometer_parameters(&ccdb, &ccdb_context)?;
-    let mut photon_endpoint_energy = fetch_photon_endpoint_energy(&ccdb, &ccdb_context_restver)?;
-    let microscope_tagged_flux = fetch_tagm_tagged_flux(&ccdb, &ccdb_context)?;
+    let pair_spectrometer_parameters = fetch_pair_spectrometer_parameters(ccdb, &ccdb_context)?;
+    let mut photon_endpoint_energy = fetch_photon_endpoint_energy(ccdb, &ccdb_context_restver)?;
+    let microscope_tagged_flux = fetch_tagm_tagged_flux(ccdb, &ccdb_context)?;
     let mut microscope_scaled_energy_range =
-        fetch_tagm_scaled_energy_range(&ccdb, &ccdb_context_restver)?;
-    let hodoscope_tagged_flux = fetch_tagh_tagged_flux(&ccdb, &ccdb_context)?;
+        fetch_tagm_scaled_energy_range(ccdb, &ccdb_context_restver)?;
+    let hodoscope_tagged_flux = fetch_tagh_tagged_flux(ccdb, &ccdb_context)?;
     let mut hodoscope_scaled_energy_range =
-        fetch_tagh_scaled_energy_range(&ccdb, &ccdb_context_restver)?;
+        fetch_tagh_scaled_energy_range(ccdb, &ccdb_context_restver)?;
     let mut photon_endpoint_calibration =
-        fetch_photon_endpoint_calibration(&ccdb, &ccdb_context_restver)?;
+        fetch_photon_endpoint_calibration(ccdb, &ccdb_context_restver)?;
     // Density is in mg/cm^3, so to get the number of scattering centers, we multiply density by
     // the target length to get mg/cm^2, then we multiply by 1e-3 to get g/cm^2. We then multiply
     // by 1e-24 cm^2/barn to get g/barn, and finally by Avogadro's constant to get g/(mol * barn).
@@ -408,25 +436,25 @@ fn get_flux_cache(
         let override_context = ccdb_context.with_timestamp(rp2019_11_override_timestamp());
         apply_run_override(
             &mut photon_endpoint_energy,
-            fetch_photon_endpoint_energy(&ccdb, &override_context)?,
+            fetch_photon_endpoint_energy(ccdb, &override_context)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
         apply_run_override(
             &mut microscope_scaled_energy_range,
-            fetch_tagm_scaled_energy_range(&ccdb, &override_context)?,
+            fetch_tagm_scaled_energy_range(ccdb, &override_context)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
         apply_run_override(
             &mut hodoscope_scaled_energy_range,
-            fetch_tagh_scaled_energy_range(&ccdb, &override_context)?,
+            fetch_tagh_scaled_energy_range(ccdb, &override_context)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
         apply_run_override(
             &mut photon_endpoint_calibration,
-            fetch_photon_endpoint_calibration(&ccdb, &override_context)?,
+            fetch_photon_endpoint_calibration(ccdb, &override_context)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
@@ -669,6 +697,7 @@ impl Luminosity {
                 .copied()
                 .unwrap_or(RESTVersionSelection::Current);
             let rest_context = selection.resolve_context(*rp)?;
+            let readers = self.readers()?;
             cache.extend(get_flux_cache(
                 *rp,
                 runs_by_period
@@ -676,8 +705,8 @@ impl Luminosity {
                     .map_or(&[][..], |runs| runs.as_slice()),
                 ctx.polarized(),
                 &rest_context,
-                &self.rcdb,
-                &self.ccdb,
+                &readers.rcdb,
+                &readers.ccdb,
             )?);
         }
         for run in run_numbers {

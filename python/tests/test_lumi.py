@@ -65,3 +65,22 @@ def test_luminosity_rejects_invalid_rest_selection_values() -> None:
             runs=[50685],
             rest_version=cast('Any', {RunPeriod.RP2018_08: object()}),
         )
+
+
+def test_repeated_fetch_keeps_selections_independent() -> None:
+    calculator = lumi.Luminosity(
+        rcdb=str(_db_path('RCDB_CONNECTION')),
+        ccdb=str(_db_path('CCDB_CONNECTION')),
+    )
+    rest_version = {RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)}
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match='at least one run number is required'):
+            calculator.fetch(
+                [8.0, 8.5, 9.0],
+                runs=[50685],
+                rest_version=rest_version,
+                exclude_runs=[50685],
+            )
+        result = calculator.fetch([8.0, 8.5, 9.0], runs=[50685], rest_version=rest_version)
+        assert result.tagged_flux.counts[1] == pytest.approx(TAGGED_FLUX)
+        assert result.tagged_luminosity.counts[1] == pytest.approx(TAGGED_LUMINOSITY)
