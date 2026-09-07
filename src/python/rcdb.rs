@@ -57,7 +57,7 @@ pub(crate) mod rcdb {
     }
 
     #[pyclass(name = "RCDB", module = "gluex.rcdb", unsendable)]
-    pub struct PyRCDB(RCDB);
+    pub struct PyRCDB(pub(crate) RCDB);
 
     #[pymethods]
     impl PyRCDB {

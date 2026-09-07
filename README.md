@@ -26,20 +26,62 @@ gluex --help
 ## Python
 
 ```python
-from gluex import RunPeriod
-from gluex.ccdb import CCDB
-from gluex.lumi import Luminosity
-from gluex.rcdb import RCDB
+import gluex
 
-period = RunPeriod("f18")
+period = gluex.RunPeriod("f18")
 print(period.min_run, period.max_run)
 
-rcdb = RCDB()
-ccdb = CCDB()
-luminosity = Luminosity()
+gx = gluex.open()
+print(gx)
+print(gx.capabilities)
 ```
 
-GlueX conditions and luminosity utilities are exposed through the `gluex.ccdb`, `gluex.rcdb`, and `gluex.lumi` modules. The command-line interface is useful for common one-off tasks:
+`gluex.open()` opens a session using `RCDB_CONNECTION` and `CCDB_CONNECTION`
+independently. Either, both, or neither can be configured. Database-independent
+reference types such as `RunPeriod` and `Particle` remain available in all cases.
+
+Explicit source arguments are keyword-only and accept filesystem paths as strings
+or `pathlib.Path` objects:
+
+```python
+from pathlib import Path
+import gluex
+
+gx = gluex.open(rcdb=Path("rcdb.sqlite"), ccdb=gluex.DISABLED)
+conditions = gx.sources.rcdb.fetch(["event_count"], runs=[50685])
+print(conditions)
+```
+
+| Argument | Source behavior |
+| --- | --- |
+| Omitted or `None` | Consult that source's environment variable; an unset variable leaves it unavailable |
+| Filesystem path | Override that source's environment variable and open the file immediately |
+| `gluex.DISABLED` | Disable the source, including environment lookup |
+
+`gx.capabilities.rcdb` and `.ccdb` are immutable booleans. `gx.sources.rcdb` and
+`.ccdb` expose the existing database-native readers and share their connections
+and metadata caches. Accessing an unavailable reader raises `RuntimeError` with
+configuration instructions. A configured path that is empty, missing, invalid,
+or has an incompatible schema raises `ValueError` during opening. Connection
+URLs and live databases are unsupported; pass local SQLite filesystem paths.
+`gluex.GlueX(...)` accepts the same keyword arguments as `gluex.open(...)`.
+
+CCDB readers capture `opened_at` once. Omitted timestamps on `CCDB.fetch` and
+table `fetch` calls use that UTC time; omitted variation uses `default`. Explicit
+timestamp or variation overrides affect only the current request.
+`fetch_run_period` continues to resolve the selected REST version. Keep source
+files unchanged while sessions or handles use them. Create a new session to
+reopen sources; an opening timestamp does not preserve historical file contents.
+
+In Rust, use `GlueX::open(rcdb_config, ccdb_config)` with `SourceConfig::sqlite`,
+`SourceConfig::FromEnv`, or `SourceConfig::Disabled`, or use `GlueX::from_env()`.
+`gx.sources().rcdb()?` and `.ccdb()?` return borrowed readers that can be cloned.
+For CCDB, `reader.default_context(runs)` uses its captured opening defaults;
+the standalone `CCDBContext::default()` uses the context's construction time.
+Configuration failures and absent capabilities are separate `GlueXError` variants.
+
+The standalone `gluex.ccdb`, `gluex.rcdb`, and `gluex.lumi` modules remain available.
+The command-line interface is useful for common one-off tasks:
 
 ```bash
 gluex info runs f18

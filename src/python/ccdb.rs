@@ -404,7 +404,7 @@ pub(crate) mod ccdb {
             variation: Option<String>,
             timestamp: Option<Bound<'_, PyAny>>,
         ) -> PyResult<BTreeMap<RunNumber, PyData>> {
-            let context = build_context(runs, variation, timestamp)?;
+            let context = build_context(self.0.default_context([0]), runs, variation, timestamp)?;
             Ok(self
                 .0
                 .fetch(&context)
@@ -467,7 +467,7 @@ pub(crate) mod ccdb {
     }
 
     #[pyclass(name = "CCDB", module = "gluex.ccdb", unsendable)]
-    pub struct PyCCDB(CCDB);
+    pub struct PyCCDB(pub(crate) CCDB);
 
     #[pymethods]
     impl PyCCDB {
@@ -481,6 +481,12 @@ pub(crate) mod ccdb {
         #[getter]
         fn connection_path(&self) -> &str {
             self.0.connection_path()
+        }
+
+        /// Captured source opening time in UTC, used when timestamp is omitted.
+        #[getter]
+        fn opened_at(&self) -> DateTime<Utc> {
+            self.0.opened_at()
         }
 
         fn root(&self) -> PyDirectoryHandle {
@@ -501,6 +507,7 @@ pub(crate) mod ccdb {
                 .map_err(py_ccdb_error)
         }
 
+        /// Fetch constants using default variation and captured opening time unless overridden.
         #[pyo3(signature = (path, *, runs=None, variation=None, timestamp=None))]
         fn fetch(
             &self,
@@ -509,7 +516,7 @@ pub(crate) mod ccdb {
             variation: Option<String>,
             timestamp: Option<Bound<'_, PyAny>>,
         ) -> PyResult<BTreeMap<RunNumber, PyData>> {
-            let context = build_context(runs, variation, timestamp)?;
+            let context = build_context(self.0.default_context([0]), runs, variation, timestamp)?;
             Ok(self
                 .0
                 .fetch(path, &context)
@@ -652,11 +659,11 @@ pub(crate) mod ccdb {
     }
 
     fn build_context(
+        mut context: CCDBContext,
         runs: Option<Vec<RunNumber>>,
         variation: Option<String>,
         timestamp: Option<Bound<'_, PyAny>>,
     ) -> PyResult<CCDBContext> {
-        let mut context = CCDBContext::default();
         if let Some(runs) = runs {
             context.runs = runs;
         }

@@ -29,6 +29,9 @@ pub mod lumi;
 /// Run Conditions Database access and predicate builders.
 pub mod rcdb;
 
+mod session;
+pub use session::{Capabilities, DatabaseKind, GlueX, GlueXError, SourceConfig, Sources};
+
 #[cfg(feature = "python")]
 #[allow(
     clippy::complexity,

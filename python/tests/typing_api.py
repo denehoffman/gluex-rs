@@ -1,7 +1,10 @@
 """Static type-check probes for the public ``gluex`` package layout."""
 
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import assert_type
 
+import gluex
 from gluex import Histogram, Particle, RESTVersionSelection, RunPeriod, generation
 from gluex.ccdb import CCDB, Data
 from gluex.lumi import FluxHistograms, Luminosity
@@ -40,3 +43,23 @@ def typed_api_surface(
     writer.write(dataset, 'events.hddm')
 
     _ = (calibrations, particle, flux)
+
+
+def typed_session_surface(rcdb_path: Path, ccdb_path: str) -> None:
+    gx = gluex.open(rcdb=rcdb_path, ccdb=ccdb_path)
+    assert_type(gx, gluex.GlueX)
+    assert_type(gx.capabilities, gluex.Capabilities)
+    assert_type(gx.capabilities.rcdb, bool)
+    assert_type(gx.sources, gluex.Sources)
+    assert_type(gx.sources.rcdb, RCDB)
+    assert_type(gx.sources.ccdb, CCDB)
+    assert_type(gx.sources.ccdb.opened_at, datetime)
+    assert_type(gluex.open(rcdb=None, ccdb=gluex.DISABLED), gluex.GlueX)
+    assert_type(gluex.GlueX(rcdb=gluex.DISABLED, ccdb=gluex.DISABLED), gluex.GlueX)
+
+
+def invalid_session_arguments() -> None:
+    # These suppressions must remain necessary: checking with --error-on-warning
+    # detects a regression to permissive or unresolved generated annotations.
+    gluex.open(rcdb=False)  # ty: ignore[invalid-argument-type]
+    gluex.open(gluex.DISABLED)  # ty: ignore[too-many-positional-arguments]
