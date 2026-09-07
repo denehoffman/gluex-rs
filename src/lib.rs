@@ -29,6 +29,16 @@ pub mod lumi;
 /// Run Conditions Database access and predicate builders.
 pub mod rcdb;
 
+/// Shared numeric scope and recorded membership queries.
+pub mod runs;
+pub use runs::{
+    ConditionCatalog, ConditionDefinition, RunProvenance, RunQuery, RunSelection, RunSet,
+};
+
+/// Enforced read-only raw rows and parameters.
+pub mod raw;
+pub use raw::{RawColumn, RawError, RawResults, RawRow, RawValue};
+
 mod session;
 pub use session::{Capabilities, DatabaseKind, GlueX, GlueXError, SourceConfig, Sources};
 

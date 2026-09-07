@@ -19,21 +19,21 @@ fn load_layout_and_vaults() -> (Arc<ColumnLayout>, Vec<String>, usize) {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let n_rows = table.meta().n_rows() as usize;
 
-    let connection = db.connection();
-    let mut stmt = connection
-        .prepare_cached(
-            "SELECT cs.vault
-             FROM constantSets cs
-             JOIN assignments a ON cs.id = a.constantSetId
-             WHERE cs.constantTypeId = ?
-             ORDER BY a.created DESC",
+    let result = db
+        .raw(
+            "SELECT cs.vault FROM constantSets cs JOIN assignments a ON cs.id = a.constantSetId
+         WHERE cs.constantTypeId = ? ORDER BY a.created DESC",
+            &[gluex_rs::RawValue::Integer(table.id())],
         )
-        .expect("failed to prepare vault query");
-    let vaults: Vec<String> = stmt
-        .query_map([table.id()], |row| row.get(0))
-        .expect("failed to query vaults")
-        .collect::<Result<Vec<String>, _>>()
-        .expect("failed to collect vaults");
+        .expect("failed to query vaults");
+    let vaults: Vec<String> = result
+        .rows()
+        .iter()
+        .map(|row| match &row.values()[0] {
+            gluex_rs::RawValue::Text(vault) => vault.clone(),
+            value => panic!("expected text vault, got {value:?}"),
+        })
+        .collect();
     assert!(!vaults.is_empty(), "no vaults returned for benchmark table");
 
     (layout, vaults, n_rows)

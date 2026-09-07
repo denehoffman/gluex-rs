@@ -81,6 +81,7 @@ impl CCDB {
         let path_str = resolved_path.to_string_lossy().to_string();
         let conn = Connection::open_with_flags(&resolved_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         conn.pragma_update(None, "foreign_keys", "ON")?; // TODO: check
+        crate::raw::restrict(&conn)?;
         let db = Self {
             connection: Arc::new(Mutex::new(conn)),
             variation_cache: Arc::new(DashMap::new()),
@@ -97,8 +98,24 @@ impl CCDB {
         db.load_tables()?;
         Ok(db)
     }
+    /// Execute one parameterized read-only SQLite statement, returning immutable rows.
+    ///
+    /// Positional parameters support NULL, integers, reals, text and blobs.
+    /// Result column names can repeat; use positional values for unambiguous access.
+    ///
+    /// # Errors
+    /// Returns an error for unauthorized SQL, multiple statements, invalid parameters,
+    /// database failures or malformed UTF-8 text.
+    pub fn raw(
+        &self,
+        sql: &str,
+        parameters: &[crate::RawValue],
+    ) -> Result<crate::RawResults, crate::RawError> {
+        crate::raw::query(&self.connection(), sql, parameters)
+    }
+
     /// Returns the underlying [`rusqlite::Connection`].
-    pub fn connection(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn connection(&self) -> MutexGuard<'_, Connection> {
         self.connection.lock()
     }
     /// Returns the filesystem path used to open the database.

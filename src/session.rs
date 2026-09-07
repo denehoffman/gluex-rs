@@ -144,6 +144,25 @@ pub struct GlueX {
 }
 
 impl GlueX {
+    /// Inspect the immutable Condition Definition catalog, including dynamic database names.
+    ///
+    /// # Errors
+    /// Returns a missing-capability error when RCDB is unavailable.
+    pub fn conditions(&self) -> Result<crate::ConditionCatalog, GlueXError> {
+        Ok(self.sources.rcdb()?.conditions())
+    }
+
+    /// Build a lazy recorded Run Query with explicit numeric scope and no scientific cuts.
+    ///
+    /// # Errors
+    /// Returns a missing-capability error when RCDB is unavailable.
+    pub fn runs(&self, selection: crate::RunSelection) -> Result<crate::RunQuery, GlueXError> {
+        Ok(crate::RunQuery::new(
+            self.sources.rcdb()?.clone(),
+            selection,
+        ))
+    }
+
     /// Open a session with independent source configurations.
     ///
     /// [`SourceConfig::FromEnv`] consults only the corresponding environment

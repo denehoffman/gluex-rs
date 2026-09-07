@@ -8,29 +8,7 @@ use crate::core::{
 
 use crate::rcdb::conditions::{Expr, IntoExprList};
 
-/// Describes how runs should be selected when fetching condition values.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RunSelection {
-    /// Return conditions for every run stored in RCDB.
-    All,
-    /// Return conditions only for the exact run numbers in the list.
-    Runs(Vec<RunNumber>),
-    /// Return conditions for every run within the inclusive range.
-    Range {
-        /// Inclusive start run number.
-        start: RunNumber,
-        /// Inclusive end run number.
-        end: RunNumber,
-    },
-}
-
-impl RunSelection {
-    /// True when no runs will be returned.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        matches!(self, Self::Runs(r) if r.is_empty())
-    }
-}
+pub use crate::runs::RunSelection;
 
 /// Lightweight request context describing run selection.
 #[derive(Debug, Clone)]
@@ -49,6 +27,13 @@ impl Default for RCDBContext {
 }
 
 impl RCDBContext {
+    pub(crate) const fn from_selection(selection: RunSelection) -> Self {
+        Self {
+            selection,
+            filters: Vec::new(),
+        }
+    }
+
     /// Builds a context that selects every run.
     #[must_use]
     pub fn new() -> Self {

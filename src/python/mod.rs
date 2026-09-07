@@ -2,8 +2,11 @@ mod ccdb;
 mod core;
 mod generation;
 mod lumi;
+mod raw;
 mod rcdb;
+mod runs;
 mod session;
+mod tuple;
 
 use pyo3::prelude::*;
 
@@ -35,6 +38,15 @@ mod gluex {
 
     #[pymodule_export]
     use super::session::{PyCapabilities, PyDisabled, PyGlueX, PySources, open};
+
+    #[pymodule_export]
+    use super::runs::{
+        PyConditionCatalog, PyConditionDefinition, PyRunProvenance, PyRunQuery, PyRunSelection,
+        PyRunSet,
+    };
+
+    #[pymodule_export]
+    use super::raw::{PyRawColumn, PyRawResults, PyRawRow};
 
     #[pymodule_export]
     const DISABLED: super::session::PyDisabled = super::session::PyDisabled;
