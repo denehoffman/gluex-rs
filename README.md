@@ -209,3 +209,6 @@ run with `--pilot-proposals`, `--max-weight`, and `--safety-scale`. If a pilot o
 ## License
 
 Dual-licensed under [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
+
+Condition discovery, recorded Run Sets, and parameterized SQL reads are described
+in the [database reading guide](docs/database-reads.md).

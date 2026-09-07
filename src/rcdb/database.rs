@@ -51,6 +51,7 @@ impl RCDB {
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
+        crate::raw::restrict(&connection)?;
         ensure_schema_version(&connection)?;
         let run_number_index = lookup_conditions_run_number_index(&connection)?;
         let db = Self {
@@ -69,8 +70,24 @@ impl RCDB {
         &self.connection_path
     }
 
+    /// Execute one parameterized read-only SQLite statement, returning immutable rows.
+    ///
+    /// Positional parameters support NULL, integers, reals, text and blobs.
+    /// Result column names can repeat; use positional values for unambiguous access.
+    ///
+    /// # Errors
+    /// Returns an error for unauthorized SQL, multiple statements, invalid parameters,
+    /// database failures or malformed UTF-8 text.
+    pub fn raw(
+        &self,
+        sql: &str,
+        parameters: &[crate::RawValue],
+    ) -> Result<crate::RawResults, crate::RawError> {
+        crate::raw::query(&self.connection(), sql, parameters)
+    }
+
     /// Returns the underlying [`rusqlite::Connection`].
-    pub fn connection(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn connection(&self) -> MutexGuard<'_, Connection> {
         self.connection.lock()
     }
 
@@ -121,6 +138,12 @@ impl RCDB {
         }
         *self.condition_types.write() = loaded;
         Ok(())
+    }
+
+    /// Inspect the loaded Condition Definitions without retrieving condition values.
+    #[must_use]
+    pub fn conditions(&self) -> crate::ConditionCatalog {
+        crate::ConditionCatalog::new(self.condition_types.read().clone())
     }
 
     fn condition_type(&self, name: &str) -> Option<ConditionTypeMeta> {
@@ -494,7 +517,7 @@ fn limit_run_ranges(runs: &[RunNumber]) -> Vec<(RunNumber, RunNumber)> {
     let mut start = runs[0];
     let mut end = runs[0];
     for &run in runs.iter().skip(1) {
-        if run != end + 1 {
+        if Some(run) != end.checked_add(1) {
             ranges.push((start, end));
             start = run;
         }

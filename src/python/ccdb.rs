@@ -471,6 +471,22 @@ pub(crate) mod ccdb {
 
     #[pymethods]
     impl PyCCDB {
+        /// Execute one read-only SQLite statement with positional parameters; releases the GIL.
+        /// Supports SELECT, CTEs and documented schema PRAGMAs. Unauthorized SQL,
+        /// multiple statements, binding and decoding failures raise RuntimeError.
+        #[pyo3(signature = (sql, *, parameters = Vec::new()))]
+        fn raw(
+            &self,
+            py: Python<'_>,
+            sql: &str,
+            parameters: Vec<Option<crate::python::raw::Scalar>>,
+        ) -> PyResult<crate::python::raw::PyRawResults> {
+            let parameters = crate::python::raw::parameters(py, parameters)?;
+            py.detach(|| self.0.raw(sql, &parameters))
+                .map(crate::python::raw::PyRawResults)
+                .map_err(|error| PyRuntimeError::new_err(error.to_string()))
+        }
+
         #[new]
         #[pyo3(signature = (path=None))]
         fn new(path: Option<String>) -> PyResult<Self> {

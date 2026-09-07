@@ -122,6 +122,23 @@ impl PyGlueX {
         open(py, rcdb, ccdb)
     }
 
+    /// Build a lazy recorded Run Query. Requires RCDB; adds no scientific cuts.
+    fn runs(&self, selection: super::runs::PyRunSelection) -> PyResult<super::runs::PyRunQuery> {
+        self.0
+            .runs(selection.0)
+            .map(super::runs::PyRunQuery)
+            .map_err(session_error)
+    }
+
+    /// Immutable catalog of database-defined condition names and types. Requires RCDB.
+    #[getter]
+    fn conditions(&self) -> PyResult<super::runs::PyConditionCatalog> {
+        self.0
+            .conditions()
+            .map(super::runs::PyConditionCatalog)
+            .map_err(session_error)
+    }
+
     /// Inspect source availability without querying database contents.
     #[getter]
     fn capabilities(&self) -> PyCapabilities {
