@@ -187,7 +187,7 @@ numeric scopes for collection. Rust `RunSelection::All` is rejected because ther
 is no implicit all-runs calibration request. Empty and reversed scopes collect
 empty results. Each query captures the `default` variation and its source's
 opening timestamp; inspect these through `query.provenance.variation` and
-`query.provenance.as_of`. Historical overrides are not exposed by this query yet.
+`query.provenance.as_of`. Use `with_variation(name)` and `as_of(timestamp)` for explicit historical requests (see below).
 
 A Calibration Series contains resolved entries in ascending run order. Python
 `series.runs` is an immutable tuple of numeric runs, not an RCDB-resolved Run Set.
@@ -208,3 +208,117 @@ fetch APIs remain available.
 
 The installed-package example [`examples/database_queries.py`](../examples/database_queries.py)
 accepts independent RCDB and CCDB paths and exercises both query surfaces.
+
+
+## Condition projections
+
+```python
+query = gx.runs(gluex.RunSelection.range(50000, 59999))
+projected = query.select(["beam_current", "polarization_direction"])
+print(projected.provenance)  # No value retrieval.
+result = projected.collect()
+print(result.runs.numbers)
+print(result.column("beam_current"))  # Same order as result.runs.numbers.
+for run in result.runs:
+    print(run, result[run, "polarization_direction"])
+print(result.report.missing_values)
+```
+
+`RunQuery.select(names)` returns a distinct `ConditionQuery`; its `collect()`
+returns `ConditionResults`, while the original Run Query still collects a
+`RunSet`. Names are validated without reading values; empty projections and
+unknown names raise `ValueError`. Duplicate names are deduplicated in request
+order. Non-string fields raise `TypeError`.
+
+Values are native `int`, `float`, `bool`, `str`, timezone-aware UTC `datetime`, or
+`None`. JSON and RCDB blob text remain strings. A missing row or SQL NULL becomes
+`None`, and `report.missing_values` lists `(run, name)` pairs in run/name order.
+An unknown result run or unprojected name raises `KeyError`, distinguishing an
+invalid lookup from an absent value. Columns are immutable tuples. Results,
+provenance and reports are immutable Rust-owned objects. Predicate exclusions
+remain available through `result.runs.report.unknown_runs`.
+
+`result.provenance.runs` retains source, numeric scope and predicates;
+`result.provenance.fields` retains projected names. Malformed encoded values
+(including invalid timestamps, JSON, boolean values and numeric types) raise
+`RuntimeError` with run/name context; they are never converted to missing values.
+Collection releases the GIL. Strict and fallback policies are a later ticket.
+
+Rust uses `query.select(["beam_current", "polarization_direction"])?`,
+`result.get(run, name)?` for `Option<&rcdb::Value>`, and `result.column(name)?`
+for an aligned slice of optional typed values. Invalid lookups return `RCDBError`.
+
+## Historical calibration requests
+
+```python
+from datetime import datetime, timezone
+
+query = gx.calibrations["/TARGET/density"].for_runs(
+    gluex.RunSelection.runs([50685, 50697])
+)
+historical = query.with_variation("mc").as_of(
+    datetime(2019, 1, 1, tzinfo=timezone.utc)
+)
+series = historical.collect()
+print(series.provenance)
+for run, entry in series.items():
+    print(run, entry.assignment_id, entry.created, entry.variation, entry.run_range)
+```
+
+Both transformations return new queries, preserve the original, and perform no
+assignment lookup. Python requires a timezone-aware datetime; Rust uses
+`query.with_variation("mc").as_of(timestamp)` with `chrono::DateTime<Utc>`.
+Invalid variation names fail at collection, even for empty selections. Explicit
+cutoffs are inclusive and always interpreted in UTC; the source opening time is
+used only when no cutoff is supplied.
+
+Resolution follows the requested variation first, then its parent for each
+unresolved run, retaining the same time cutoff throughout the chain. Run bounds
+are inclusive. Within each variation, the **highest eligible assignment ID** wins,
+even when creation timestamps are equal or not ordered by ID. This matches
+Jefferson Lab's [CCDB SQLite resolver](https://github.com/JeffersonLab/ccdb/blob/63525fb0065c7fd0ef8f2742c681f5d4683eeecd/cpp/src/CCDB/Providers/SQLiteDataProvider.cc#L286)
+and [Python resolver](https://github.com/JeffersonLab/ccdb/blob/63525fb0065c7fd0ef8f2742c681f5d4683eeecd/python/ccdb/provider.py#L934).
+The same rule is present in the [v1 SQLite resolver](https://github.com/JeffersonLab/ccdb/blob/5bc855b98f5e4cd332a3ff94b3ab7e24aa862830/src/Library/Providers/SQLiteDataProvider.cc#L999).
+The legacy `goBackBehavior` and `goBackTime` metadata fields do not alter lookup
+in these upstream readers, and do not alter this reader's parent fallback.
+
+**Correctness change:** the prior Rust reader ranked eligible assignments by
+creation timestamp. Requests where timestamp order differs from assignment-ID
+order now follow CCDB's assignment-ID rule. Existing lower-level reads use the
+same corrected resolver. The API treats stored timestamp text as UTC and does
+not inherit the C++ reader's process-local timezone conversion.
+
+Series preserve requested selectors separately from each entry's effective
+assignment, variation, constant-set ID, creation time and run range. Repeated
+constants share immutable decoded storage, including across different
+assignments. Cyclic or missing variation parents, malformed timestamps, invalid
+column metadata and payload decoding errors raise contextual errors containing
+the table and selectors. Genuine absent assignments remain in `missing_runs`.
+
+## Refreshing captured sources
+
+```python
+old_query = gx.calibrations["/TARGET/density"].for_runs(
+    gluex.RunSelection.runs([50685])
+)
+old_time = old_query.provenance.as_of
+gx.refresh()
+new_query = gx.calibrations["/TARGET/density"].for_runs(
+    gluex.RunSelection.runs([50685])
+)
+assert old_query.provenance.as_of == old_time
+print(new_query.provenance.as_of)
+```
+
+`refresh()` reopens the captured source paths, rebuilds metadata caches, and
+captures a new opening time. It does not re-read environment variables. To select
+different paths or capabilities, open a new GlueX object. Existing queries,
+catalogs, reader handles, results, and Rust clones retain their original bindings.
+Python releases the GIL while reopening; Rust uses `gx.refresh()?` on a mutable
+session. If either configured source fails, the entire refresh fails and leaves
+the session unchanged (`ValueError` in Python; `GlueXError` in Rust).
+
+Keep SQLite files unchanged while readers or queries use them. Finish all work
+using an old file before replacing it and refreshing. Existing results remain
+immutable, but old queries do not promise access to historical contents after a
+file is modified or replaced. Refresh creates no snapshot copies or monitoring.

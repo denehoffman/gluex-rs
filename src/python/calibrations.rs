@@ -188,6 +188,15 @@ impl PyCalibrationProvenance {
 pub struct PyCalibrationQuery(CalibrationQuery);
 #[pymethods]
 impl PyCalibrationQuery {
+    /// Return a new query requesting this variation; invalid variations fail on collection.
+    fn with_variation(&self, variation: String) -> Self {
+        Self(self.0.with_variation(variation))
+    }
+    /// Return a new query with an inclusive cutoff. Requires a timezone-aware datetime.
+    fn as_of(&self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
+        Self(self.0.as_of(timestamp))
+    }
+
     #[getter]
     fn provenance(&self) -> PyCalibrationProvenance {
         PyCalibrationProvenance(self.0.provenance().clone())

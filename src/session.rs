@@ -144,6 +144,33 @@ pub struct GlueX {
 }
 
 impl GlueX {
+    /// Reopen the captured source paths and establish new opening defaults and caches.
+    /// Existing queries, catalogs, readers and cloned sessions keep their original bindings.
+    /// Environment variables are not consulted again. Keep files unchanged while in use;
+    /// finish old-file work before replacing files. This does not preserve historical files.
+    ///
+    /// # Errors
+    /// Returns a configuration error if either source cannot reopen. On failure this
+    /// session is unchanged; a successfully opened sibling is not partially installed.
+    pub fn refresh(&mut self) -> Result<(), GlueXError> {
+        let rcdb = self
+            .sources
+            .rcdb
+            .as_ref()
+            .map_or(SourceConfig::Disabled, |r| {
+                SourceConfig::sqlite(r.connection_path())
+            });
+        let ccdb = self
+            .sources
+            .ccdb
+            .as_ref()
+            .map_or(SourceConfig::Disabled, |r| {
+                SourceConfig::sqlite(r.connection_path())
+            });
+        *self = Self::open(rcdb, ccdb)?;
+        Ok(())
+    }
+
     /// Inspect full-path calibration and directory catalogs without fetching constants.
     ///
     /// # Errors

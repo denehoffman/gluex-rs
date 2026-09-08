@@ -256,3 +256,74 @@ fn incomplete_read_schemas_are_rejected_before_a_capability_is_reported() {
         ));
     }
 }
+
+#[test]
+fn refresh_reopens_sources_atomically_and_preserves_existing_bindings() {
+    let rcdb = fixtures::rcdb();
+    let ccdb = fixtures::ccdb();
+    let mut gx = GlueX::open(
+        SourceConfig::sqlite(rcdb.path()),
+        SourceConfig::sqlite(ccdb.path()),
+    )
+    .unwrap();
+    let runs = gx.runs(gluex_rs::RunSelection::runs([2])).unwrap();
+    let catalog = gx.calibrations().unwrap();
+    let query = catalog
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(gluex_rs::RunSelection::runs([2]))
+        .unwrap();
+    let collected = query.collect().unwrap();
+    let old_time = query.provenance().as_of();
+    gx.refresh().unwrap();
+    let refreshed = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(gluex_rs::RunSelection::runs([2]))
+        .unwrap();
+    assert!(refreshed.provenance().as_of() > old_time);
+    assert_eq!(query.provenance().as_of(), old_time);
+    assert_eq!(collected.provenance().as_of(), old_time);
+    assert_eq!(runs.collect().unwrap().numbers(), &[2]);
+    assert_eq!(
+        query.collect().unwrap().get(2).unwrap().assignment_id(),
+        230_266
+    );
+    let broken = GlueX::open(SourceConfig::Disabled, SourceConfig::Disabled).unwrap();
+    assert!(!broken.capabilities().rcdb());
+}
+
+#[test]
+fn failed_refresh_preserves_the_entire_session() {
+    // Temporarily hide a captured path without changing either SQLite file
+    // or replacing its contents.
+    let rcdb = fixtures::rcdb();
+    let ccdb = fixtures::ccdb();
+    let directory = tempfile::tempdir().unwrap();
+    let ccdb_copy = directory.path().join("ccdb.sqlite");
+    std::fs::copy(ccdb.path(), &ccdb_copy).unwrap();
+    let mut gx = GlueX::open(
+        SourceConfig::sqlite(rcdb.path()),
+        SourceConfig::sqlite(&ccdb_copy),
+    )
+    .unwrap();
+    let before = gx.sources().ccdb().unwrap().opened_at();
+    let hidden = directory.path().join("hidden.sqlite");
+    std::fs::rename(&ccdb_copy, &hidden).unwrap();
+    let error = gx.refresh().unwrap_err().to_string();
+    std::fs::rename(&hidden, &ccdb_copy).unwrap();
+    assert!(error.contains("CCDB") && error.contains("ccdb.sqlite"));
+    assert_eq!(gx.sources().ccdb().unwrap().opened_at(), before);
+    assert_eq!(
+        gx.runs(gluex_rs::RunSelection::runs([2]))
+            .unwrap()
+            .collect()
+            .unwrap()
+            .numbers(),
+        &[2]
+    );
+    gx.refresh().unwrap();
+    assert!(gx.sources().ccdb().unwrap().opened_at() > before);
+}

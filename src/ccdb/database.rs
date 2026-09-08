@@ -384,7 +384,14 @@ impl CCDB {
              WHERE id = ?",
         )?;
 
+        let mut visited = HashSet::from([current.id]);
         while current.parent_id > 0 {
+            if !visited.insert(current.parent_id) {
+                return Err(CCDBError::InvalidMetadata(format!(
+                    "variation {} has a parent cycle",
+                    start.name
+                )));
+            }
             let mut rows = stmt.query([current.parent_id])?;
             if let Some(r) = rows.next()? {
                 current = VariationMeta {
@@ -406,7 +413,10 @@ impl CCDB {
                 };
                 chain.push(current.clone());
             } else {
-                break;
+                return Err(CCDBError::InvalidMetadata(format!(
+                    "variation {} has missing parent {}",
+                    current.name, current.parent_id
+                )));
             }
         }
 
@@ -618,8 +628,18 @@ impl TypeTableHandle {
                     modified: row.get(2)?,
                     name: row.get(3).unwrap_or_default(),
                     type_id: row.get(4)?,
-                    column_type: ColumnType::type_from_str(&row.get::<_, String>(5)?)
-                        .unwrap_or_default(),
+                    column_type: {
+                        let raw: String = row.get(5)?;
+                        ColumnType::type_from_str(&raw).ok_or_else(|| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                5,
+                                rusqlite::types::Type::Text,
+                                Box::new(CCDBError::InvalidMetadata(format!(
+                                    "unknown column type {raw:?}"
+                                ))),
+                            )
+                        })?
+                    },
                     order: row.get(6)?,
                     comment: row.get(7).unwrap_or_default(),
                 })
@@ -633,6 +653,23 @@ impl TypeTableHandle {
             return Ok(existing.clone());
         }
         let columns = self.load_column_metadata()?;
+        if usize::try_from(self.meta.n_columns).ok() != Some(columns.len()) || columns.is_empty() {
+            return Err(CCDBError::InvalidMetadata(format!(
+                "{}: declared column count does not match column definitions",
+                self.full_path()
+            )));
+        }
+        let mut names = HashSet::new();
+        for (index, column) in columns.iter().enumerate() {
+            if usize::try_from(column.order).ok() != Some(index)
+                || !names.insert(column.name.clone())
+            {
+                return Err(CCDBError::InvalidMetadata(format!(
+                    "{}: duplicate column names or invalid column order",
+                    self.full_path()
+                )));
+            }
+        }
         let layout = Arc::new(ColumnLayout::new(columns));
         self.db.column_layouts.insert(self.meta.id, layout.clone());
         Ok(layout)
@@ -657,13 +694,13 @@ impl TypeTableHandle {
         variation: &str,
         timestamp: DateTime<Utc>,
     ) -> CCDBResult<BTreeMap<RunNumber, ResolvedAssignment>> {
+        let start_var_meta = self.db.variation(variation)?;
+        let var_chain = self.db.variation_chain(&start_var_meta)?;
         if runs.is_empty() {
             return Ok(BTreeMap::new());
         }
         let min_run = *runs.iter().min().expect("this is a bug, please report it!");
         let max_run = *runs.iter().max().expect("this is a bug, please report it!");
-        let start_var_meta = self.db.variation(variation)?;
-        let var_chain = self.db.variation_chain(&start_var_meta)?;
         let mut final_assignments: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
         let mut unresolved: HashSet<RunNumber> = runs.iter().copied().collect();
         for var_meta in var_chain {
@@ -700,51 +737,55 @@ impl TypeTableHandle {
                  rr.runMin, rr.runMax
              FROM assignments a
              JOIN constantSets cs ON cs.id = a.constantSetId
-             JOIN runRanges rr ON rr.id = a.runRangeId
+             LEFT JOIN runRanges rr ON rr.id = a.runRangeId
              WHERE cs.constantTypeId = ?
-               AND a.created <= datetime(?, 'unixepoch')
                AND a.variationId = ?
-               AND rr.runMax >= ?
-               AND rr.runMin <= ?",
+               AND (rr.id IS NULL OR rr.runMin > rr.runMax
+                    OR (rr.runMax >= ? AND rr.runMin <= ?))",
         )?;
         let valid_assignments = stmt
-            .query_map(
-                (
-                    self.meta.id,
-                    timestamp.timestamp(),
-                    var_meta.id,
-                    min_run,
-                    max_run,
-                ),
-                |row| {
-                    let meta = AssignmentMetaLite {
-                        id: row.get(0)?,
-                        created: row.get(1)?,
-                        constant_set_id: row.get(2)?,
-                    };
-                    let constant_set = ConstantSetMeta {
-                        id: row.get(3)?,
-                        created: row.get(4)?,
-                        modified: row.get(5)?,
-                        vault: row.get(6)?,
-                        constant_type_id: row.get(7)?,
-                    };
-                    let run_min: RunNumber = row.get(8)?;
-                    let run_max: RunNumber = row.get(9)?;
-                    Ok((meta, constant_set, run_min, run_max))
-                },
-            )?
+            .query_map((self.meta.id, var_meta.id, min_run, max_run), |row| {
+                let meta = AssignmentMetaLite {
+                    id: row.get(0)?,
+                    created: row.get(1)?,
+                    constant_set_id: row.get(2)?,
+                };
+                let constant_set = ConstantSetMeta {
+                    id: row.get(3)?,
+                    created: row.get(4)?,
+                    modified: row.get(5)?,
+                    vault: row.get(6)?,
+                    constant_type_id: row.get(7)?,
+                };
+                let run_min: RunNumber = row.get(8)?;
+                let run_max: RunNumber = row.get(9)?;
+                Ok((meta, constant_set, run_min, run_max))
+            })?
             .collect::<Result<Vec<(AssignmentMetaLite, ConstantSetMeta, RunNumber, RunNumber)>, _>>(
             )?;
+        for (assignment, _, run_min, run_max) in &valid_assignments {
+            if run_min > run_max {
+                return Err(CCDBError::InvalidMetadata(format!(
+                    "assignment {} has reversed run bounds",
+                    assignment.id()
+                )));
+            }
+        }
         let mut best: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
-        let mut best_created: HashMap<RunNumber, DateTime<Utc>> = HashMap::new(); // timestamp map
+        let mut best_id: HashMap<RunNumber, Id> = HashMap::new();
         let mut constant_set_cache: HashMap<Id, Arc<ConstantSetMeta>> = HashMap::new();
         for &run in runs {
             for (meta, constant_set, rmin, rmax) in &valid_assignments {
                 if run >= *rmin && run <= *rmax {
-                    let cur_best = best_created.get(&run);
-                    let created = meta.created()?;
-                    if cur_best.is_none_or(|t| created > *t) {
+                    let cur_best = best_id.get(&run);
+                    let created = crate::core::parsers::parse_database_timestamp(&meta.created)
+                        .map_err(|error| {
+                            CCDBError::InvalidMetadata(format!("assignment {}: {error}", meta.id()))
+                        })?;
+                    if created > timestamp {
+                        continue;
+                    }
+                    if cur_best.is_none_or(|id| meta.id() > *id) {
                         let cs_entry = constant_set_cache
                             .entry(constant_set.id)
                             .or_insert_with(|| Arc::new(constant_set.clone()))
@@ -760,7 +801,7 @@ impl TypeTableHandle {
                                 run_max: *rmax,
                             },
                         );
-                        best_created.insert(run, created);
+                        best_id.insert(run, meta.id());
                     }
                 }
             }

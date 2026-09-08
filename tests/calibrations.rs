@@ -88,3 +88,158 @@ fn calibration_inspection_is_lazy_and_payload_errors_are_not_missing_assignments
             .contains("CCDB")
     );
 }
+
+#[test]
+fn explicit_historical_selectors_are_immutable_and_include_boundaries() {
+    let fixture = fixtures::ccdb();
+    let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+    let catalog = gx.calibrations().unwrap();
+    let query = catalog
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(RunSelection::runs([-1, 0, 2, 2_147_483_647, 2_147_483_648]))
+        .unwrap();
+    let boundary = gluex_rs::parsers::parse_timestamp("2020-01-15 13:08:18").unwrap();
+    let historical = query
+        .with_variation("mc")
+        .as_of(boundary - chrono::Duration::seconds(1));
+    let old = historical.collect().unwrap();
+    assert_eq!(old.get(0).unwrap().assignment_id(), 76);
+    assert_eq!(old.get(2_147_483_647).unwrap().variation(), "default");
+    assert_eq!(old.report().missing_runs(), &[-1, 2_147_483_648]);
+    assert_eq!(historical.provenance().variation(), "mc");
+    assert_eq!(query.provenance().variation(), "default");
+    let current = historical.as_of(boundary).collect().unwrap();
+    assert_eq!(current.get(2).unwrap().assignment_id(), 230_266);
+    assert!(std::ptr::eq(
+        current.get(0).unwrap().payload(),
+        current.get(2).unwrap().payload()
+    ));
+    assert!(query.with_variation("missing").collect().is_err());
+}
+
+#[test]
+fn historical_inheritance_prefers_child_then_highest_eligible_assignment_id() {
+    // JeffersonLab CCDB SQLiteDataProvider::GetAssignmentShort orders eligible
+    // assignments by id DESC, then tries parents with the same cutoff.
+    let fixture = fixtures::ccdb();
+    rusqlite::Connection::open(fixture.path())
+        .unwrap()
+        .execute_batch(
+            "
+        INSERT INTO variations (id, name, parentId) VALUES (3, 'nested', 2);
+        INSERT INTO runRanges (id, runMin, runMax) VALUES (3, 2, 3);
+        INSERT INTO assignments (id, created, variationId, runRangeId, constantSetId) VALUES
+          (300000, '2014-01-01 00:00:00', 1, 1, 76),
+          (300001, '2015-01-01 00:00:00', 2, 3, 230302);
+    ",
+        )
+        .unwrap();
+    let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+    let query = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(RunSelection::range(1, 4))
+        .unwrap()
+        .with_variation("nested");
+    let result = query.collect().unwrap();
+    assert_eq!(result.get(1).unwrap().assignment_id(), 300_000);
+    assert_eq!(result.get(2).unwrap().assignment_id(), 300_001);
+    assert_eq!(result.get(3).unwrap().variation(), "mc");
+    assert_eq!(result.get(4).unwrap().variation(), "default");
+    let old = query
+        .as_of(gluex_rs::parsers::parse_timestamp("2014-06-01 00:00:00").unwrap())
+        .collect()
+        .unwrap();
+    assert_eq!(old.get(2).unwrap().assignment_id(), 300_000);
+}
+
+#[test]
+fn malformed_historical_data_is_never_reported_as_missing() {
+    for change in [
+        "UPDATE assignments SET created = 'not-a-date' WHERE id = 230266",
+        "UPDATE assignments SET created = 'garbage 2014 garbage' WHERE id = 230266",
+        "UPDATE assignments SET runRangeId = 999 WHERE id = 230266",
+        "UPDATE runRanges SET runMin = 9, runMax = 1 WHERE id = 1",
+        "UPDATE variations SET parentId = 999 WHERE name = 'mc'",
+        "UPDATE variations SET parentId = 2 WHERE name = 'mc'",
+        "UPDATE constantSets SET vault = 'broken' WHERE id = 230302",
+        "UPDATE columns SET columnType = 'invalid' WHERE id = 641",
+    ] {
+        let fixture = fixtures::ccdb();
+        rusqlite::Connection::open(fixture.path())
+            .unwrap()
+            .execute_batch(change)
+            .unwrap();
+        let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+        let query = gx
+            .calibrations()
+            .unwrap()
+            .get("/test/demo/mytable")
+            .unwrap()
+            .for_runs(RunSelection::runs([2]))
+            .unwrap()
+            .with_variation("mc");
+        let error = query.collect().unwrap_err().to_string();
+        assert!(error.contains("/test/demo/mytable"), "{error}");
+    }
+}
+
+#[test]
+fn malformed_boolean_payload_is_an_error() {
+    let fixture = fixtures::ccdb();
+    rusqlite::Connection::open(fixture.path()).unwrap().execute_batch("UPDATE columns SET columnType = 'bool' WHERE id = 641; UPDATE constantSets SET vault = 'wrong|2|3|true|5|6' WHERE id = 230302;").unwrap();
+    let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+    let error = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(RunSelection::runs([2]))
+        .unwrap()
+        .collect()
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("column 0") && error.contains("/test/demo/mytable"),
+        "{error}"
+    );
+}
+
+#[test]
+fn historical_cutoffs_preserve_fractional_seconds() {
+    let fixture = fixtures::ccdb();
+    rusqlite::Connection::open(fixture.path())
+        .unwrap()
+        .execute_batch(
+            "UPDATE assignments SET created = '2020-01-15 13:08:18.500' WHERE id = 230266",
+        )
+        .unwrap();
+    let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+    let query = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(RunSelection::runs([2]))
+        .unwrap();
+    let cutoff = chrono::DateTime::parse_from_rfc3339("2020-01-15T13:08:18.499Z")
+        .unwrap()
+        .to_utc();
+    assert_eq!(
+        query
+            .as_of(cutoff)
+            .collect()
+            .unwrap()
+            .get(2)
+            .unwrap()
+            .assignment_id(),
+        76
+    );
+    let exact = cutoff + chrono::Duration::milliseconds(1);
+    let result = query.as_of(exact).collect().unwrap();
+    assert_eq!(result.get(2).unwrap().assignment_id(), 230_266);
+    assert_eq!(result.get(2).unwrap().created(), exact);
+}

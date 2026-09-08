@@ -32,7 +32,8 @@ pub mod rcdb;
 /// Shared numeric scope and recorded membership queries.
 pub mod runs;
 pub use runs::{
-    ConditionCatalog, ConditionDefinition, RunProvenance, RunQuery, RunReport, RunSelection, RunSet,
+    ConditionCatalog, ConditionDefinition, ConditionProvenance, ConditionQuery, ConditionReport,
+    ConditionResults, RunProvenance, RunQuery, RunReport, RunSelection, RunSet,
 };
 
 /// Enforced read-only raw rows and parameters.

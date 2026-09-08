@@ -42,3 +42,19 @@ pub fn parse_timestamp(input: &str) -> Result<DateTime<Utc>, GlueXCoreError> {
     let naive = NaiveDateTime::new(date, time);
     Ok(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
 }
+
+/// Decode complete stored SQLite/ISO timestamps; unlike request shorthand,
+/// this never infers missing components or discards fractional seconds/offsets.
+pub(crate) fn parse_database_timestamp(input: &str) -> Result<DateTime<Utc>, GlueXCoreError> {
+    if let Ok(timestamp) = DateTime::parse_from_rfc3339(input) {
+        return Ok(timestamp.to_utc());
+    }
+    for format in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f"] {
+        if let Ok(timestamp) = NaiveDateTime::parse_from_str(input, format) {
+            return Ok(timestamp.and_utc());
+        }
+    }
+    Err(GlueXCoreError::TimestampChrono(format!(
+        "invalid stored timestamp: {input:?}"
+    )))
+}

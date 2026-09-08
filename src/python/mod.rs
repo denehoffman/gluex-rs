@@ -42,7 +42,8 @@ mod gluex {
 
     #[pymodule_export]
     use super::runs::{
-        PyConditionCatalog, PyConditionDefinition, PyRunPredicate, PyRunProvenance, PyRunQuery,
+        PyConditionCatalog, PyConditionDefinition, PyConditionProvenance, PyConditionQuery,
+        PyConditionReport, PyConditionResults, PyRunPredicate, PyRunProvenance, PyRunQuery,
         PyRunReport, PyRunSelection, PyRunSet, approved_production,
     };
 

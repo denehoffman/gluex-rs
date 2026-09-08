@@ -19,6 +19,21 @@ pub type CCDBResult<T> = Result<T, CCDBError>;
 /// Errors that can occur while interacting with CCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum CCDBError {
+    /// Malformed assignment or variation metadata.
+    #[error("invalid CCDB metadata: {0}")]
+    InvalidMetadata(String),
+    /// Failure to execute or decode a source-bound calibration request.
+    #[error("calibration {table} ({variation}, as of {as_of}): {source}")]
+    Retrieval {
+        /// Requested table path.
+        table: String,
+        /// Requested variation.
+        variation: String,
+        /// Requested UTC cutoff.
+        as_of: chrono::DateTime<chrono::Utc>,
+        /// Underlying execution or decoding error.
+        source: Box<Self>,
+    },
     /// Wrapper around [`rusqlite::Error`].
     #[error(transparent)]
     SqliteError(#[from] rusqlite::Error),
