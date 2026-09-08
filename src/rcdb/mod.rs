@@ -22,6 +22,22 @@ pub type RCDBResult<T> = Result<T, RCDBError>;
 /// Errors that can occur while interacting with RCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum RCDBError {
+    /// An encoded value is not valid for its declared type.
+    #[error("invalid condition value: {0}")]
+    InvalidValue(String),
+    /// A condition failed decoding at a specific run.
+    #[error("condition {condition_name} at run {run_number}: {reason}")]
+    MalformedValue {
+        /// Requested condition name.
+        condition_name: String,
+        /// Run containing the invalid value.
+        run_number: crate::RunNumber,
+        /// Decoding failure.
+        reason: String,
+    },
+    /// Indexed run is outside the resolved condition results.
+    #[error("run {0} is not in these condition results")]
+    RunNotInResults(crate::RunNumber),
     /// A predicate operand or operation is invalid.
     #[error("invalid predicate: {0}")]
     InvalidPredicate(String),

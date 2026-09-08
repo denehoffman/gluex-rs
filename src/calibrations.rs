@@ -190,7 +190,7 @@ impl CalibrationProvenance {
     pub fn variation(&self) -> &str {
         &self.variation
     }
-    /// Effective timestamp captured when the source opened.
+    /// Requested cutoff: source opening time unless explicitly overridden.
     #[must_use]
     pub const fn as_of(&self) -> DateTime<Utc> {
         self.as_of
@@ -204,6 +204,21 @@ pub struct CalibrationQuery {
     provenance: CalibrationProvenance,
 }
 impl CalibrationQuery {
+    /// Return a new query requesting an explicit variation. Validated during collection.
+    #[must_use]
+    pub fn with_variation(&self, variation: impl Into<String>) -> Self {
+        let mut query = self.clone();
+        query.provenance.variation = variation.into();
+        query
+    }
+    /// Return a new query with an explicit inclusive UTC assignment cutoff.
+    #[must_use]
+    pub fn as_of(&self, timestamp: DateTime<Utc>) -> Self {
+        let mut query = self.clone();
+        query.provenance.as_of = timestamp;
+        query
+    }
+
     /// Inspect captured inputs without executing the query.
     #[must_use]
     pub const fn provenance(&self) -> &CalibrationProvenance {
@@ -214,6 +229,14 @@ impl CalibrationQuery {
     /// # Errors
     /// Database, metadata and payload decoding failures are errors, not missing assignments.
     pub fn collect(&self) -> CCDBResult<CalibrationSeries> {
+        self.collect_inner().map_err(|source| CCDBError::Retrieval {
+            table: self.provenance.table.clone(),
+            variation: self.provenance.variation.clone(),
+            as_of: self.provenance.as_of,
+            source: Box::new(source),
+        })
+    }
+    fn collect_inner(&self) -> CCDBResult<CalibrationSeries> {
         let runs: Vec<_> = match &self.provenance.selection {
             RunSelection::Runs(runs) => runs.clone(),
             RunSelection::Range { start, end } => (*start..=*end).collect(),

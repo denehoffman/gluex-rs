@@ -1,5 +1,8 @@
 """Recorded membership and immutable Condition Definition discovery."""
 
+import shutil
+import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import gluex
@@ -57,3 +60,69 @@ def test_missing_rcdb_remains_discoverable() -> None:
         gx.runs(gluex.RunSelection.runs([2]))
     with pytest.raises(RuntimeError, match='RCDB'):
         _ = gx.conditions
+
+
+def test_condition_projection(rcdb_path: Path) -> None:
+    gx = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED)
+    query = gx.runs(gluex.RunSelection.range(2, 4))
+    projected = query.select(['event_count', 'is_valid_run_end'])
+    assert isinstance(projected, gluex.ConditionQuery)
+    assert 'event_count' in repr(projected)
+    result = projected.collect()
+    assert isinstance(result, gluex.ConditionResults)
+    assert result.runs.numbers == (2, 3, 4)
+    assert result[3, 'event_count'] == 1686
+    assert result[3, 'is_valid_run_end'] is None
+    assert result.column('is_valid_run_end') == (False, None, True)
+    assert result.report.missing_values == ((3, 'is_valid_run_end'),)
+    assert result.provenance.fields == ('event_count', 'is_valid_run_end')
+    assert result.provenance.runs.source == str(rcdb_path.resolve())
+    assert isinstance(query.collect(), gluex.RunSet)
+    with pytest.raises(KeyError):
+        _ = result[1, 'event_count']
+    with pytest.raises(KeyError):
+        result.column('absent')
+    with pytest.raises(ValueError):
+        query.select(['absent'])
+    with pytest.raises(TypeError):
+        query.select([2])
+    with pytest.raises(AttributeError):
+        result.runs = ()
+
+
+@pytest.mark.parametrize('text', ['broken', 'garbage 2014 garbage', '2014'])
+def test_projected_timestamp_rejects_corruption(rcdb_path, tmp_path, text):
+    fixture = tmp_path / 'malformed.sqlite'
+    shutil.copyfile(rcdb_path, fixture)
+    with sqlite3.connect(fixture) as connection:
+        connection.execute('UPDATE conditions SET time_value = ? WHERE id = 7', (text,))
+    gx = gluex.open(rcdb=fixture, ccdb=gluex.DISABLED)
+    query = gx.runs(gluex.RunSelection.runs([2])).select(['run_start_time'])
+    with pytest.raises(RuntimeError, match='run_start_time at run 2'):
+        query.collect()
+
+
+def test_condition_columns_preserve_types_nulls_and_filter_reports(rcdb_path, tmp_path):
+    fixture = tmp_path / 'types.sqlite'
+    shutil.copyfile(rcdb_path, fixture)
+    with sqlite3.connect(fixture) as connection:
+        connection.execute("UPDATE conditions SET time_value = '2015-12-08 15:47:20.125' WHERE id = 7")
+    gx = gluex.open(rcdb=fixture, ccdb=gluex.DISABLED)
+    result = gx.runs(gluex.RunSelection.runs([2, 3, 4])).select(['run_start_time', 'run_type']).collect()
+    assert result.column('run_start_time') == (
+        datetime(2015, 12, 8, 15, 47, 20, 125000, tzinfo=timezone.utc),
+        None,
+        None,
+    )
+    assert result.column('run_type') == (None, None, None)
+    valid_end = True
+    filtered = (
+        gx.runs(gluex.RunSelection.range(2, 4))
+        .where(gx.conditions['is_valid_run_end'].eq(valid_end))
+        .select(['event_count'])
+        .collect()
+    )
+    assert filtered.runs.numbers == (4,)
+    assert filtered.column('event_count') == (5000,)
+    assert filtered.runs.report.unknown_runs == (3,)
+    assert len(filtered.provenance.runs.predicates) == 1

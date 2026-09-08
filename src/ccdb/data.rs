@@ -512,7 +512,12 @@ impl Data {
                     vec.push(decoded);
                 }
                 (Column::Bool(vec), ColumnType::Bool) => {
-                    vec.push(parse_bool(raw));
+                    vec.push(parse_bool(raw).ok_or_else(|| CCDBError::ParseError {
+                        column: col,
+                        row,
+                        column_type,
+                        text: raw.to_string(),
+                    })?);
                 }
                 _ => unreachable!("column type mismatch"),
             }
@@ -771,12 +776,12 @@ impl<'a> Iterator for VaultFieldIter<'a> {
     }
 }
 
-fn parse_bool(s: &str) -> bool {
+fn parse_bool(s: &str) -> Option<bool> {
     if s == "true" {
-        return true;
+        return Some(true);
     }
     if s == "false" {
-        return false;
+        return Some(false);
     }
-    s.parse::<i32>().unwrap_or(0) != 0
+    s.parse::<i32>().ok().map(|value| value != 0)
 }

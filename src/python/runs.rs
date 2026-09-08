@@ -71,7 +71,7 @@ impl PyRunProvenance {
 
 /// Immutable recorded run numbers, sorted and unique, with resolution provenance.
 #[pyclass(name = "RunSet", module = "gluex", frozen)]
-pub struct PyRunSet(RunSet);
+pub struct PyRunSet(pub(crate) RunSet);
 #[pymethods]
 impl PyRunSet {
     /// Completed evaluation diagnostics.
@@ -124,6 +124,14 @@ impl PyRunSet {
 pub struct PyRunQuery(pub(crate) RunQuery);
 #[pymethods]
 impl PyRunQuery {
+    /// Project named conditions without reading values. Invalid names raise ValueError.
+    fn select(&self, fields: Vec<String>) -> PyResult<PyConditionQuery> {
+        self.0
+            .select(fields)
+            .map(PyConditionQuery)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
     /// Return a new query with an additional predicate; no data is retrieved.
     fn r#where(&self, predicate: &PyRunPredicate) -> Self {
         Self(self.0.filter(predicate.0.clone()))
@@ -361,4 +369,126 @@ pub fn approved_production(period: &PyRunPeriod) -> PyResult<PyRunPredicate> {
     crate::approved_production(period.0)
         .map(PyRunPredicate)
         .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Lazy condition projection; collect returns ConditionResults and releases the GIL.
+#[pyclass(name = "ConditionQuery", module = "gluex", frozen)]
+pub struct PyConditionQuery(crate::ConditionQuery);
+#[pymethods]
+impl PyConditionQuery {
+    /// Captured source, predicates and fields, without evaluation.
+    #[getter]
+    fn provenance(&self) -> PyConditionProvenance {
+        PyConditionProvenance(self.0.provenance())
+    }
+    /// Collect optional columns; malformed values and execution failures raise RuntimeError.
+    fn collect(&self, py: Python<'_>) -> PyResult<PyConditionResults> {
+        py.detach(|| self.0.collect())
+            .map(PyConditionResults)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
+    }
+}
+
+/// Source, membership query and ordered projected names.
+#[pyclass(name = "ConditionProvenance", module = "gluex", frozen)]
+pub struct PyConditionProvenance(crate::ConditionProvenance);
+#[pymethods]
+impl PyConditionProvenance {
+    /// Source, numeric scope and predicates for recorded membership.
+    #[getter]
+    fn runs(&self) -> PyRunProvenance {
+        PyRunProvenance(self.0.runs().clone())
+    }
+    /// Ordered names of projected conditions.
+    #[getter]
+    fn fields(&self) -> TypedTuple<String> {
+        TypedTuple(self.0.fields().to_vec())
+    }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
+    }
+}
+
+/// Missing cells from a completed condition projection.
+#[pyclass(name = "ConditionReport", module = "gluex", frozen)]
+pub struct PyConditionReport(crate::ConditionReport);
+#[pymethods]
+impl PyConditionReport {
+    /// Missing (run number, condition name) pairs in run/name order.
+    #[getter]
+    fn missing_values(&self) -> TypedTuple<(RunNumber, String)> {
+        TypedTuple(self.0.missing_values().to_vec())
+    }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
+    }
+}
+
+#[derive(IntoPyObject)]
+pub enum ConditionScalar {
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Text(String),
+    Time(chrono::DateTime<chrono::Utc>),
+}
+impl From<&crate::rcdb::Value> for ConditionScalar {
+    fn from(value: &crate::rcdb::Value) -> Self {
+        use crate::rcdb::ValueType;
+        match value.value_type() {
+            ValueType::Bool => Self::Bool(value.as_bool().unwrap()),
+            ValueType::Int => Self::Int(value.as_int().unwrap()),
+            ValueType::Float => Self::Float(value.as_float().unwrap()),
+            ValueType::Time => Self::Time(value.as_time().unwrap()),
+            _ => Self::Text(value.as_string().unwrap().into()),
+        }
+    }
+}
+
+/// Immutable optional condition values indexed by (run, name), with aligned columns.
+#[pyclass(name = "ConditionResults", module = "gluex", frozen)]
+pub struct PyConditionResults(crate::ConditionResults);
+#[pymethods]
+impl PyConditionResults {
+    /// Recorded runs in column order, including predicate-exclusion diagnostics.
+    #[getter]
+    fn runs(&self) -> PyRunSet {
+        PyRunSet(self.0.runs().clone())
+    }
+    /// Inputs used for the completed collection.
+    #[getter]
+    fn provenance(&self) -> PyConditionProvenance {
+        PyConditionProvenance(self.0.provenance().clone())
+    }
+    /// Missing requested cells, represented by None in values and columns.
+    #[getter]
+    fn report(&self) -> PyConditionReport {
+        PyConditionReport(self.0.report().clone())
+    }
+    /// Return an immutable column aligned with runs.numbers; unknown names raise KeyError.
+    fn column(&self, name: &str) -> PyResult<TypedTuple<Option<ConditionScalar>>> {
+        self.0
+            .column(name)
+            .map(|values| TypedTuple(values.iter().map(|v| v.as_ref().map(Into::into)).collect()))
+            .map_err(|e| PyKeyError::new_err(e.to_string()))
+    }
+    fn __getitem__(&self, key: (RunNumber, String)) -> PyResult<Option<ConditionScalar>> {
+        self.0
+            .get(key.0, &key.1)
+            .map(|v| v.map(Into::into))
+            .map_err(|e| PyKeyError::new_err(e.to_string()))
+    }
+    fn __len__(&self) -> usize {
+        self.0.runs().numbers().len()
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "ConditionResults(runs={}, fields={:?})",
+            self.0.runs().numbers().len(),
+            self.0.provenance().fields()
+        )
+    }
 }

@@ -107,11 +107,19 @@ impl PySources {
 /// configured sources raise ValueError immediately. Keep SQLite files
 /// unchanged while using a session or its readers. Reference types such as
 /// gluex.RunPeriod and gluex.Particle remain available without databases.
-#[pyclass(name = "GlueX", module = "gluex", frozen)]
+#[pyclass(name = "GlueX", module = "gluex")]
 pub struct PyGlueX(GlueX);
 
 #[pymethods]
 impl PyGlueX {
+    /// Reopen captured paths and renew defaults for new queries. Releases the GIL.
+    /// Existing handles/results keep their bindings. Environment is not re-read.
+    /// Failure raises ValueError and leaves this session unchanged. Keep files unchanged
+    /// while in use; finish old-file work before replacement. No historical copies are kept.
+    fn refresh(&mut self, py: Python<'_>) -> PyResult<()> {
+        py.detach(|| self.0.refresh()).map_err(session_error)
+    }
+
     /// Full-path calibration catalog. Requires CCDB; never requires RCDB.
     #[getter]
     fn calibrations(&self) -> PyResult<super::calibrations::PyCalibrationCatalog> {

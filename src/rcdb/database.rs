@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::core::{Id, RunNumber, parsers::parse_timestamp, utils::resolve_path};
+use crate::core::{Id, RunNumber, parsers::parse_database_timestamp, utils::resolve_path};
 use parking_lot::{Mutex, MutexGuard, RwLock};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OpenFlags, ToSql, params_from_iter};
@@ -248,41 +248,14 @@ impl RCDB {
                 continue;
             };
             let requested = &requested_conditions[index];
-            match requested.value_type {
-                ValueType::String | ValueType::Json | ValueType::Blob => {
-                    let value: Option<String> = row.get(2)?;
-                    if let Some(text) = value {
-                        entry.insert(
-                            requested.name.clone(),
-                            Value::text(requested.value_type, Some(text)),
-                        );
-                    }
-                }
-                ValueType::Int => {
-                    let value: Option<i64> = row.get(3)?;
-                    if let Some(v) = value {
-                        entry.insert(requested.name.clone(), Value::int(v));
-                    }
-                }
-                ValueType::Float => {
-                    let value: Option<f64> = row.get(4)?;
-                    if let Some(v) = value {
-                        entry.insert(requested.name.clone(), Value::float(v));
-                    }
-                }
-                ValueType::Bool => {
-                    let value: Option<i64> = row.get(5)?;
-                    if let Some(v) = value {
-                        entry.insert(requested.name.clone(), Value::bool(v != 0));
-                    }
-                }
-                ValueType::Time => {
-                    let value: Option<String> = row.get(6)?;
-                    if let Some(raw) = value {
-                        let parsed = parse_timestamp(&raw)?;
-                        entry.insert(requested.name.clone(), Value::time(parsed));
-                    }
-                }
+            let value =
+                decode_condition(row, requested).map_err(|error| RCDBError::MalformedValue {
+                    condition_name: requested.name.clone(),
+                    run_number,
+                    reason: error.to_string(),
+                })?;
+            if let Some(value) = value {
+                entry.insert(requested.name.clone(), value);
             }
         }
         Ok(results)
@@ -540,4 +513,41 @@ fn limit_run_ranges(runs: &[RunNumber]) -> Vec<(RunNumber, RunNumber)> {
         reduced = merged;
     }
     reduced
+}
+
+fn decode_condition(
+    row: &rusqlite::Row<'_>,
+    requested: &RequestedCondition,
+) -> RCDBResult<Option<Value>> {
+    Ok(match requested.value_type {
+        ValueType::String | ValueType::Json | ValueType::Blob => {
+            let value: Option<String> = row.get(2)?;
+            if requested.value_type == ValueType::Json
+                && let Some(text) = &value
+            {
+                serde_json::from_str::<serde_json::Value>(text)
+                    .map_err(|e| RCDBError::InvalidValue(e.to_string()))?;
+            }
+            value.map(|text| Value::text(requested.value_type, Some(text)))
+        }
+        ValueType::Int => row.get::<_, Option<i64>>(3)?.map(Value::int),
+        ValueType::Float => {
+            let value: Option<f64> = row.get(4)?;
+            if value.is_some_and(|v| !v.is_finite()) {
+                return Err(RCDBError::InvalidValue("non-finite float".into()));
+            }
+            value.map(Value::float)
+        }
+        ValueType::Bool => {
+            let value: Option<i64> = row.get(5)?;
+            if value.is_some_and(|v| v != 0 && v != 1) {
+                return Err(RCDBError::InvalidValue("boolean must be 0 or 1".into()));
+            }
+            value.map(|v| Value::bool(v != 0))
+        }
+        ValueType::Time => row
+            .get::<_, Option<String>>(6)?
+            .map(|raw| parse_database_timestamp(&raw).map(Value::time))
+            .transpose()?,
+    })
 }
