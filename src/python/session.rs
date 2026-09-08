@@ -112,6 +112,15 @@ pub struct PyGlueX(GlueX);
 
 #[pymethods]
 impl PyGlueX {
+    /// Full-path calibration catalog. Requires CCDB; never requires RCDB.
+    #[getter]
+    fn calibrations(&self) -> PyResult<super::calibrations::PyCalibrationCatalog> {
+        self.0
+            .calibrations()
+            .map(super::calibrations::PyCalibrationCatalog)
+            .map_err(session_error)
+    }
+
     #[new]
     #[pyo3(signature = (*, rcdb=None, ccdb=None))]
     fn new(

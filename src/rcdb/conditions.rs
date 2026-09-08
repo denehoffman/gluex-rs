@@ -15,6 +15,7 @@ enum ExprInner {
     Comparison(Comparison),
     Group { kind: GroupKind, clauses: Vec<Expr> },
     Not(Expr),
+    Unknown(Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +55,10 @@ enum Operator {
     TimeLt(DateTime<Utc>),
     TimeLe(DateTime<Utc>),
     Exists,
+    Typed {
+        operator: &'static str,
+        value: Value,
+    },
 }
 
 impl Expr {
@@ -70,7 +75,7 @@ impl Expr {
                     clause.referenced_conditions(out);
                 }
             }
-            ExprInner::Not(inner) => inner.referenced_conditions(out),
+            ExprInner::Not(inner) | ExprInner::Unknown(inner) => inner.referenced_conditions(out),
         }
     }
 
@@ -96,8 +101,15 @@ impl Expr {
                 };
                 Ok(format!("({})", rendered.join(joiner)))
             }
+            ExprInner::Unknown(inner) => {
+                Ok(format!("({}) IS NULL", inner.to_sql(alias_lookup, params)?))
+            }
             ExprInner::Not(inner) => Ok(format!("NOT ({})", inner.to_sql(alias_lookup, params)?)),
         }
+    }
+
+    pub(crate) fn unknown(self) -> Self {
+        Self::new(ExprInner::Unknown(self))
     }
 
     /// Negates the expression.
@@ -121,6 +133,7 @@ impl Expr {
                 }
                 write!(f, "({})", parts.join(joiner))
             }
+            ExprInner::Unknown(inner) => write!(f, "({inner}) IS UNKNOWN"),
             ExprInner::Not(inner) => {
                 write!(f, "NOT ({inner})")
             }
@@ -150,6 +163,13 @@ impl Comparison {
             });
         }
         Ok(match &self.operator {
+            Operator::Typed { operator, value } => push_param(
+                params,
+                &alias,
+                self.value_type.column_name(),
+                operator,
+                value.clone(),
+            ),
             Operator::Bool(true) => format!("{alias}.bool_value = 1"),
             Operator::Bool(false) => format!("{alias}.bool_value = 0"),
             Operator::IntEquals(v) => {
@@ -205,6 +225,7 @@ impl Comparison {
 
     fn fmt_operator(&self) -> String {
         match &self.operator {
+            Operator::Typed { value, .. } => format!("{value:?}"),
             Operator::Bool(v) => format!("{v}"),
             Operator::IntEquals(v)
             | Operator::IntNotEquals(v)
@@ -238,6 +259,9 @@ impl fmt::Display for Comparison {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let field = &self.field;
         match &self.operator {
+            Operator::Typed { operator, .. } => {
+                write!(f, "{field} {operator} {}", self.fmt_operator())
+            }
             Operator::Bool(true) => write!(f, "{field} IS TRUE"),
             Operator::Bool(false) => write!(f, "{field} IS FALSE"),
             Operator::IntEquals(_)
@@ -820,5 +844,172 @@ pub mod aliases {
                 ));
             }
         })
+    }
+}
+
+impl std::ops::Not for Expr {
+    type Output = Self;
+    fn not(self) -> Self {
+        self.negate()
+    }
+}
+impl std::ops::BitAnd for Expr {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self {
+        all([self, rhs])
+    }
+}
+impl std::ops::BitOr for Expr {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        any([self, rhs])
+    }
+}
+
+/// A typed operand for a Condition Definition comparison.
+#[derive(Debug, Clone)]
+pub enum ConditionOperand {
+    /// Signed integer.
+    Int(i64),
+    /// Finite floating-point number.
+    Float(f64),
+    /// Boolean.
+    Bool(bool),
+    /// Text, including database-defined JSON or blob text.
+    Text(String),
+    /// UTC timestamp.
+    Time(DateTime<Utc>),
+}
+impl From<i64> for ConditionOperand {
+    fn from(v: i64) -> Self {
+        Self::Int(v)
+    }
+}
+impl From<f64> for ConditionOperand {
+    fn from(v: f64) -> Self {
+        Self::Float(v)
+    }
+}
+impl From<bool> for ConditionOperand {
+    fn from(v: bool) -> Self {
+        Self::Bool(v)
+    }
+}
+impl From<String> for ConditionOperand {
+    fn from(v: String) -> Self {
+        Self::Text(v)
+    }
+}
+impl From<&str> for ConditionOperand {
+    fn from(v: &str) -> Self {
+        Self::Text(v.into())
+    }
+}
+impl From<DateTime<Utc>> for ConditionOperand {
+    fn from(v: DateTime<Utc>) -> Self {
+        Self::Time(v)
+    }
+}
+
+impl crate::rcdb::models::ConditionTypeMeta {
+    fn compare(
+        &self,
+        operator: &'static str,
+        operand: ConditionOperand,
+    ) -> Result<Expr, RCDBError> {
+        let (actual, value) = match operand {
+            ConditionOperand::Int(v) => (ValueType::Int, Value::Integer(v)),
+            ConditionOperand::Float(v) if v.is_finite() => (ValueType::Float, Value::Real(v)),
+            ConditionOperand::Float(_) => {
+                return Err(RCDBError::InvalidPredicate(format!(
+                    "{}: comparison requires a finite number",
+                    self.name()
+                )));
+            }
+            ConditionOperand::Bool(v) => (ValueType::Bool, Value::Integer(i64::from(v))),
+            ConditionOperand::Text(v) => (
+                if self.value_type().is_textual() {
+                    self.value_type()
+                } else {
+                    ValueType::String
+                },
+                Value::Text(v),
+            ),
+            ConditionOperand::Time(v) => (ValueType::Time, Value::Text(format_time(&v))),
+        };
+        if actual != self.value_type() {
+            return Err(RCDBError::ConditionTypeMismatch {
+                condition_name: self.name().into(),
+                expected: self.value_type(),
+                actual,
+            });
+        }
+        if actual == ValueType::Bool && !matches!(operator, "=" | "!=") {
+            return Err(RCDBError::InvalidPredicate(format!(
+                "{}: booleans support only equality comparisons",
+                self.name()
+            )));
+        }
+        Ok(Expr::new(ExprInner::Comparison(Comparison {
+            field: self.name().into(),
+            value_type: actual,
+            operator: Operator::Typed { operator, value },
+        })))
+    }
+    /// True when the condition has a recorded non-null value.
+    #[must_use]
+    pub fn is_present(&self) -> Expr {
+        Expr::new(ExprInner::Comparison(Comparison {
+            field: self.name().into(),
+            value_type: self.value_type(),
+            operator: Operator::Exists,
+        }))
+    }
+    /// True when the condition is absent or null; otherwise false.
+    #[must_use]
+    pub fn is_missing(&self) -> Expr {
+        !self.is_present()
+    }
+    /// Build a typed `=` comparison. Missing inputs remain unknown.
+    ///
+    /// # Errors
+    /// Rejects incompatible types, non-finite numbers, and ordered boolean comparisons.
+    pub fn eq(&self, value: impl Into<ConditionOperand>) -> Result<Expr, RCDBError> {
+        self.compare("=", value.into())
+    }
+    /// Build a typed `!=` comparison. Missing inputs remain unknown.
+    ///
+    /// # Errors
+    /// Rejects incompatible types, non-finite numbers, and ordered boolean comparisons.
+    pub fn ne(&self, value: impl Into<ConditionOperand>) -> Result<Expr, RCDBError> {
+        self.compare("!=", value.into())
+    }
+    /// Build a typed `>` comparison. Missing inputs remain unknown.
+    ///
+    /// # Errors
+    /// Rejects incompatible types, non-finite numbers, and ordered boolean comparisons.
+    pub fn gt(&self, value: impl Into<ConditionOperand>) -> Result<Expr, RCDBError> {
+        self.compare(">", value.into())
+    }
+    /// Build a typed `>=` comparison. Missing inputs remain unknown.
+    ///
+    /// # Errors
+    /// Rejects incompatible types, non-finite numbers, and ordered boolean comparisons.
+    pub fn ge(&self, value: impl Into<ConditionOperand>) -> Result<Expr, RCDBError> {
+        self.compare(">=", value.into())
+    }
+    /// Build a typed `<` comparison. Missing inputs remain unknown.
+    ///
+    /// # Errors
+    /// Rejects incompatible types, non-finite numbers, and ordered boolean comparisons.
+    pub fn lt(&self, value: impl Into<ConditionOperand>) -> Result<Expr, RCDBError> {
+        self.compare("<", value.into())
+    }
+    /// Build a typed `<=` comparison. Missing inputs remain unknown.
+    ///
+    /// # Errors
+    /// Rejects incompatible types, non-finite numbers, and ordered boolean comparisons.
+    pub fn le(&self, value: impl Into<ConditionOperand>) -> Result<Expr, RCDBError> {
+        self.compare("<=", value.into())
     }
 }

@@ -22,6 +22,9 @@ pub type RCDBResult<T> = Result<T, RCDBError>;
 /// Errors that can occur while interacting with RCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum RCDBError {
+    /// A predicate operand or operation is invalid.
+    #[error("invalid predicate: {0}")]
+    InvalidPredicate(String),
     /// Wrapper around [`rusqlite::Error`].
     #[error(transparent)]
     SqliteError(#[from] rusqlite::Error),
