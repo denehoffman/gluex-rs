@@ -1,3 +1,4 @@
+mod calibrations;
 mod ccdb;
 mod core;
 mod generation;
@@ -41,8 +42,15 @@ mod gluex {
 
     #[pymodule_export]
     use super::runs::{
-        PyConditionCatalog, PyConditionDefinition, PyRunProvenance, PyRunQuery, PyRunSelection,
-        PyRunSet,
+        PyConditionCatalog, PyConditionDefinition, PyRunPredicate, PyRunProvenance, PyRunQuery,
+        PyRunReport, PyRunSelection, PyRunSet, approved_production,
+    };
+
+    #[pymodule_export]
+    use super::calibrations::{
+        PyCalibrationCatalog, PyCalibrationColumn, PyCalibrationDirectory, PyCalibrationEntry,
+        PyCalibrationPayload, PyCalibrationProvenance, PyCalibrationQuery, PyCalibrationReport,
+        PyCalibrationSeries, PyCalibrationTable,
     };
 
     #[pymodule_export]

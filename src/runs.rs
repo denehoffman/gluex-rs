@@ -54,13 +54,20 @@ impl RunSelection {
 }
 
 /// Inputs identifying recorded membership resolution. Files must remain unchanged while in use.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct RunProvenance {
     source: String,
     selection: RunSelection,
+    predicates: Vec<crate::rcdb::Expr>,
 }
 
 impl RunProvenance {
+    /// Explicit predicates, combined with conjunction.
+    #[must_use]
+    pub fn predicates(&self) -> &[crate::rcdb::Expr] {
+        &self.predicates
+    }
+
     /// Filesystem identity of the RCDB source; not a historical snapshot.
     #[must_use]
     pub fn source(&self) -> &str {
@@ -79,9 +86,16 @@ impl RunProvenance {
 pub struct RunSet {
     numbers: Vec<RunNumber>,
     provenance: RunProvenance,
+    report: RunReport,
 }
 
 impl RunSet {
+    /// Completed evaluation report identifying final-unknown exclusions.
+    #[must_use]
+    pub const fn report(&self) -> &RunReport {
+        &self.report
+    }
+
     /// Sorted, unique recorded run numbers.
     #[must_use]
     pub fn numbers(&self) -> &[RunNumber] {
@@ -100,15 +114,28 @@ impl RunSet {
 pub struct RunQuery {
     reader: RCDB,
     selection: RunSelection,
+    predicates: Vec<crate::rcdb::Expr>,
 }
 
 impl RunQuery {
+    /// Return a new query with an additional predicate; the original is unchanged.
+    #[must_use]
+    pub fn filter(&self, predicate: crate::rcdb::Expr) -> Self {
+        let mut query = self.clone();
+        query.predicates.push(predicate);
+        query
+    }
+
     pub(crate) fn new(reader: RCDB, selection: RunSelection) -> Self {
         let selection = match selection {
             RunSelection::Runs(runs) => RunSelection::runs(runs),
             selection => selection,
         };
-        Self { reader, selection }
+        Self {
+            reader,
+            selection,
+            predicates: Vec::new(),
+        }
     }
 
     /// Inspect the numeric scope without executing the query.
@@ -123,6 +150,7 @@ impl RunQuery {
         RunProvenance {
             source: self.reader.connection_path().to_owned(),
             selection: self.selection.clone(),
+            predicates: self.predicates.clone(),
         }
     }
 
@@ -131,10 +159,16 @@ impl RunQuery {
     /// # Errors
     /// Returns a contextual RCDB error if execution or run decoding fails.
     pub fn collect(&self) -> RCDBResult<RunSet> {
-        let context = RCDBContext::from_selection(self.selection.clone());
+        let predicate = crate::rcdb::conditions::all(self.predicates.clone());
+        let context = RCDBContext::from_selection(self.selection.clone()).filter(predicate.clone());
+        let unknown_context =
+            RCDBContext::from_selection(self.selection.clone()).filter(predicate.unknown());
         Ok(RunSet {
             numbers: self.reader.fetch_runs(&context)?,
             provenance: self.provenance(),
+            report: RunReport {
+                unknown_runs: self.reader.fetch_runs(&unknown_context)?,
+            },
         })
     }
 }
@@ -144,6 +178,7 @@ impl std::fmt::Debug for RunQuery {
         f.debug_struct("RunQuery")
             .field("source", &self.reader.connection_path())
             .field("selection", &self.selection)
+            .field("predicates", &self.predicates)
             .finish()
     }
 }
@@ -197,5 +232,18 @@ impl std::ops::Index<&str> for ConditionCatalog {
     type Output = ConditionDefinition;
     fn index(&self, name: &str) -> &Self::Output {
         &self.0[name]
+    }
+}
+
+/// Completed run evaluation diagnostics. Only final-unknown predicates are reported here.
+#[derive(Debug, Clone)]
+pub struct RunReport {
+    unknown_runs: Vec<RunNumber>,
+}
+impl RunReport {
+    /// Recorded runs excluded because the complete predicate evaluated to unknown.
+    #[must_use]
+    pub fn unknown_runs(&self) -> &[RunNumber] {
+        &self.unknown_runs
     }
 }

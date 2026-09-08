@@ -32,7 +32,7 @@ pub mod rcdb;
 /// Shared numeric scope and recorded membership queries.
 pub mod runs;
 pub use runs::{
-    ConditionCatalog, ConditionDefinition, RunProvenance, RunQuery, RunSelection, RunSet,
+    ConditionCatalog, ConditionDefinition, RunProvenance, RunQuery, RunReport, RunSelection, RunSet,
 };
 
 /// Enforced read-only raw rows and parameters.
@@ -57,4 +57,14 @@ pub use core::{
     Charge, DetectorSystem, GlueXCoreError, Histogram, Id, Particle, Polarization, RESTVersion,
     RESTVersionContext, RESTVersionInfo, RESTVersionSelection, RunNumber, RunPeriod, constants,
     enums, parsers, particles, run_periods, utils,
+};
+
+/// Typed operands and composable run predicates.
+pub use rcdb::conditions::{ConditionOperand, Expr as RunPredicate, aliases::approved_production};
+
+/// Calibration catalogs and explicit numeric queries.
+pub mod calibrations;
+pub use calibrations::{
+    CalibrationCatalog, CalibrationDirectory, CalibrationEntry, CalibrationProvenance,
+    CalibrationQuery, CalibrationReport, CalibrationSeries, CalibrationTable,
 };

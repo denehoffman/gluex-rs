@@ -60,6 +60,25 @@ pub struct CCDB {
 }
 
 impl CCDB {
+    pub(crate) fn catalog_tables(&self) -> Vec<TypeTableHandle> {
+        self.table_meta
+            .iter()
+            .map(|meta| TypeTableHandle {
+                db: self.clone(),
+                meta: meta.value().clone(),
+            })
+            .collect()
+    }
+    pub(crate) fn catalog_directories(&self) -> Vec<DirectoryHandle> {
+        self.directory_meta
+            .iter()
+            .map(|meta| DirectoryHandle {
+                db: self.clone(),
+                meta: meta.value().clone(),
+            })
+            .collect()
+    }
+
     /// Opens a read-only handle using the `CCDB_CONNECTION` environment variable.
     ///
     /// # Errors
@@ -609,7 +628,7 @@ impl TypeTableHandle {
         Ok(columns)
     }
 
-    fn column_layout(&self) -> CCDBResult<Arc<ColumnLayout>> {
+    pub(crate) fn column_layout(&self) -> CCDBResult<Arc<ColumnLayout>> {
         if let Some(existing) = self.db.column_layouts.get(&self.meta.id) {
             return Ok(existing.clone());
         }
@@ -632,12 +651,12 @@ impl TypeTableHandle {
         }
         self.load_vaults(&assignments)
     }
-    fn resolve_assignments(
+    pub(crate) fn resolve_assignments(
         &self,
         runs: &[RunNumber],
         variation: &str,
         timestamp: DateTime<Utc>,
-    ) -> CCDBResult<BTreeMap<RunNumber, Arc<ConstantSetMeta>>> {
+    ) -> CCDBResult<BTreeMap<RunNumber, ResolvedAssignment>> {
         if runs.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -645,7 +664,7 @@ impl TypeTableHandle {
         let max_run = *runs.iter().max().expect("this is a bug, please report it!");
         let start_var_meta = self.db.variation(variation)?;
         let var_chain = self.db.variation_chain(&start_var_meta)?;
-        let mut final_assignments: BTreeMap<RunNumber, Arc<ConstantSetMeta>> = BTreeMap::new();
+        let mut final_assignments: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
         let mut unresolved: HashSet<RunNumber> = runs.iter().copied().collect();
         for var_meta in var_chain {
             if unresolved.is_empty() {
@@ -672,7 +691,7 @@ impl TypeTableHandle {
         timestamp: DateTime<Utc>,
         min_run: RunNumber,
         max_run: RunNumber,
-    ) -> CCDBResult<BTreeMap<RunNumber, Arc<ConstantSetMeta>>> {
+    ) -> CCDBResult<BTreeMap<RunNumber, ResolvedAssignment>> {
         let connection = self.db.connection();
         let mut stmt = connection.prepare_cached(
             "SELECT
@@ -717,7 +736,7 @@ impl TypeTableHandle {
             )?
             .collect::<Result<Vec<(AssignmentMetaLite, ConstantSetMeta, RunNumber, RunNumber)>, _>>(
             )?;
-        let mut best: BTreeMap<RunNumber, Arc<ConstantSetMeta>> = BTreeMap::new();
+        let mut best: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
         let mut best_created: HashMap<RunNumber, DateTime<Utc>> = HashMap::new(); // timestamp map
         let mut constant_set_cache: HashMap<Id, Arc<ConstantSetMeta>> = HashMap::new();
         for &run in runs {
@@ -730,7 +749,17 @@ impl TypeTableHandle {
                             .entry(constant_set.id)
                             .or_insert_with(|| Arc::new(constant_set.clone()))
                             .clone();
-                        best.insert(run, cs_entry);
+                        best.insert(
+                            run,
+                            ResolvedAssignment {
+                                constant_set: cs_entry,
+                                id: meta.id(),
+                                created,
+                                variation: var_meta.name.clone(),
+                                run_min: *rmin,
+                                run_max: *rmax,
+                            },
+                        );
                         best_created.insert(run, created);
                     }
                 }
@@ -740,7 +769,7 @@ impl TypeTableHandle {
     }
     fn load_vaults(
         &self,
-        assignments: &BTreeMap<RunNumber, Arc<ConstantSetMeta>>,
+        assignments: &BTreeMap<RunNumber, ResolvedAssignment>,
     ) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         if assignments.is_empty() {
             return Ok(BTreeMap::new());
@@ -753,9 +782,19 @@ impl TypeTableHandle {
             .map(|(run, constant_set)| {
                 Ok((
                     *run,
-                    Data::from_vault(&constant_set.vault, layout.clone(), n_rows)?,
+                    Data::from_vault(&constant_set.constant_set.vault, layout.clone(), n_rows)?,
                 ))
             })
             .collect::<CCDBResult<BTreeMap<RunNumber, Data>>>()
     }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedAssignment {
+    pub constant_set: Arc<ConstantSetMeta>,
+    pub id: Id,
+    pub created: DateTime<Utc>,
+    pub variation: String,
+    pub run_min: RunNumber,
+    pub run_max: RunNumber,
 }

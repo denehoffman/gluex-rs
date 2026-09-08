@@ -6,7 +6,7 @@ use crate::{
     ConditionCatalog, ConditionDefinition, RunNumber, RunProvenance, RunQuery, RunSelection, RunSet,
 };
 use pyo3::{
-    exceptions::{PyIndexError, PyKeyError, PyRuntimeError},
+    exceptions::{PyIndexError, PyKeyError, PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
 };
 
@@ -43,6 +43,17 @@ impl PyRunSelection {
 pub struct PyRunProvenance(RunProvenance);
 #[pymethods]
 impl PyRunProvenance {
+    /// Explicit scientific predicates used by this query.
+    #[getter]
+    fn predicates(&self) -> TypedTuple<String> {
+        TypedTuple(
+            self.0
+                .predicates()
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        )
+    }
     /// RCDB filesystem identity.
     #[getter]
     fn source(&self) -> &str {
@@ -63,6 +74,11 @@ impl PyRunProvenance {
 pub struct PyRunSet(RunSet);
 #[pymethods]
 impl PyRunSet {
+    /// Completed evaluation diagnostics.
+    #[getter]
+    fn report(&self) -> PyRunReport {
+        PyRunReport(self.0.report().clone())
+    }
     /// Recorded run numbers as an immutable tuple.
     #[getter]
     fn numbers(&self) -> TypedTuple<RunNumber> {
@@ -108,6 +124,10 @@ impl PyRunSet {
 pub struct PyRunQuery(pub(crate) RunQuery);
 #[pymethods]
 impl PyRunQuery {
+    /// Return a new query with an additional predicate; no data is retrieved.
+    fn r#where(&self, predicate: &PyRunPredicate) -> Self {
+        Self(self.0.filter(predicate.0.clone()))
+    }
     /// Numeric scope, inspected without execution.
     #[getter]
     fn selection(&self) -> PyRunSelection {
@@ -135,6 +155,64 @@ impl PyRunQuery {
 pub struct PyConditionDefinition(ConditionDefinition);
 #[pymethods]
 impl PyConditionDefinition {
+    fn __eq__(&self, _other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Err(PyTypeError::new_err(
+            "Use definition.eq(value) to build an equality predicate",
+        ))
+    }
+    fn __ne__(&self, _other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Err(PyTypeError::new_err(
+            "Use definition.ne(value) to build an inequality predicate",
+        ))
+    }
+
+    /// True for a recorded non-null value.
+    fn is_present(&self) -> PyRunPredicate {
+        PyRunPredicate(self.0.is_present())
+    }
+    /// True for an absent or null value.
+    fn is_missing(&self) -> PyRunPredicate {
+        PyRunPredicate(self.0.is_missing())
+    }
+    /// Build a typed equality predicate; missing inputs stay unknown.
+    fn eq(&self, py: Python<'_>, value: Operand) -> PyResult<PyRunPredicate> {
+        self.0
+            .eq(value.native(py, &self.0)?)
+            .map(PyRunPredicate)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+    /// Build a typed inequality predicate; missing inputs stay unknown.
+    fn ne(&self, py: Python<'_>, value: Operand) -> PyResult<PyRunPredicate> {
+        self.0
+            .ne(value.native(py, &self.0)?)
+            .map(PyRunPredicate)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+    fn __gt__(&self, py: Python<'_>, value: Operand) -> PyResult<PyRunPredicate> {
+        self.0
+            .gt(value.native(py, &self.0)?)
+            .map(PyRunPredicate)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+    fn __ge__(&self, py: Python<'_>, value: Operand) -> PyResult<PyRunPredicate> {
+        self.0
+            .ge(value.native(py, &self.0)?)
+            .map(PyRunPredicate)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+    fn __lt__(&self, py: Python<'_>, value: Operand) -> PyResult<PyRunPredicate> {
+        self.0
+            .lt(value.native(py, &self.0)?)
+            .map(PyRunPredicate)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+    fn __le__(&self, py: Python<'_>, value: Operand) -> PyResult<PyRunPredicate> {
+        self.0
+            .le(value.native(py, &self.0)?)
+            .map(PyRunPredicate)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
     /// Database-native identifier.
     #[getter]
     fn id(&self) -> i64 {
@@ -206,4 +284,81 @@ impl PyConditionCatalog {
     fn __repr__(&self) -> String {
         format!("ConditionCatalog(len={})", self.0.len())
     }
+}
+
+/// Composable three-valued predicate. Use &, | and ~; Python truth conversion is forbidden.
+#[pyclass(name = "RunPredicate", module = "gluex", frozen)]
+pub struct PyRunPredicate(crate::RunPredicate);
+#[pymethods]
+impl PyRunPredicate {
+    fn __and__(&self, other: &Self) -> Self {
+        Self(self.0.clone() & other.0.clone())
+    }
+    fn __or__(&self, other: &Self) -> Self {
+        Self(self.0.clone() | other.0.clone())
+    }
+    fn __invert__(&self) -> Self {
+        Self(!self.0.clone())
+    }
+    fn __bool__(&self) -> PyResult<bool> {
+        Err(PyTypeError::new_err(
+            "Use &, | and ~ to compose predicates, then query.collect(); predicates have no Python truth value",
+        ))
+    }
+    fn __repr__(&self) -> String {
+        format!("RunPredicate({})", self.0)
+    }
+}
+
+/// Completed evaluation diagnostics; these runs had final-unknown predicates.
+#[pyclass(name = "RunReport", module = "gluex", frozen)]
+pub struct PyRunReport(crate::RunReport);
+#[pymethods]
+impl PyRunReport {
+    /// Recorded runs excluded because the complete predicate was unknown.
+    #[getter]
+    fn unknown_runs(&self) -> TypedTuple<RunNumber> {
+        TypedTuple(self.0.unknown_runs().to_vec())
+    }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
+    }
+}
+
+#[derive(FromPyObject)]
+pub enum Operand {
+    Bool(Py<pyo3::types::PyBool>),
+    Int(Py<pyo3::types::PyInt>),
+    Float(f64),
+    Text(String),
+    Time(chrono::DateTime<chrono::Utc>),
+}
+impl Operand {
+    fn native(
+        self,
+        py: Python<'_>,
+        definition: &ConditionDefinition,
+    ) -> PyResult<crate::ConditionOperand> {
+        Ok(match self {
+            Self::Bool(v) => crate::ConditionOperand::Bool(v.bind(py).extract()?),
+            Self::Int(v) => {
+                if definition.value_type() == crate::rcdb::ValueType::Float {
+                    crate::ConditionOperand::Float(v.bind(py).extract()?)
+                } else {
+                    crate::ConditionOperand::Int(v.bind(py).extract()?)
+                }
+            }
+            Self::Float(v) => crate::ConditionOperand::Float(v),
+            Self::Text(v) => crate::ConditionOperand::Text(v),
+            Self::Time(v) => crate::ConditionOperand::Time(v),
+        })
+    }
+}
+
+/// Explicit named approved-production cut for a supported period; never applied automatically.
+#[pyfunction]
+pub fn approved_production(period: &PyRunPeriod) -> PyResult<PyRunPredicate> {
+    crate::approved_production(period.0)
+        .map(PyRunPredicate)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }

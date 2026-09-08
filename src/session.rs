@@ -144,6 +144,14 @@ pub struct GlueX {
 }
 
 impl GlueX {
+    /// Inspect full-path calibration and directory catalogs without fetching constants.
+    ///
+    /// # Errors
+    /// Returns a missing-capability error when CCDB is unavailable.
+    pub fn calibrations(&self) -> Result<crate::CalibrationCatalog, GlueXError> {
+        Ok(crate::CalibrationCatalog::new(self.sources.ccdb()?))
+    }
+
     /// Inspect the immutable Condition Definition catalog, including dynamic database names.
     ///
     /// # Errors
