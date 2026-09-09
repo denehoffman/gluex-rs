@@ -17,7 +17,7 @@ enum PyCalibrationInput {
     Query(PyRunQuery),
 }
 
-fn error(e: crate::ccdb::CCDBError) -> PyErr {
+fn error(e: impl std::fmt::Display) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
 }
 
@@ -109,8 +109,8 @@ impl PyCalibrationTable {
         self.0.metadata().id()
     }
     #[getter]
-    fn description(&self) -> &str {
-        self.0.metadata().comment()
+    fn description(&self) -> String {
+        self.0.metadata().description().to_owned()
     }
     #[getter]
     fn n_rows(&self) -> i64 {
@@ -174,7 +174,7 @@ impl PyReconstructionSelection {
 
 /// Immutable named calibration column definition.
 #[pyclass(name = "CalibrationColumn", module = "gluex", frozen)]
-pub struct PyCalibrationColumn(crate::ccdb::ColumnMeta);
+pub struct PyCalibrationColumn(crate::CalibrationColumn);
 #[pymethods]
 impl PyCalibrationColumn {
     #[getter]
@@ -183,7 +183,7 @@ impl PyCalibrationColumn {
     }
     #[getter]
     fn value_type(&self) -> String {
-        self.0.column_type().to_string()
+        self.0.value_type().as_str().to_owned()
     }
     fn __repr__(&self) -> String {
         format!(
@@ -463,26 +463,33 @@ impl PyCalibrationPayload {
     }
     /// Return a named column as an immutable tuple; unknown names raise KeyError.
     fn column(&self, name: &str) -> PyResult<TypedTuple<CalibrationScalar>> {
-        use crate::ccdb::Column;
         let c = self
             .0
             .payload()
-            .named_column(name)
+            .column(name)
             .ok_or_else(|| PyKeyError::new_err(name.to_owned()))?;
         Ok(TypedTuple(match c {
-            Column::Int(v) => v
+            crate::CalibrationColumnValues::Int(v) => v
                 .iter()
                 .map(|v| CalibrationScalar::Int(i64::from(*v)))
                 .collect(),
-            Column::UInt(v) => v
+            crate::CalibrationColumnValues::UInt(v) => v
                 .iter()
                 .map(|v| CalibrationScalar::UInt(u64::from(*v)))
                 .collect(),
-            Column::Long(v) => v.iter().map(|v| CalibrationScalar::Int(*v)).collect(),
-            Column::ULong(v) => v.iter().map(|v| CalibrationScalar::UInt(*v)).collect(),
-            Column::Double(v) => v.iter().map(|v| CalibrationScalar::Float(*v)).collect(),
-            Column::Bool(v) => v.iter().map(|v| CalibrationScalar::Bool(*v)).collect(),
-            Column::String(v) => v
+            crate::CalibrationColumnValues::Long(v) => {
+                v.iter().map(|v| CalibrationScalar::Int(*v)).collect()
+            }
+            crate::CalibrationColumnValues::ULong(v) => {
+                v.iter().map(|v| CalibrationScalar::UInt(*v)).collect()
+            }
+            crate::CalibrationColumnValues::Double(v) => {
+                v.iter().map(|v| CalibrationScalar::Float(*v)).collect()
+            }
+            crate::CalibrationColumnValues::Bool(v) => {
+                v.iter().map(|v| CalibrationScalar::Bool(*v)).collect()
+            }
+            crate::CalibrationColumnValues::String(v) => v
                 .iter()
                 .map(|v| CalibrationScalar::Text(v.clone()))
                 .collect(),

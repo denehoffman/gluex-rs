@@ -52,6 +52,7 @@ release_workflow = Workflow(
                     '. .venv/bin/activate',
                     'echo PATH=$PATH >> $GITHUB_ENV',
                     'uvx maturin develop --uv --generate-stubs',
+                    '.venv/bin/python scripts/finalize_generated_stubs.py',
                 ),
                 script('uv pip install pytest'),
                 script('uvx ruff check .yamloom.py python'),
@@ -64,8 +65,10 @@ release_workflow = Workflow(
             name='Release (Python)',
             runs_on='ubuntu-22.04',
             steps=[
+                Checkout(),
                 DownloadArtifact(),
                 SetupUV(),
+                script('python scripts/finalize_generated_stubs.py wheels-*/*.whl'),
                 script(
                     'uv publish --trusted-publishing always wheels-*/*',
                     permissions=Permissions(id_token='write', contents='write'),  # noqa: S106

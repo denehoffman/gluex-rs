@@ -310,7 +310,7 @@ fn run_queries_compose_with_period_specific_reconstruction() {
     let filtered = gx
         .runs(RunSelection::range(2, 4))
         .unwrap()
-        .filter(valid_end);
+        .where_predicate(valid_end);
     let composed = gx
         .calibrations()
         .unwrap()

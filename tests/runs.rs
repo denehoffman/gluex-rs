@@ -33,7 +33,7 @@ fn catalog_discovers_database_defined_conditions() {
     let catalog = gx.conditions().unwrap();
     let definition = &catalog["custom_monitor"];
     assert_eq!(definition.name(), "custom_monitor");
-    assert_eq!(definition.value_type(), gluex_rs::rcdb::ValueType::Float);
+    assert_eq!(definition.value_type(), gluex_rs::ConditionValueType::Float);
     assert_eq!(definition.description(), "Monitor reading");
     assert!(catalog.keys().any(|key| key == "custom_monitor"));
     assert!(catalog.items().any(|(key, value)| key == value.name()));
@@ -106,7 +106,7 @@ fn projected_conditions_align_values_missing_cells_and_provenance() {
             .column("is_valid_run_end")
             .unwrap()
             .iter()
-            .map(|v| v.as_ref().and_then(gluex_rs::rcdb::Value::as_bool))
+            .map(|v| v.as_ref().and_then(gluex_rs::ConditionValue::as_bool))
             .collect::<Vec<_>>(),
         [Some(false), None, Some(true)]
     );

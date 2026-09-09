@@ -143,7 +143,7 @@ impl PyRunQuery {
 
     /// Return a new query with an additional predicate; no data is retrieved.
     fn r#where(&self, predicate: &PyRunPredicate) -> Self {
-        Self(self.0.filter(predicate.0.clone()))
+        Self(self.0.where_predicate(predicate.0.clone()))
     }
     /// Numeric scope, inspected without execution.
     #[getter]
@@ -408,7 +408,7 @@ impl Operand {
         Ok(match self {
             Self::Bool(v) => crate::ConditionOperand::Bool(v.bind(py).extract()?),
             Self::Int(v) => {
-                if definition.value_type() == crate::rcdb::ValueType::Float {
+                if definition.value_type() == crate::ConditionValueType::Float {
                     crate::ConditionOperand::Float(v.bind(py).extract()?)
                 } else {
                     crate::ConditionOperand::Int(v.bind(py).extract()?)
@@ -574,14 +574,14 @@ pub enum ConditionScalar {
     Text(String),
     Time(chrono::DateTime<chrono::Utc>),
 }
-impl From<&crate::rcdb::Value> for ConditionScalar {
-    fn from(value: &crate::rcdb::Value) -> Self {
-        use crate::rcdb::ValueType;
+impl From<&crate::ConditionValue> for ConditionScalar {
+    fn from(value: &crate::ConditionValue) -> Self {
+        use crate::ConditionValueType;
         match value.value_type() {
-            ValueType::Bool => Self::Bool(value.as_bool().unwrap()),
-            ValueType::Int => Self::Int(value.as_int().unwrap()),
-            ValueType::Float => Self::Float(value.as_float().unwrap()),
-            ValueType::Time => Self::Time(value.as_time().unwrap()),
+            ConditionValueType::Bool => Self::Bool(value.as_bool().unwrap()),
+            ConditionValueType::Int => Self::Int(value.as_int().unwrap()),
+            ConditionValueType::Float => Self::Float(value.as_float().unwrap()),
+            ConditionValueType::Time => Self::Time(value.as_time().unwrap()),
             _ => Self::Text(value.as_string().unwrap().into()),
         }
     }
