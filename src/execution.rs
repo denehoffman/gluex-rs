@@ -117,6 +117,35 @@ pub(crate) fn interrupted_error() -> rusqlite::Error {
     )
 }
 
+/// Private contract implemented by lazy domain queries that participate in the
+/// shared terminal-execution path.
+///
+/// Keeping this crate-private lets each domain retain its own public query and
+/// result types while the mechanics around cancellation and binding adapters
+/// remain uniform.
+pub(crate) trait TerminalQuery: Clone {
+    fn execution_options(&self) -> &ExecutionOptions;
+
+    #[cfg(feature = "python")]
+    fn with_execution_options(&self, options: ExecutionOptions) -> Self;
+
+    fn interruption_error(&self) -> crate::DatabaseError;
+}
+
+/// Execute one active terminal step through the shared interruption boundary.
+pub(crate) fn execute_terminal<Q, T>(
+    query: &Q,
+    execute: impl FnOnce(&Q) -> crate::DatabaseResult<T>,
+) -> crate::DatabaseResult<T>
+where
+    Q: TerminalQuery,
+{
+    if query.execution_options().interrupted() {
+        return Err(query.interruption_error());
+    }
+    execute(query)
+}
+
 pub(crate) fn with_sqlite_progress<T, E>(
     connection: &rusqlite::Connection,
     options: &ExecutionOptions,

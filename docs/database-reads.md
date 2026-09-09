@@ -474,3 +474,7 @@ results remain valid. Rust exposes the corresponding methods on `GlueX`.
 
 For callers moving from the pre-workflow API, see the
 [database and luminosity migration guide](database-migration.md).
+
+Maintainers investigating database or luminosity performance can use the
+[fixture-backed local workload matrix](database-workloads.md). Its generated
+measurements remain ignored local artifacts and are not ordinary CI gates.

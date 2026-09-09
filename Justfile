@@ -44,3 +44,8 @@ test: test-rust test-python
 
 docs:
     cargo doc
+
+# Build and run the fixture-backed local database workload matrix.
+database-workloads label="local" iterations="20" repeats="3":
+    cargo build --release --example database_workloads
+    python3 tools/database-workloads/measure.py --label "{{label}}" --iterations "{{iterations}}" --repeats "{{repeats}}" --output "database-workload-results/{{label}}.json"

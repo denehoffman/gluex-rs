@@ -2,10 +2,7 @@
 use crate::{
     DatabaseResult, Id, RESTVersionContext, RESTVersionSelection, RunNumber, RunPeriod,
     RunProvenance, RunQuery, RunSelection, RunSet,
-    ccdb::{
-        CCDB, CCDBError, Data,
-        database::{ResolvedAssignment, TypeTableHandle},
-    },
+    ccdb::{CCDB, CCDBError, Data, assignment::ResolvedAssignment, database::TypeTableHandle},
 };
 use chrono::{DateTime, Utc};
 use std::{collections::BTreeMap, sync::Arc};
