@@ -474,17 +474,23 @@ pub(crate) mod ccdb {
         /// Execute one read-only SQLite statement with positional parameters; releases the GIL.
         /// Supports SELECT, CTEs and documented schema PRAGMAs. Unauthorized SQL,
         /// multiple statements, binding and decoding failures raise RuntimeError.
-        #[pyo3(signature = (sql, *, parameters = Vec::new()))]
+        #[pyo3(signature = (sql, *, parameters = Vec::new(), timeout=None))]
         fn raw(
             &self,
             py: Python<'_>,
             sql: &str,
             parameters: Vec<Option<crate::python::raw::Scalar>>,
+            timeout: Option<f64>,
         ) -> PyResult<crate::python::raw::PyRawResults> {
             let parameters = crate::python::raw::parameters(py, parameters)?;
-            py.detach(|| self.0.raw(sql, &parameters))
-                .map(crate::python::raw::PyRawResults)
-                .map_err(|error| PyRuntimeError::new_err(error.to_string()))
+            let signals = crate::python::execution::PythonExecution::new();
+            let mut options =
+                crate::ExecutionOptions::default().with_interrupt_check(signals.checker());
+            if let Some(seconds) = timeout {
+                options = options.with_timeout(crate::python::execution::timeout(seconds)?);
+            }
+            let result = py.detach(|| self.0.raw_with_options(sql, &parameters, &options));
+            signals.finish(result).map(crate::python::raw::PyRawResults)
         }
 
         #[new]

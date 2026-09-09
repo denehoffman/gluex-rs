@@ -2,11 +2,9 @@
 
 use approx::assert_relative_eq;
 use gluex_rs::{
-    Histogram, RESTVersionSelection, RunPeriod,
-    lumi::{FluxHistograms, Luminosity, LuminosityContext},
-    run_periods::coherent_peak,
+    GlueX, Histogram, RESTVersionSelection, ReconstructionSelection, RunPeriod, RunSelection,
+    SourceConfig, lumi::FluxHistograms, run_periods::coherent_peak,
 };
-use std::collections::HashMap;
 use std::process::Command;
 
 #[path = "fixtures/rust.rs"]
@@ -47,18 +45,30 @@ fn lumi_matches_the_library_histograms_for_fixture_inputs() {
     );
     let cli_histograms: FluxHistograms =
         serde_json::from_slice(&output.stdout).expect("output should be JSON histograms");
-    let context = LuminosityContext::new(
-        RunPeriod::RP2018_08.iter_runs().collect(),
-        HashMap::from([(
-            RunPeriod::RP2018_08,
-            RESTVersionSelection::try_new(RunPeriod::RP2018_08, 2)
-                .expect("fixture REST version must exist"),
-        )]),
+    let gx = GlueX::open(
+        SourceConfig::sqlite(rcdb.path()),
+        SourceConfig::sqlite(ccdb.path()),
     )
-    .expect("fixture run period should create a luminosity context");
-    let library_histograms = Luminosity::new(rcdb.path(), ccdb.path())
-        .fetch(&[8.0, 8.5, 9.0], &context)
-        .expect("library luminosity calculation should succeed");
+    .unwrap();
+    let runs = gx
+        .runs(RunSelection::period(RunPeriod::RP2018_08))
+        .unwrap()
+        .collect()
+        .unwrap();
+    let library = gx
+        .workflows()
+        .luminosity(
+            &runs,
+            ReconstructionSelection::periods([(
+                RunPeriod::RP2018_08,
+                RESTVersionSelection::try_new(RunPeriod::RP2018_08, 2)
+                    .expect("fixture REST version must exist"),
+            )]),
+            [8.0, 8.5, 9.0],
+        )
+        .collect()
+        .expect("library luminosity workflow should succeed");
+    let library_histograms = library.histograms();
     assert_histograms_close(&cli_histograms.tagged_flux, &library_histograms.tagged_flux);
     assert_histograms_close(&cli_histograms.tagm_flux, &library_histograms.tagm_flux);
     assert_histograms_close(&cli_histograms.tagh_flux, &library_histograms.tagh_flux);

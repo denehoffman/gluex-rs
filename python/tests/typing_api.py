@@ -1,16 +1,21 @@
 """Static type-check probes for the public ``gluex`` package layout."""
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import assert_type
+from typing import TYPE_CHECKING, assert_type
 
 import gluex
 from gluex import Histogram, Particle, RESTVersionSelection, RunPeriod, generation
 from gluex.ccdb import CCDB, Data
-from gluex.lumi import FluxHistograms, Luminosity
 from gluex.rcdb import RCDB, Expr, aliases, float_cond
 from gluex.rcdb import all as all_conditions
-from laddu import Channel, Dataset
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from gluex.lumi import FluxHistograms
+    from laddu import Channel, Dataset
 
 
 def typed_api_surface(
@@ -34,11 +39,10 @@ def typed_api_surface(
         float_cond('beam_current').gt(2.0),
     )
     run_numbers: list[int] = RCDB(rcdb_path).fetch_runs(filters=filter_expression)
-    flux: FluxHistograms = Luminosity(rcdb_path, ccdb_path).fetch(
-        histogram.edges,
-        runs=run_numbers,
-        rest_version={period: selection},
-    )
+    gx = gluex.open(rcdb=rcdb_path, ccdb=ccdb_path)
+    runs = gx.runs(gluex.RunSelection.runs(run_numbers)).collect()
+    reconstruction = gluex.ReconstructionSelection.periods({period: selection})
+    flux: FluxHistograms = gx.workflows.luminosity(runs, reconstruction, histogram.edges).collect().histograms
     writer: generation.GlueXHddmWriter = generation.GlueXHddmWriter(generation.GlueXHddmConfig(channel))
     writer.write(dataset, 'events.hddm')
 

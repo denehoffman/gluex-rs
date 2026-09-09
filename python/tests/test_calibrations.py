@@ -23,7 +23,7 @@ def test_ccdb_only_catalog_and_series(ccdb_path):
     assert series[2].constant_set_id == 230302
     assert series[2].payload.column('x') == (1.0, 4.0)
     with pytest.raises(AttributeError):
-        series[2].assignment_id = 1
+        series[2].assignment_id = 1  # ty: ignore[invalid-assignment]
     missing = catalog['/TARGET/density'].for_runs(gluex.RunSelection.runs([2, 50685])).collect()
     assert missing.report.missing_runs == (2,)
     assert missing[50685].payload.column('density') == (70.92,)
@@ -87,6 +87,10 @@ def test_historical_errors_are_contextual(ccdb_path, tmp_path, change):
     query = gx.calibrations['/test/demo/mytable'].for_runs(gluex.RunSelection.runs([2])).with_variation('mc')
     with pytest.raises(RuntimeError, match='/test/demo/mytable'):
         query.collect()
+    with pytest.raises(RuntimeError, match='/test/demo/mytable'):
+        next(query.strict().stream(chunk_size=1))
+    with pytest.raises(RuntimeError, match='/test/demo/mytable'):
+        next(query.fallback_to(2).stream(chunk_size=1))
 
 
 def test_nested_variations_use_assignment_order(ccdb_path, tmp_path):
@@ -125,3 +129,42 @@ def test_fractional_cutoff_is_inclusive(ccdb_path, tmp_path):
     assert query.as_of(before).collect()[2].assignment_id == 76
     assert query.as_of(exact).collect()[2].assignment_id == 230266
     assert query.as_of(exact).collect()[2].created == exact
+
+
+def test_composed_streaming_reconstruction_and_missing_policies(rcdb_path, ccdb_path):
+    gx = gluex.open(rcdb=rcdb_path, ccdb=ccdb_path)
+    runs = gx.runs(gluex.RunSelection.range(50685, 50697))
+    reconstruction = gluex.ReconstructionSelection.periods(
+        {gluex.RunPeriod.RP2018_08: gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2)}
+    )
+    query = gx.calibrations['/TARGET/density'].for_runs(runs).with_reconstruction(reconstruction)
+    result = query.collect()
+    assert result.runs == (50685, 50697)
+    assert result.provenance.runs is not None
+    assert len(result.provenance.resolved_reconstruction) == 1
+    assert result.provenance.run_report is not None
+    assert result.provenance.run_report.complete is True
+    with pytest.raises(RuntimeError, match='conflict'):
+        query.with_variation('default').collect()
+
+    shared = gx.calibrations['/test/demo/mytable'].for_runs(gluex.RunSelection.range(1, 4))
+    chunks = [chunk for chunk in shared.stream(chunk_size=2) if chunk is not None]
+    assert tuple(run for chunk in chunks for run in chunk) == shared.collect().runs
+    assert chunks[-1].report.complete is True
+    first = shared.first()
+    assert first is not None
+    assert first.runs == (1,)
+    assert shared.count() == 4
+    abandoned = shared.stream(chunk_size=1)
+    next(abandoned)
+    del abandoned
+    assert shared.count() == 4
+
+    missing = gx.calibrations['/TARGET/density'].for_runs(gluex.RunSelection.runs([2, 50685]))
+    with pytest.raises(RuntimeError, match='missing'):
+        missing.strict().collect()
+    filled = missing.fallback_to(50685).collect()
+    assert filled[2].constant_set_id == filled[50685].constant_set_id
+    assert filled.report.substitutions == ((2, 50685),)
+    assert filled.provenance.missing_policy == 'fallback'
+    assert filled.provenance.fallback_run == 50685

@@ -1,6 +1,7 @@
 mod calibrations;
 mod ccdb;
 mod core;
+mod execution;
 mod generation;
 mod lumi;
 mod raw;
@@ -8,6 +9,7 @@ mod rcdb;
 mod runs;
 mod session;
 mod tuple;
+mod workflows;
 
 use pyo3::prelude::*;
 
@@ -38,24 +40,29 @@ mod gluex {
     use super::rcdb::rcdb;
 
     #[pymodule_export]
-    use super::session::{PyCapabilities, PyDisabled, PyGlueX, PySources, open};
+    use super::session::{PyCacheInfo, PyCapabilities, PyDisabled, PyGlueX, PySources, open};
 
     #[pymodule_export]
     use super::runs::{
         PyConditionCatalog, PyConditionDefinition, PyConditionProvenance, PyConditionQuery,
-        PyConditionReport, PyConditionResults, PyRunPredicate, PyRunProvenance, PyRunQuery,
-        PyRunReport, PyRunSelection, PyRunSet, approved_production,
+        PyConditionReport, PyConditionResults, PyConditionStream, PyRunPredicate, PyRunProvenance,
+        PyRunQuery, PyRunReport, PyRunSelection, PyRunSet, PyRunStream, approved_production,
     };
 
     #[pymodule_export]
     use super::calibrations::{
         PyCalibrationCatalog, PyCalibrationColumn, PyCalibrationDirectory, PyCalibrationEntry,
         PyCalibrationPayload, PyCalibrationProvenance, PyCalibrationQuery, PyCalibrationReport,
-        PyCalibrationSeries, PyCalibrationTable,
+        PyCalibrationSeries, PyCalibrationStream, PyCalibrationTable, PyReconstructionSelection,
     };
 
     #[pymodule_export]
     use super::raw::{PyRawColumn, PyRawResults, PyRawRow};
+    #[pymodule_export]
+    use super::workflows::{
+        PyLuminosityProvenance, PyLuminosityQuery, PyLuminosityReport, PyLuminosityResult,
+        PyWorkflows,
+    };
 
     #[pymodule_export]
     const DISABLED: super::session::PyDisabled = super::session::PyDisabled;

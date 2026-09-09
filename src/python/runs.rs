@@ -6,7 +6,7 @@ use crate::{
     ConditionCatalog, ConditionDefinition, RunNumber, RunProvenance, RunQuery, RunSelection, RunSet,
 };
 use pyo3::{
-    exceptions::{PyIndexError, PyKeyError, PyRuntimeError, PyTypeError, PyValueError},
+    exceptions::{PyIndexError, PyKeyError, PyTypeError, PyValueError},
     prelude::*,
 };
 
@@ -40,7 +40,7 @@ impl PyRunSelection {
 /// Source identity and numeric scope used to resolve recorded membership.
 /// This identifies inputs but does not preserve historical file contents.
 #[pyclass(name = "RunProvenance", module = "gluex", frozen)]
-pub struct PyRunProvenance(RunProvenance);
+pub struct PyRunProvenance(pub(crate) RunProvenance);
 #[pymethods]
 impl PyRunProvenance {
     /// Explicit scientific predicates used by this query.
@@ -70,7 +70,8 @@ impl PyRunProvenance {
 }
 
 /// Immutable recorded run numbers, sorted and unique, with resolution provenance.
-#[pyclass(name = "RunSet", module = "gluex", frozen)]
+#[pyclass(name = "RunSet", module = "gluex", frozen, from_py_object)]
+#[derive(Clone)]
 pub struct PyRunSet(pub(crate) RunSet);
 #[pymethods]
 impl PyRunSet {
@@ -120,10 +121,18 @@ impl PyRunSet {
 }
 
 /// Reusable lazy query; inspection does not retrieve runs. Call collect explicitly.
-#[pyclass(name = "RunQuery", module = "gluex", frozen)]
+#[pyclass(name = "RunQuery", module = "gluex", frozen, from_py_object)]
+#[derive(Clone)]
 pub struct PyRunQuery(pub(crate) RunQuery);
 #[pymethods]
 impl PyRunQuery {
+    /// Return an immutable query with a timeout in seconds.
+    fn timeout(&self, seconds: f64) -> PyResult<Self> {
+        Ok(Self(
+            self.0
+                .with_timeout(crate::python::execution::timeout(seconds)?),
+        ))
+    }
     /// Project named conditions without reading values. Invalid names raise ValueError.
     fn select(&self, fields: Vec<String>) -> PyResult<PyConditionQuery> {
         self.0
@@ -149,12 +158,53 @@ impl PyRunQuery {
     /// Collect recorded runs without implicit production cuts. Releases the GIL.
     /// Database execution errors raise RuntimeError.
     fn collect(&self, py: Python<'_>) -> PyResult<PyRunSet> {
-        py.detach(|| self.0.collect())
-            .map(PyRunSet)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals.finish(py.detach(|| query.collect())).map(PyRunSet)
+    }
+    /// Iterate bounded result chunks. Abandoning the iterator releases its reader.
+    #[pyo3(signature = (*, chunk_size=1024))]
+    fn stream(&self, chunk_size: usize) -> PyResult<PyRunStream> {
+        let signals = crate::python::execution::PythonExecution::new();
+        self.0
+            .with_interrupt_check(signals.checker())
+            .stream(chunk_size)
+            .map(|stream| PyRunStream(stream, signals))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+    fn first(&self, py: Python<'_>) -> PyResult<Option<RunNumber>> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals.finish(py.detach(|| query.first()))
+    }
+    fn one(&self, py: Python<'_>) -> PyResult<RunNumber> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals.finish(py.detach(|| query.one()))
+    }
+    fn count(&self, py: Python<'_>) -> PyResult<usize> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals.finish(py.detach(|| query.count()))
     }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
+    }
+}
+
+/// Iterator yielding bounded Run Set chunks.
+#[pyclass(name = "RunStream", module = "gluex")]
+pub struct PyRunStream(crate::RunStream, crate::python::execution::PythonExecution);
+#[pymethods]
+impl PyRunStream {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyRunSet>> {
+        Ok(self
+            .1
+            .finish(py.detach(|| self.0.next().transpose()))?
+            .map(PyRunSet))
     }
 }
 
@@ -320,13 +370,21 @@ impl PyRunPredicate {
 
 /// Completed evaluation diagnostics; these runs had final-unknown predicates.
 #[pyclass(name = "RunReport", module = "gluex", frozen)]
-pub struct PyRunReport(crate::RunReport);
+pub struct PyRunReport(pub(crate) crate::RunReport);
 #[pymethods]
 impl PyRunReport {
     /// Recorded runs excluded because the complete predicate was unknown.
     #[getter]
     fn unknown_runs(&self) -> TypedTuple<RunNumber> {
         TypedTuple(self.0.unknown_runs().to_vec())
+    }
+    #[getter]
+    fn evaluated_runs(&self) -> TypedTuple<RunNumber> {
+        TypedTuple(self.0.evaluated_runs().to_vec())
+    }
+    #[getter]
+    fn complete(&self) -> bool {
+        self.0.complete()
     }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
@@ -376,6 +434,12 @@ pub fn approved_production(period: &PyRunPeriod) -> PyResult<PyRunPredicate> {
 pub struct PyConditionQuery(crate::ConditionQuery);
 #[pymethods]
 impl PyConditionQuery {
+    /// Return an immutable query with a timeout in seconds.
+    fn timeout(&self, seconds: f64) -> PyResult<Self> {
+        Ok(Self(self.0.query_with_timeout(
+            crate::python::execution::timeout(seconds)?,
+        )))
+    }
     /// Captured source, predicates and fields, without evaluation.
     #[getter]
     fn provenance(&self) -> PyConditionProvenance {
@@ -383,12 +447,75 @@ impl PyConditionQuery {
     }
     /// Collect optional columns; malformed values and execution failures raise RuntimeError.
     fn collect(&self, py: Python<'_>) -> PyResult<PyConditionResults> {
-        py.detach(|| self.0.collect())
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals
+            .finish(py.detach(|| query.collect()))
             .map(PyConditionResults)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    }
+    #[pyo3(signature = (*, chunk_size=1024))]
+    fn stream(&self, chunk_size: usize) -> PyResult<PyConditionStream> {
+        let signals = crate::python::execution::PythonExecution::new();
+        self.0
+            .with_interrupt_check(signals.checker())
+            .stream(chunk_size)
+            .map(|stream| PyConditionStream(stream, signals))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+    fn first(&self, py: Python<'_>) -> PyResult<Option<PyConditionResults>> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals
+            .finish(py.detach(|| query.first()))
+            .map(|value| value.map(PyConditionResults))
+    }
+    fn one(&self, py: Python<'_>) -> PyResult<PyConditionResults> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals
+            .finish(py.detach(|| query.one()))
+            .map(PyConditionResults)
+    }
+    fn count(&self, py: Python<'_>) -> PyResult<usize> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals.finish(py.detach(|| query.count()))
+    }
+    fn strict(&self) -> Self {
+        Self(self.0.strict())
+    }
+    #[pyo3(signature = (name, *, value))]
+    fn fill(&self, py: Python<'_>, name: &str, value: Operand) -> PyResult<Self> {
+        let definition = self
+            .0
+            .definition(name)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.0
+            .fill(name, value.native(py, &definition)?)
+            .map(Self)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
+    }
+}
+
+/// Iterator yielding bounded condition-result chunks.
+#[pyclass(name = "ConditionStream", module = "gluex")]
+pub struct PyConditionStream(
+    crate::ConditionStream,
+    crate::python::execution::PythonExecution,
+);
+#[pymethods]
+impl PyConditionStream {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyConditionResults>> {
+        Ok(self
+            .1
+            .finish(py.detach(|| self.0.next().transpose()))?
+            .map(PyConditionResults))
     }
 }
 
@@ -407,6 +534,14 @@ impl PyConditionProvenance {
     fn fields(&self) -> TypedTuple<String> {
         TypedTuple(self.0.fields().to_vec())
     }
+    #[getter]
+    fn missing_policy(&self) -> &'static str {
+        self.0.policy().as_str()
+    }
+    #[getter]
+    fn fallback_fields(&self) -> TypedTuple<String> {
+        TypedTuple(self.0.fallback_fields().to_vec())
+    }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
@@ -421,6 +556,10 @@ impl PyConditionReport {
     #[getter]
     fn missing_values(&self) -> TypedTuple<(RunNumber, String)> {
         TypedTuple(self.0.missing_values().to_vec())
+    }
+    #[getter]
+    fn substitutions(&self) -> TypedTuple<(RunNumber, String)> {
+        TypedTuple(self.0.substitutions().to_vec())
     }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)

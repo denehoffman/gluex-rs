@@ -1,8 +1,9 @@
 //! Unified Rust, Python, and command-line utilities for the `GlueX` experiment.
 //!
-//! The crate is organized around four public API areas:
-//! shared experiment metadata at the crate root, [`ccdb`] and [`rcdb`] database
-//! access, [`lumi`] calculations, and [`generation`] support for laddu/HDDM.
+//! The [`GlueX`] session provides typed run, calibration, raw-read, and canonical
+//! [`workflows`] APIs. Shared experiment metadata lives at the crate root;
+//! [`ccdb`] and [`rcdb`] remain available for advanced database-native reads,
+//! [`lumi`] contains histogram result types, and [`generation`] supports laddu/HDDM.
 
 /// Read-only Calibration and Conditions Database access.
 pub mod ccdb;
@@ -22,8 +23,11 @@ pub mod cli;
     clippy::suspicious
 )]
 pub mod core;
+/// Cancellation and timeout controls for synchronous evaluation.
+pub mod execution;
 /// Monte Carlo generation and HDDM writing utilities.
 pub mod generation;
+pub use execution::{CancellationToken, ExecutionOptions};
 /// Photon-flux and tagged-luminosity calculations.
 pub mod lumi;
 /// Run Conditions Database access and predicate builders.
@@ -33,7 +37,8 @@ pub mod rcdb;
 pub mod runs;
 pub use runs::{
     ConditionCatalog, ConditionDefinition, ConditionProvenance, ConditionQuery, ConditionReport,
-    ConditionResults, RunProvenance, RunQuery, RunReport, RunSelection, RunSet,
+    ConditionResults, ConditionStream, MissingDataPolicy, RunProvenance, RunQuery, RunReport,
+    RunSelection, RunSet, RunStream,
 };
 
 /// Enforced read-only raw rows and parameters.
@@ -41,7 +46,16 @@ pub mod raw;
 pub use raw::{RawColumn, RawError, RawResults, RawRow, RawValue};
 
 mod session;
-pub use session::{Capabilities, DatabaseKind, GlueX, GlueXError, SourceConfig, Sources};
+pub use session::{
+    CacheInfo, Capabilities, DatabaseKind, GlueX, GlueXError, SourceConfig, Sources,
+};
+
+/// Canonical GlueX Workflows and retained provenance.
+pub mod workflows;
+pub use workflows::{
+    LUMINOSITY_PROCEDURE_VERSION, LuminosityProvenance, LuminosityQuery, LuminosityReport,
+    LuminosityResult, WorkflowError, Workflows,
+};
 
 #[cfg(feature = "python")]
 #[allow(
@@ -67,5 +81,6 @@ pub use rcdb::conditions::{ConditionOperand, Expr as RunPredicate, aliases::appr
 pub mod calibrations;
 pub use calibrations::{
     CalibrationCatalog, CalibrationDirectory, CalibrationEntry, CalibrationProvenance,
-    CalibrationQuery, CalibrationReport, CalibrationSeries, CalibrationTable,
+    CalibrationQuery, CalibrationReport, CalibrationSeries, CalibrationStream, CalibrationTable,
+    ReconstructionSelection,
 };

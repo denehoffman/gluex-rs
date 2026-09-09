@@ -1,0 +1,57 @@
+# Database and luminosity migration
+
+The unified API intentionally replaces the path-owning luminosity calculator and
+ad-hoc database contexts with one `GlueX` session, immutable queries, and retained
+provenance.
+
+## Python
+
+Replace `gluex.lumi.Luminosity(...).fetch(edges, runs=..., rest_version=...)` with:
+
+```python
+gx = gluex.open(rcdb="rcdb.sqlite", ccdb="ccdb.sqlite")
+runs = gx.runs(gluex.RunSelection.runs([50685])).collect()
+reconstruction = gluex.ReconstructionSelection.periods({
+    gluex.RunPeriod.RP2018_08:
+        gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
+})
+result = gx.workflows.luminosity(runs, reconstruction, [8.0, 8.5, 9.0]).collect()
+histograms = result.histograms
+```
+
+The behavioral changes are deliberate:
+
+- the supplied `RunSet` is authoritative; no approved-production cut is hidden;
+- reconstruction is explicit and resolved per represented run period;
+- `latest()` is fixed to the CCDB source-opening time;
+- missing required inputs are strict by default, or reported with
+  `.report_missing()`;
+- absent or zero livetime is not silently replaced by 1.0;
+- multi-run luminosity applies each run's own target density before aggregation;
+- results retain selected/used/excluded runs, source-bound run provenance,
+  both database source identities, resolved reconstruction, luminosity settings,
+  procedure version, references, and exceptions.
+
+Raw reads remain available through `gx.sources.rcdb.raw(...)` and
+`gx.sources.ccdb.raw(...)`. Run conditions and calibrations should use the typed
+catalog/query APIs for routine analysis.
+
+## Rust
+
+Replace `lumi::Luminosity` and `LuminosityContext` with `GlueX::workflows`:
+
+```rust
+let gx = GlueX::open(SourceConfig::sqlite(rcdb), SourceConfig::sqlite(ccdb))?;
+let runs = gx.runs(RunSelection::runs([50_685]))?.collect()?;
+let reconstruction = ReconstructionSelection::periods([(
+    RunPeriod::RP2018_08,
+    RESTVersionSelection::try_new(RunPeriod::RP2018_08, 2)?,
+)]);
+let result = gx
+    .workflows()
+    .luminosity(&runs, reconstruction, [8.0, 8.5, 9.0])
+    .collect()?;
+```
+
+The former path-owning calculator and context are no longer public. Backend-native
+readers remain available under `gx.sources()` for advanced read-only access.

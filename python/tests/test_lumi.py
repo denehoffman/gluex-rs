@@ -1,86 +1,46 @@
-"""Tests for the initial unified ``gluex.lumi`` binding surface."""
+"""Canonical luminosity through the root GlueX workflow."""
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-from typing import Any, cast
-
+import gluex
 import pytest
-from gluex import RESTVersionSelection, RunPeriod, lumi
+from gluex import RESTVersionSelection, RunPeriod
 
-TAGM_FLUX = 48_116_930.84601025
-TAGH_FLUX = 642_059_090.0805457
 TAGGED_FLUX = 690_176_020.9265559
 TAGGED_LUMINOSITY = 0.0008695639199135528
 
 
-def _db_path(variable: str) -> Path:
-    raw = os.environ.get(variable)
-    if not raw:
-        pytest.skip(f'{variable} is not set for luminosity integration tests')
-    return Path(raw)
-
-
-def test_luminosity_fetch_uses_keyword_selection_api() -> None:
-    calculator = lumi.Luminosity(
-        rcdb=str(_db_path('RCDB_CONNECTION')),
-        ccdb=str(_db_path('CCDB_CONNECTION')),
+def test_root_luminosity_workflow_retains_run_and_procedure_evidence() -> None:
+    gx = gluex.open()
+    runs = gx.runs(gluex.RunSelection.runs([50685])).collect()
+    reconstruction = gluex.ReconstructionSelection.periods(
+        {RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)}
     )
-    with pytest.raises(RuntimeError, match='at least one run number is required'):
-        calculator.fetch(
-            [8.0, 8.5, 9.0],
-            runs=[],
-            rest_version={RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)},
-        )
+    query = gx.workflows.luminosity(runs, reconstruction, [8.0, 8.5, 9.0])
+    assert 'lazy=True' in repr(query)
+    result = query.collect()
+
+    assert result.histograms.tagged_flux.counts[1] == pytest.approx(TAGGED_FLUX)
+    assert result.histograms.tagged_luminosity.counts[1] == pytest.approx(TAGGED_LUMINOSITY)
+    assert result.report.selected_runs == (50685,)
+    assert result.report.used_runs == (50685,)
+    assert result.report.excluded_runs == ()
+    assert result.report.complete
+    assert result.provenance.procedure_version == 'gluex-luminosity-v1'
+    assert result.provenance.procedure_status == 'provisional'
+    assert result.provenance.missing_policy == 'strict'
+    assert result.provenance.runs.source == str(runs.provenance.source)
+    assert result.provenance.coherent_peak is False
+    assert result.provenance.polarized is False
+    assert result.provenance.rcdb_source
+    assert result.provenance.ccdb_source
+    assert result.provenance.resolved_reconstruction['F18'][0] == 'default'
 
 
-def test_luminosity_fetch_matches_seeded_detector_aggregation() -> None:
-    calculator = lumi.Luminosity(
-        rcdb=str(_db_path('RCDB_CONNECTION')),
-        ccdb=str(_db_path('CCDB_CONNECTION')),
-    )
-    histograms = calculator.fetch(
-        [8.0, 8.5, 9.0],
-        runs=[50685, 50697],
-        rest_version={RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)},
-        exclude_runs=[50697],
-    )
-
-    assert histograms.tagged_flux.counts[0] == 0.0
-    assert histograms.tagm_flux.counts[1] == pytest.approx(TAGM_FLUX)
-    assert histograms.tagh_flux.counts[1] == pytest.approx(TAGH_FLUX)
-    assert histograms.tagged_flux.counts[1] == pytest.approx(TAGGED_FLUX)
-    assert histograms.tagged_luminosity.counts[1] == pytest.approx(TAGGED_LUMINOSITY)
-
-
-def test_luminosity_rejects_invalid_rest_selection_values() -> None:
-    calculator = lumi.Luminosity(
-        rcdb=str(_db_path('RCDB_CONNECTION')),
-        ccdb=str(_db_path('CCDB_CONNECTION')),
-    )
-    with pytest.raises(RuntimeError, match='rest_version'):
-        calculator.fetch(
-            [8.0, 8.5, 9.0],
-            runs=[50685],
-            rest_version=cast('Any', {RunPeriod.RP2018_08: object()}),
-        )
-
-
-def test_repeated_fetch_keeps_selections_independent() -> None:
-    calculator = lumi.Luminosity(
-        rcdb=str(_db_path('RCDB_CONNECTION')),
-        ccdb=str(_db_path('CCDB_CONNECTION')),
-    )
-    rest_version = {RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)}
-    for _ in range(2):
-        with pytest.raises(RuntimeError, match='at least one run number is required'):
-            calculator.fetch(
-                [8.0, 8.5, 9.0],
-                runs=[50685],
-                rest_version=rest_version,
-                exclude_runs=[50685],
-            )
-        result = calculator.fetch([8.0, 8.5, 9.0], runs=[50685], rest_version=rest_version)
-        assert result.tagged_flux.counts[1] == pytest.approx(TAGGED_FLUX)
-        assert result.tagged_luminosity.counts[1] == pytest.approx(TAGGED_LUMINOSITY)
+def test_session_cache_controls_are_bounded_and_inspectable() -> None:
+    gx = gluex.open()
+    assert gx.cache_info.calibration_payload_capacity == 128
+    gx.set_calibration_payload_cache_capacity(0)
+    assert gx.cache_info.calibration_payload_capacity == 1
+    gx.clear_caches()
+    assert gx.cache_info.ccdb_metadata_entries == 0

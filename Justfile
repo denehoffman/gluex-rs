@@ -26,7 +26,7 @@ lint-rust:
 lint-python:
     ruff check --fix
     ruff format
-    ty check
+    ty check python examples
 
 lint: lint-rust lint-python
 
