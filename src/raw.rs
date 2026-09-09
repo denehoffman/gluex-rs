@@ -91,45 +91,62 @@ pub(crate) fn query(
     sql: &str,
     parameters: &[RawValue],
 ) -> Result<RawResults, RawError> {
-    let mut statement = connection.prepare(sql)?;
-    if !statement.readonly() || statement.column_count() == 0 {
-        return Err(rusqlite::Error::InvalidQuery.into());
-    }
-    let columns = statement
-        .columns()
-        .iter()
-        .map(|column| RawColumn {
-            name: column.name().to_owned(),
-            declared_type: column.decl_type().map(str::to_owned),
-        })
-        .collect::<Vec<_>>();
-    let mut cursor = statement.query(params_from_iter(parameters.iter().map(Value::from)))?;
-    let mut rows = Vec::new();
-    while let Some(row) = cursor.next()? {
-        let values = (0..columns.len())
-            .map(|index| {
-                Ok(match row.get_ref(index)? {
-                    ValueRef::Null => RawValue::Null,
-                    ValueRef::Integer(value) => RawValue::Integer(value),
-                    ValueRef::Real(value) => RawValue::Real(value),
-                    ValueRef::Text(value) => RawValue::Text(
-                        std::str::from_utf8(value)
-                            .map_err(|error| {
-                                rusqlite::Error::FromSqlConversionFailure(
-                                    index,
-                                    rusqlite::types::Type::Text,
-                                    Box::new(error),
-                                )
-                            })?
-                            .to_owned(),
-                    ),
-                    ValueRef::Blob(value) => RawValue::Blob(value.to_vec()),
-                })
+    query_with_options(
+        connection,
+        sql,
+        parameters,
+        &crate::ExecutionOptions::default(),
+    )
+}
+
+pub(crate) fn query_with_options(
+    connection: &Connection,
+    sql: &str,
+    parameters: &[RawValue],
+    options: &crate::ExecutionOptions,
+) -> Result<RawResults, RawError> {
+    crate::execution::with_sqlite_progress(connection, options, || {
+        let mut statement = connection.prepare(sql)?;
+        if !statement.readonly() || statement.column_count() == 0 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let columns = statement
+            .columns()
+            .iter()
+            .map(|column| RawColumn {
+                name: column.name().to_owned(),
+                declared_type: column.decl_type().map(str::to_owned),
             })
-            .collect::<Result<Vec<_>, rusqlite::Error>>()?;
-        rows.push(RawRow(values));
-    }
-    Ok(RawResults { columns, rows })
+            .collect::<Vec<_>>();
+        let mut cursor = statement.query(params_from_iter(parameters.iter().map(Value::from)))?;
+        let mut rows = Vec::new();
+        while let Some(row) = cursor.next()? {
+            let values = (0..columns.len())
+                .map(|index| {
+                    Ok(match row.get_ref(index)? {
+                        ValueRef::Null => RawValue::Null,
+                        ValueRef::Integer(value) => RawValue::Integer(value),
+                        ValueRef::Real(value) => RawValue::Real(value),
+                        ValueRef::Text(value) => RawValue::Text(
+                            std::str::from_utf8(value)
+                                .map_err(|error| {
+                                    rusqlite::Error::FromSqlConversionFailure(
+                                        index,
+                                        rusqlite::types::Type::Text,
+                                        Box::new(error),
+                                    )
+                                })?
+                                .to_owned(),
+                        ),
+                        ValueRef::Blob(value) => RawValue::Blob(value.to_vec()),
+                    })
+                })
+                .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+            rows.push(RawRow(values));
+        }
+        Ok(RawResults { columns, rows })
+    })
+    .map_err(Into::into)
 }
 
 // Installed once for the lifetime of each reader, including statement preparation

@@ -248,6 +248,88 @@ Rust uses `query.select(["beam_current", "polarization_direction"])?`,
 `result.get(run, name)?` for `Option<&rcdb::Value>`, and `result.column(name)?`
 for an aligned slice of optional typed values. Invalid lookups return `RCDBError`.
 
+## Streaming and terminal operations
+
+Run, condition-projection, and calibration queries support bounded chunk
+iteration. The chunk size is keyword-only in Python and must be positive:
+
+```python
+for chunk in query.stream(chunk_size=256):
+    print(chunk.numbers, chunk.report.evaluated_runs, chunk.report.complete)
+
+for chunk in projected.stream(chunk_size=256):
+    print(chunk.runs.numbers, chunk.report.missing_values)
+```
+
+Run chunks contain matching runs; `chunk.report.evaluated_runs` identifies the
+recorded candidates actually examined. `complete` is false until the final
+chunk. A condition chunk exposes the same progress through
+`chunk.runs.report`. Dropping an iterator abandons the remaining work and holds
+no live SQLite cursor. Ranges and sparse selections are paged without expanding
+the complete numeric request. `collect()` drains the same evaluator and marks
+its report complete, so streamed and collected values agree.
+
+Every query also provides `first()`, `one()`, and `count()`. `first()` stops after
+the first matching or requested result, `one()` rejects zero or multiple
+results, and `count()` evaluates the whole query without retaining a complete
+collection. For projected and calibration queries, `first()` and `one()` return
+the corresponding one-row result object. Rust uses `stream(chunk_size)?` and
+the same terminal method names; stream items are `Result` values.
+
+## Composed calibration requests
+
+A calibration table accepts a numeric Run Selection, a resolved Run Set, or a
+lazy Run Query. A composed lazy query resolves RCDB membership only when it is
+evaluated and retains the numeric scope and predicates in calibration
+provenance:
+
+```python
+runs = gx.runs(gluex.RunSelection.period(gluex.RunPeriod.RP2018_08))
+reconstruction = gluex.ReconstructionSelection.periods({
+    gluex.RunPeriod.RP2018_08:
+        gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
+})
+series = (
+    gx.calibrations['/TARGET/density']
+    .for_runs(runs)
+    .with_reconstruction(reconstruction)
+    .collect()
+)
+print(series.provenance.runs)
+print(series.provenance.run_report.unknown_runs)
+print(series.provenance.resolved_reconstruction)
+```
+
+Each requested period must have an entry. Use
+`ReconstructionSelection.latest()` to explicitly select the source-opening
+defaults for all represented periods. Direct `with_variation()` or `as_of()`
+selectors conflict with a reconstruction selector and fail instead of silently
+taking precedence. Numeric-only requests remain CCDB-only. Rust uses
+`table.for_query(&query)?`, `table.for_run_set(&runs)?`, and
+`ReconstructionSelection::{latest, periods}`.
+
+## Missing Data Policies
+
+Interactive retrieval remains in report mode by default. Condition reports keep
+every missing `(run, name)` cell, and calibration reports keep every run without
+an assignment. Strict mode rejects the first chunk containing an omission:
+
+```python
+complete_conditions = projected.strict().collect()
+complete_calibrations = calibration_query.strict().collect()
+```
+
+Fallbacks must be supplied explicitly. `projected.fill(name, value=...)` validates
+the value against that Condition Definition. `calibration_query.fallback_to(run)`
+resolves an assignment for the same table and selectors, then uses it for each
+missing requested run. Original omissions remain visible, while
+`report.substitutions` records every replacement. A missing calibration fallback
+is itself an error. Malformed stored values, payloads, selectors, schemas, and
+database failures always raise under every policy; fallback behavior applies
+only to genuine absence. Result provenance records `missing_policy`, plus
+`fallback_fields` or `fallback_run` as applicable. Predicate unknown semantics
+are unchanged.
+
 ## Historical calibration requests
 
 ```python
@@ -322,3 +404,58 @@ Keep SQLite files unchanged while readers or queries use them. Finish all work
 using an old file before replacing it and refreshing. Existing results remain
 immutable, but old queries do not promise access to historical contents after a
 file is modified or replaced. Refresh creates no snapshot copies or monitoring.
+
+## Canonical luminosity workflow
+
+Luminosity is evaluated from an already resolved `RunSet`; the workflow never
+adds an approval or production predicate. Reconstruction is mandatory and may
+be explicit per period or an explicit request for the latest captured defaults:
+
+```python
+runs = gx.runs(gluex.RunSelection.runs([50685])).collect()
+reconstruction = gluex.ReconstructionSelection.periods({
+    gluex.RunPeriod.RP2018_08:
+        gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
+})
+result = gx.workflows.luminosity(
+    runs, reconstruction, [8.0, 8.5, 9.0]
+).collect()
+print(result.histograms.tagged_luminosity.counts)  # inverse picobarns
+print(result.report.selected_runs, result.report.used_runs)
+print(result.provenance.runs, result.provenance.rcdb_source, result.provenance.ccdb_source)
+print(result.provenance.resolved_reconstruction)
+```
+
+The default missing-input policy is strict. `report_missing()` instead excludes
+only runs with genuinely absent scientific inputs and records the reason; malformed
+payloads, schema failures, invalid selectors, and database errors always raise.
+Missing or zero livetime is a missing scientific input, never an implicit 1.0
+scale. `ReconstructionSelection.latest()` resolves at the captured CCDB opening
+time, so delaying collection cannot change that default.
+The result records procedure version `gluex-luminosity-v1`, its provisional
+scientific-review status, the pair-production reference, and the explicit
+RP2019-11 endpoint-constant exception. It also retains both source identities,
+Run Set provenance, and the coherent-peak/polarized settings. Multi-period requests resolve each period
+separately and aggregate per-run luminosity, including per-run target density.
+The `gluex lumi` command uses this same workflow.
+
+Rust uses `gx.workflows().luminosity(&runs, reconstruction, edges).collect()?`.
+
+## Cancellation, timeouts, and caches
+
+Raw readers accept `timeout=` in seconds. Run, condition, and calibration queries
+provide immutable `.timeout(seconds)` transformations; Rust uses
+`with_timeout(Duration)`. Database execution releases the Python GIL and polls
+Python signals, so `KeyboardInterrupt` stops eligible SQLite work. Interrupted
+operations return no completed report and release their cursor; the same reader
+can be used again. Rust callers may also attach a shareable `CancellationToken`.
+
+`gx.cache_info` exposes the per-stream decoded calibration payload capacity and
+current disposable CCDB metadata occupancy. Use
+`gx.set_calibration_payload_cache_capacity(n)` to bound shared-payload streaming
+(the minimum is one) and `gx.clear_caches()` to release variation, inheritance,
+and decoded column-layout caches. Catalog definitions and collected immutable
+results remain valid. Rust exposes the corresponding methods on `GlueX`.
+
+For callers moving from the pre-workflow API, see the
+[database and luminosity migration guide](database-migration.md).

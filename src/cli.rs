@@ -13,7 +13,8 @@ use crate::generation::{
     config::{GenerationConfig, validate_hddm_species},
     generate,
 };
-use crate::lumi::{Luminosity, LuminosityContext, RESTVersionSelection};
+use crate::lumi::RESTVersionSelection;
+use crate::{GlueX, ReconstructionSelection, RunSelection, SourceConfig};
 use clap::{
     Args, CommandFactory, Parser, Subcommand,
     builder::{Styles, styling::AnsiColor},
@@ -563,15 +564,32 @@ fn run_flux(args: FluxArgs) -> Result<(), Box<dyn std::error::Error>> {
     } = config;
 
     let edges = uniform_edges(bins, min_edge, max_edge);
-    let runs: Vec<RunNumber> = run_selection
-        .keys()
-        .flat_map(RunPeriod::iter_runs)
-        .collect();
-    let context = LuminosityContext::new(runs, run_selection)?
-        .with_coherent_peak(coherent_peak)
-        .with_polarized(polarized);
-    let histograms = Luminosity::new(rcdb, ccdb).fetch(&edges, &context)?;
+    let gx = GlueX::open(SourceConfig::sqlite(rcdb), SourceConfig::sqlite(ccdb))?;
+    let reconstruction = ReconstructionSelection::periods(run_selection);
+    let mut histograms = None;
+    for period in reconstruction_periods(&reconstruction) {
+        let runs = gx.runs(RunSelection::period(period))?.collect()?;
+        let result = gx
+            .workflows()
+            .luminosity(&runs, reconstruction.clone(), edges.iter().copied())
+            .with_coherent_peak(coherent_peak)
+            .with_polarized(polarized)
+            .collect()?;
+        if let Some(combined) = &mut histograms {
+            crate::workflows::add_histograms(combined, result.histograms())?;
+        } else {
+            histograms = Some(result.histograms().clone());
+        }
+    }
+    let histograms = histograms.expect("run selection was validated as non-empty");
 
     to_writer_pretty(std::io::stdout(), &histograms)?;
     Ok(())
+}
+
+fn reconstruction_periods(selection: &ReconstructionSelection) -> Vec<RunPeriod> {
+    match selection {
+        ReconstructionSelection::Latest => RunPeriod::iter().collect(),
+        ReconstructionSelection::Periods(periods) => periods.keys().copied().collect(),
+    }
 }

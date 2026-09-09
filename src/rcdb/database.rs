@@ -86,6 +86,20 @@ impl RCDB {
         crate::raw::query(&self.connection(), sql, parameters)
     }
 
+    /// Execute a raw read with cooperative cancellation and an optional deadline.
+    ///
+    /// # Errors
+    /// Returns the same errors as [`Self::raw`], including an interrupted SQLite
+    /// error when cancellation or the deadline stops evaluation.
+    pub fn raw_with_options(
+        &self,
+        sql: &str,
+        parameters: &[crate::RawValue],
+        options: &crate::ExecutionOptions,
+    ) -> Result<crate::RawResults, crate::RawError> {
+        crate::raw::query_with_options(&self.connection(), sql, parameters, options)
+    }
+
     /// Returns the underlying [`rusqlite::Connection`].
     pub(crate) fn connection(&self) -> MutexGuard<'_, Connection> {
         self.connection.lock()
@@ -166,6 +180,23 @@ impl RCDB {
         S: IntoIterator,
         S::Item: AsRef<str>,
     {
+        self.fetch_with_options(
+            condition_names,
+            context,
+            &crate::ExecutionOptions::default(),
+        )
+    }
+
+    pub(crate) fn fetch_with_options<S>(
+        &self,
+        condition_names: S,
+        context: &RCDBContext,
+        options: &crate::ExecutionOptions,
+    ) -> RCDBResult<BTreeMap<RunNumber, HashMap<String, Value>>>
+    where
+        S: IntoIterator,
+        S::Item: AsRef<str>,
+    {
         let mut requested: Vec<String> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
         for name in condition_names {
@@ -217,48 +248,51 @@ impl RCDB {
         }
         sql.push_str(" ORDER BY matched_runs.number");
         let connection = self.connection();
-        let mut stmt = connection.prepare(&sql)?;
-        let mut rows = if params.is_empty() {
-            stmt.query([])?
-        } else {
-            let param_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
-            stmt.query(params_from_iter(param_refs))?
-        };
-
-        let run_filter = match context.selection() {
-            RunSelection::Runs(runs) => Some(runs.iter().copied().collect::<HashSet<_>>()),
-            _ => None,
-        };
-
-        let mut results: BTreeMap<RunNumber, HashMap<String, Value>> = BTreeMap::new();
-        while let Some(row) = rows.next()? {
-            let run_number: RunNumber = row.get(0)?;
-            if let Some(filter) = &run_filter
-                && !filter.contains(&run_number)
-            {
-                continue;
-            }
-
-            let entry = results.entry(run_number).or_default();
-            let cond_type_id: Option<Id> = row.get(1)?;
-            let Some(cond_type_id) = cond_type_id else {
-                continue;
+        crate::execution::with_sqlite_progress(&connection, options, || -> RCDBResult<_> {
+            let mut stmt = connection.prepare(&sql)?;
+            let mut rows = if params.is_empty() {
+                stmt.query([])?
+            } else {
+                let param_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
+                stmt.query(params_from_iter(param_refs))?
             };
-            let Some(&index) = requested_index_by_id.get(&cond_type_id) else {
-                continue;
+
+            let run_filter = match context.selection() {
+                RunSelection::Runs(runs) => Some(runs.iter().copied().collect::<HashSet<_>>()),
+                _ => None,
             };
-            let requested = &requested_conditions[index];
-            let value =
-                decode_condition(row, requested).map_err(|error| RCDBError::MalformedValue {
-                    condition_name: requested.name.clone(),
-                    run_number,
-                    reason: error.to_string(),
+
+            let mut results: BTreeMap<RunNumber, HashMap<String, Value>> = BTreeMap::new();
+            while let Some(row) = rows.next()? {
+                let run_number: RunNumber = row.get(0)?;
+                if let Some(filter) = &run_filter
+                    && !filter.contains(&run_number)
+                {
+                    continue;
+                }
+
+                let entry = results.entry(run_number).or_default();
+                let cond_type_id: Option<Id> = row.get(1)?;
+                let Some(cond_type_id) = cond_type_id else {
+                    continue;
+                };
+                let Some(&index) = requested_index_by_id.get(&cond_type_id) else {
+                    continue;
+                };
+                let requested = &requested_conditions[index];
+                let value = decode_condition(row, requested).map_err(|error| {
+                    RCDBError::MalformedValue {
+                        condition_name: requested.name.clone(),
+                        run_number,
+                        reason: error.to_string(),
+                    }
                 })?;
-            if let Some(value) = value {
-                entry.insert(requested.name.clone(), value);
+                if let Some(value) = value {
+                    entry.insert(requested.name.clone(), value);
+                }
             }
-        }
-        Ok(results)
+            Ok(results)
+        })
     }
 
     /// Returns the runs that satisfy the context filters (without loading condition values).
@@ -267,6 +301,14 @@ impl RCDB {
     ///
     /// This method will return an error if the SQL query fails.
     pub fn fetch_runs(&self, context: &RCDBContext) -> RCDBResult<Vec<RunNumber>> {
+        self.fetch_runs_with_options(context, &crate::ExecutionOptions::default())
+    }
+
+    pub(crate) fn fetch_runs_with_options(
+        &self,
+        context: &RCDBContext,
+        options: &crate::ExecutionOptions,
+    ) -> RCDBResult<Vec<RunNumber>> {
         if matches!(context.selection(), RunSelection::Runs(runs) if runs.is_empty()) {
             return Ok(Vec::new());
         }
@@ -274,30 +316,69 @@ impl RCDB {
         let (sql, params) = self.build_matched_runs_query(context)?;
 
         let connection = self.connection();
-        let mut stmt = connection.prepare(&sql)?;
-        let mut rows = if params.is_empty() {
-            stmt.query([])?
-        } else {
-            let param_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
-            stmt.query(params_from_iter(param_refs))?
-        };
+        crate::execution::with_sqlite_progress(&connection, options, || -> RCDBResult<_> {
+            let mut stmt = connection.prepare(&sql)?;
+            let mut rows = if params.is_empty() {
+                stmt.query([])?
+            } else {
+                let param_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
+                stmt.query(params_from_iter(param_refs))?
+            };
 
-        let run_filter = match context.selection() {
+            let run_filter = match context.selection() {
+                RunSelection::Runs(runs) => Some(runs.iter().copied().collect::<HashSet<_>>()),
+                _ => None,
+            };
+
+            let mut runs = Vec::new();
+            while let Some(row) = rows.next()? {
+                let run_number: RunNumber = row.get(0)?;
+                if let Some(filter) = &run_filter
+                    && !filter.contains(&run_number)
+                {
+                    continue;
+                }
+                runs.push(run_number);
+            }
+            Ok(runs)
+        })
+    }
+
+    pub(crate) fn fetch_run_page_with_options(
+        &self,
+        context: &RCDBContext,
+        limit: usize,
+        offset: usize,
+        options: &crate::ExecutionOptions,
+    ) -> RCDBResult<(Vec<RunNumber>, usize, bool)> {
+        let (mut sql, mut params) = self.build_matched_runs_query(context)?;
+        sql.push_str(" LIMIT ? OFFSET ?");
+        let query_limit = limit.saturating_add(1);
+        params.push(SqlValue::Integer(
+            i64::try_from(query_limit).unwrap_or(i64::MAX),
+        ));
+        params.push(SqlValue::Integer(i64::try_from(offset).unwrap_or(i64::MAX)));
+        let connection = self.connection();
+        let raw = crate::execution::with_sqlite_progress(&connection, options, || {
+            let mut stmt = connection.prepare(&sql)?;
+            let param_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
+            stmt.query_map(params_from_iter(param_refs), |row| {
+                row.get::<_, RunNumber>(0)
+            })?
+            .collect::<Result<Vec<_>, _>>()
+        })?;
+        let complete = raw.len() <= limit;
+        let consumed = raw.len().min(limit);
+        let requested = match context.selection() {
             RunSelection::Runs(runs) => Some(runs.iter().copied().collect::<HashSet<_>>()),
             _ => None,
         };
-
-        let mut runs = Vec::new();
-        while let Some(row) = rows.next()? {
-            let run_number: RunNumber = row.get(0)?;
-            if let Some(filter) = &run_filter
-                && !filter.contains(&run_number)
-            {
-                continue;
-            }
-            runs.push(run_number);
-        }
-        Ok(runs)
+        let runs = raw
+            .into_iter()
+            .take(consumed)
+            .filter(|run| requested.as_ref().is_none_or(|set| set.contains(run)))
+            .collect();
+        Ok((runs, consumed, complete))
     }
 
     fn ensure_query_entry(

@@ -157,6 +157,23 @@ fn malformed_projected_values_raise_with_run_and_condition_context() {
         assert!(format!("{query:?}").contains(name));
         let error = query.collect().unwrap_err().to_string();
         assert!(error.contains(name) && error.contains("run 2"), "{error}");
+        assert!(query.strict().stream(1).unwrap().next().unwrap().is_err());
+        let fallback = match name {
+            "event_count" => gluex_rs::ConditionOperand::Int(0),
+            "run_start_time" => gluex_rs::ConditionOperand::Time(chrono::Utc::now()),
+            "is_valid_run_end" => gluex_rs::ConditionOperand::Bool(false),
+            _ => unreachable!(),
+        };
+        assert!(
+            query
+                .fill(name, fallback)
+                .unwrap()
+                .stream(1)
+                .unwrap()
+                .next()
+                .unwrap()
+                .is_err()
+        );
     }
 }
 
@@ -174,6 +191,121 @@ fn stored_condition_timestamps_do_not_accept_user_shorthand() {
             .select(["run_start_time"])
             .unwrap()
             .collect()
+            .is_err()
+    );
+}
+
+#[test]
+fn run_and_condition_streams_agree_with_collection_and_report_progress() {
+    let fixture = fixtures::rcdb();
+    let gx = GlueX::open(SourceConfig::sqlite(fixture.path()), SourceConfig::Disabled).unwrap();
+    let query = gx.runs(RunSelection::range(2, 5)).unwrap();
+    let chunks = query
+        .stream(2)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        chunks
+            .iter()
+            .flat_map(|chunk| chunk.numbers().iter().copied())
+            .collect::<Vec<_>>(),
+        query.collect().unwrap().numbers()
+    );
+    assert!(!chunks[0].report().complete());
+    assert!(chunks.last().unwrap().report().complete());
+    assert_eq!(query.first().unwrap(), Some(2));
+    assert_eq!(query.count().unwrap(), 4);
+    assert!(query.one().unwrap_err().to_string().contains("exactly one"));
+
+    let projected = query.select(["event_count", "is_valid_run_end"]).unwrap();
+    let chunks = projected
+        .stream(2)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(chunks[0].runs().numbers(), &[2, 3]);
+    assert_eq!(
+        chunks[0].report().missing_values(),
+        &[(3, "is_valid_run_end".into())]
+    );
+    assert_eq!(projected.count().unwrap(), 4);
+    assert_eq!(projected.first().unwrap().unwrap().runs().numbers(), &[2]);
+
+    let mut abandoned = query.stream(1).unwrap();
+    assert!(abandoned.next().unwrap().is_ok());
+    drop(abandoned);
+    assert_eq!(query.count().unwrap(), 4);
+}
+
+#[test]
+fn sparse_stream_emits_completion_when_the_final_database_page_is_filtered_out() {
+    let fixture = fixtures::rcdb();
+    let gx = GlueX::open(SourceConfig::sqlite(fixture.path()), SourceConfig::Disabled).unwrap();
+    let selection = RunSelection::runs((0..401).map(|index| i64::from(index) * 3 + 1));
+    let chunks = gx
+        .runs(selection)
+        .unwrap()
+        .stream(1)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        chunks
+            .iter()
+            .flat_map(|chunk| chunk.numbers().iter().copied())
+            .collect::<Vec<_>>(),
+        [4]
+    );
+    assert!(chunks.last().unwrap().numbers().is_empty());
+    assert!(chunks.last().unwrap().report().complete());
+}
+
+#[test]
+fn condition_missing_policies_are_explicit_and_auditable() {
+    let fixture = fixtures::rcdb();
+    let gx = GlueX::open(SourceConfig::sqlite(fixture.path()), SourceConfig::Disabled).unwrap();
+    let query = gx
+        .runs(RunSelection::range(2, 4))
+        .unwrap()
+        .select(["is_valid_run_end"])
+        .unwrap();
+    assert!(
+        query
+            .strict()
+            .collect()
+            .unwrap_err()
+            .to_string()
+            .contains("missing")
+    );
+    let filled = query
+        .fill("is_valid_run_end", gluex_rs::ConditionOperand::Bool(false))
+        .unwrap()
+        .collect()
+        .unwrap();
+    assert_eq!(
+        filled
+            .get(3, "is_valid_run_end")
+            .unwrap()
+            .unwrap()
+            .as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        filled.report().substitutions(),
+        &[(3, "is_valid_run_end".into())]
+    );
+    assert_eq!(
+        filled.provenance().policy(),
+        gluex_rs::MissingDataPolicy::Fallback
+    );
+    assert_eq!(filled.provenance().fallback_fields(), &["is_valid_run_end"]);
+    assert!(
+        query
+            .fill(
+                "is_valid_run_end",
+                gluex_rs::ConditionOperand::Text("wrong".into())
+            )
             .is_err()
     );
 }

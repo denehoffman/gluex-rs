@@ -16,7 +16,10 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env,
     path::Path,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 fn normalize_path(base: &str, path: &str) -> String {
@@ -57,6 +60,7 @@ pub struct CCDB {
     table_meta: Arc<DashMap<Id, TypeTableMeta>>,
     table_by_dir_name: Arc<DashMap<(Id, String), Id>>,
     column_layouts: Arc<DashMap<Id, Arc<ColumnLayout>>>,
+    payload_cache_capacity: Arc<AtomicUsize>,
 }
 
 impl CCDB {
@@ -110,12 +114,32 @@ impl CCDB {
             table_meta: Arc::new(DashMap::new()),
             table_by_dir_name: Arc::new(DashMap::new()),
             column_layouts: Arc::new(DashMap::new()),
+            payload_cache_capacity: Arc::new(AtomicUsize::new(128)),
             connection_path: path_str,
             opened_at: Utc::now(),
         };
         db.load_directories()?;
         db.load_tables()?;
         Ok(db)
+    }
+
+    pub(crate) fn runtime_cache_entries(&self) -> usize {
+        self.variation_cache.len() + self.variation_chain_cache.len() + self.column_layouts.len()
+    }
+
+    pub(crate) fn clear_runtime_caches(&self) {
+        self.variation_cache.clear();
+        self.variation_chain_cache.clear();
+        self.column_layouts.clear();
+    }
+
+    pub(crate) fn payload_cache_capacity(&self) -> usize {
+        self.payload_cache_capacity.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_payload_cache_capacity(&self, capacity: usize) {
+        self.payload_cache_capacity
+            .store(capacity.max(1), Ordering::Release);
     }
     /// Execute one parameterized read-only SQLite statement, returning immutable rows.
     ///
@@ -131,6 +155,20 @@ impl CCDB {
         parameters: &[crate::RawValue],
     ) -> Result<crate::RawResults, crate::RawError> {
         crate::raw::query(&self.connection(), sql, parameters)
+    }
+
+    /// Execute a raw read with cooperative cancellation and an optional deadline.
+    ///
+    /// # Errors
+    /// Returns the same errors as [`Self::raw`], including an interrupted SQLite
+    /// error when cancellation or the deadline stops evaluation.
+    pub fn raw_with_options(
+        &self,
+        sql: &str,
+        parameters: &[crate::RawValue],
+        options: &crate::ExecutionOptions,
+    ) -> Result<crate::RawResults, crate::RawError> {
+        crate::raw::query_with_options(&self.connection(), sql, parameters, options)
     }
 
     /// Returns the underlying [`rusqlite::Connection`].
@@ -441,8 +479,17 @@ impl CCDB {
     /// This method returns an error if the parsed table path
     /// does not exist or an error occurs while fetching data.
     pub fn fetch(&self, path: &str, ctx: &CCDBContext) -> CCDBResult<BTreeMap<RunNumber, Data>> {
+        self.fetch_with_options(path, ctx, &crate::ExecutionOptions::default())
+    }
+
+    pub(crate) fn fetch_with_options(
+        &self,
+        path: &str,
+        ctx: &CCDBContext,
+        options: &crate::ExecutionOptions,
+    ) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let table = self.table(path)?;
-        table.fetch(ctx)
+        table.fetch_with_options(ctx, options)
     }
 }
 
@@ -560,6 +607,9 @@ pub struct TypeTableHandle {
     pub(crate) meta: TypeTableMeta,
 }
 impl TypeTableHandle {
+    pub(crate) fn payload_cache_capacity(&self) -> usize {
+        self.db.payload_cache_capacity()
+    }
     /// Build a context with this table's source opening time and `default` variation.
     ///
     /// Context overrides do not change the source defaults.
@@ -681,19 +731,32 @@ impl TypeTableHandle {
     /// Returns an error if resolving assignments fails, if any SQL queries fail, or if vault data
     /// cannot be decoded for the requested runs.
     pub fn fetch(&self, ctx: &CCDBContext) -> CCDBResult<BTreeMap<RunNumber, Data>> {
+        self.fetch_with_options(ctx, &crate::ExecutionOptions::default())
+    }
+
+    pub(crate) fn fetch_with_options(
+        &self,
+        ctx: &CCDBContext,
+        options: &crate::ExecutionOptions,
+    ) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         let runs = ctx.runs.clone();
-        let assignments = self.resolve_assignments(&runs, &ctx.variation, ctx.timestamp)?;
+        let assignments =
+            self.resolve_assignments_with_options(&runs, &ctx.variation, ctx.timestamp, options)?;
         if assignments.is_empty() {
             return Ok(BTreeMap::new());
         }
-        self.load_vaults(&assignments)
+        self.load_vaults_with_options(&assignments, options)
     }
-    pub(crate) fn resolve_assignments(
+    pub(crate) fn resolve_assignments_with_options(
         &self,
         runs: &[RunNumber],
         variation: &str,
         timestamp: DateTime<Utc>,
+        options: &crate::ExecutionOptions,
     ) -> CCDBResult<BTreeMap<RunNumber, ResolvedAssignment>> {
+        if options.interrupted() {
+            return Err(crate::execution::interrupted_error().into());
+        }
         let start_var_meta = self.db.variation(variation)?;
         let var_chain = self.db.variation_chain(&start_var_meta)?;
         if runs.is_empty() {
@@ -704,6 +767,9 @@ impl TypeTableHandle {
         let mut final_assignments: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
         let mut unresolved: HashSet<RunNumber> = runs.iter().copied().collect();
         for var_meta in var_chain {
+            if options.interrupted() {
+                return Err(crate::execution::interrupted_error().into());
+            }
             if unresolved.is_empty() {
                 break;
             }
@@ -713,6 +779,7 @@ impl TypeTableHandle {
                 timestamp,
                 min_run,
                 max_run,
+                options,
             )?;
             for (run, meta) in partial {
                 final_assignments.insert(run, meta);
@@ -728,10 +795,12 @@ impl TypeTableHandle {
         timestamp: DateTime<Utc>,
         min_run: RunNumber,
         max_run: RunNumber,
+        options: &crate::ExecutionOptions,
     ) -> CCDBResult<BTreeMap<RunNumber, ResolvedAssignment>> {
         let connection = self.db.connection();
-        let mut stmt = connection.prepare_cached(
-            "SELECT
+        crate::execution::with_sqlite_progress(&connection, options, || -> CCDBResult<_> {
+            let mut stmt = connection.prepare_cached(
+                "SELECT
                  a.id, a.created, a.constantSetId,
                  cs.id, cs.created, cs.modified, cs.vault, cs.constantTypeId,
                  rr.runMin, rr.runMax
@@ -742,8 +811,8 @@ impl TypeTableHandle {
                AND a.variationId = ?
                AND (rr.id IS NULL OR rr.runMin > rr.runMax
                     OR (rr.runMax >= ? AND rr.runMin <= ?))",
-        )?;
-        let valid_assignments = stmt
+            )?;
+            let valid_assignments = stmt
             .query_map((self.meta.id, var_meta.id, min_run, max_run), |row| {
                 let meta = AssignmentMetaLite {
                     id: row.get(0)?,
@@ -763,54 +832,62 @@ impl TypeTableHandle {
             })?
             .collect::<Result<Vec<(AssignmentMetaLite, ConstantSetMeta, RunNumber, RunNumber)>, _>>(
             )?;
-        for (assignment, _, run_min, run_max) in &valid_assignments {
-            if run_min > run_max {
-                return Err(CCDBError::InvalidMetadata(format!(
-                    "assignment {} has reversed run bounds",
-                    assignment.id()
-                )));
+            for (assignment, _, run_min, run_max) in &valid_assignments {
+                if run_min > run_max {
+                    return Err(CCDBError::InvalidMetadata(format!(
+                        "assignment {} has reversed run bounds",
+                        assignment.id()
+                    )));
+                }
             }
-        }
-        let mut best: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
-        let mut best_id: HashMap<RunNumber, Id> = HashMap::new();
-        let mut constant_set_cache: HashMap<Id, Arc<ConstantSetMeta>> = HashMap::new();
-        for &run in runs {
-            for (meta, constant_set, rmin, rmax) in &valid_assignments {
-                if run >= *rmin && run <= *rmax {
-                    let cur_best = best_id.get(&run);
-                    let created = crate::core::parsers::parse_database_timestamp(&meta.created)
-                        .map_err(|error| {
-                            CCDBError::InvalidMetadata(format!("assignment {}: {error}", meta.id()))
-                        })?;
-                    if created > timestamp {
-                        continue;
-                    }
-                    if cur_best.is_none_or(|id| meta.id() > *id) {
-                        let cs_entry = constant_set_cache
-                            .entry(constant_set.id)
-                            .or_insert_with(|| Arc::new(constant_set.clone()))
-                            .clone();
-                        best.insert(
-                            run,
-                            ResolvedAssignment {
-                                constant_set: cs_entry,
-                                id: meta.id(),
-                                created,
-                                variation: var_meta.name.clone(),
-                                run_min: *rmin,
-                                run_max: *rmax,
-                            },
-                        );
-                        best_id.insert(run, meta.id());
+            let mut best: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
+            let mut best_id: HashMap<RunNumber, Id> = HashMap::new();
+            let mut constant_set_cache: HashMap<Id, Arc<ConstantSetMeta>> = HashMap::new();
+            for &run in runs {
+                if options.interrupted() {
+                    return Err(crate::execution::interrupted_error().into());
+                }
+                for (meta, constant_set, rmin, rmax) in &valid_assignments {
+                    if run >= *rmin && run <= *rmax {
+                        let cur_best = best_id.get(&run);
+                        let created = crate::core::parsers::parse_database_timestamp(&meta.created)
+                            .map_err(|error| {
+                                CCDBError::InvalidMetadata(format!(
+                                    "assignment {}: {error}",
+                                    meta.id()
+                                ))
+                            })?;
+                        if created > timestamp {
+                            continue;
+                        }
+                        if cur_best.is_none_or(|id| meta.id() > *id) {
+                            let cs_entry = constant_set_cache
+                                .entry(constant_set.id)
+                                .or_insert_with(|| Arc::new(constant_set.clone()))
+                                .clone();
+                            best.insert(
+                                run,
+                                ResolvedAssignment {
+                                    constant_set: cs_entry,
+                                    id: meta.id(),
+                                    created,
+                                    variation: var_meta.name.clone(),
+                                    run_min: *rmin,
+                                    run_max: *rmax,
+                                },
+                            );
+                            best_id.insert(run, meta.id());
+                        }
                     }
                 }
             }
-        }
-        Ok(best)
+            Ok(best)
+        })
     }
-    fn load_vaults(
+    fn load_vaults_with_options(
         &self,
         assignments: &BTreeMap<RunNumber, ResolvedAssignment>,
+        options: &crate::ExecutionOptions,
     ) -> CCDBResult<BTreeMap<RunNumber, Data>> {
         if assignments.is_empty() {
             return Ok(BTreeMap::new());
@@ -821,6 +898,9 @@ impl TypeTableHandle {
         assignments
             .iter()
             .map(|(run, constant_set)| {
+                if options.interrupted() {
+                    return Err(crate::execution::interrupted_error().into());
+                }
                 Ok((
                     *run,
                     Data::from_vault(&constant_set.constant_set.vault, layout.clone(), n_rows)?,

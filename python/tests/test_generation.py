@@ -114,9 +114,7 @@ def test_python_generation_config_includes_model_parameters_and_scalars(
     )
     config.add_scalar(
         'calibration',
-        laddu.ScalarSource.histogram(
-            laddu.Histogram([1.0, 3.0], bin_edges=[0.0, 1.0, 2.0])
-        ),
+        laddu.ScalarSource.histogram(laddu.Histogram([1.0, 3.0], bin_edges=[0.0, 1.0, 2.0])),
     )
     config.max_weight = 100.0
     config.validate()

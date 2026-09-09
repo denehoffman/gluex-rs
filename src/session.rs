@@ -79,6 +79,26 @@ pub struct Capabilities {
     ccdb: bool,
 }
 
+/// Inspectable bounds and current occupancy for session-owned metadata caches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheInfo {
+    calibration_payload_capacity: usize,
+    ccdb_metadata_entries: usize,
+}
+
+impl CacheInfo {
+    /// Maximum decoded calibration payloads retained by one active stream.
+    #[must_use]
+    pub const fn calibration_payload_capacity(self) -> usize {
+        self.calibration_payload_capacity
+    }
+    /// Current shared variation, inheritance and column-layout cache entries.
+    #[must_use]
+    pub const fn ccdb_metadata_entries(self) -> usize {
+        self.ccdb_metadata_entries
+    }
+}
+
 impl Capabilities {
     /// Whether recorded runs and conditions are available.
     #[must_use]
@@ -144,6 +164,34 @@ pub struct GlueX {
 }
 
 impl GlueX {
+    /// Inspect cache bounds and current shared metadata occupancy without querying rows.
+    #[must_use]
+    pub fn cache_info(&self) -> CacheInfo {
+        let ccdb = self.sources.ccdb.as_ref();
+        CacheInfo {
+            calibration_payload_capacity: ccdb.map_or(0, crate::ccdb::CCDB::payload_cache_capacity),
+            ccdb_metadata_entries: ccdb.map_or(0, crate::ccdb::CCDB::runtime_cache_entries),
+        }
+    }
+
+    /// Set the per-stream decoded calibration payload budget. Values below one become one.
+    pub fn set_calibration_payload_cache_capacity(&self, capacity: usize) {
+        if let Some(ccdb) = &self.sources.ccdb {
+            ccdb.set_payload_cache_capacity(capacity);
+        }
+    }
+
+    /// Clear disposable CCDB metadata caches. Existing results remain immutable.
+    pub fn clear_caches(&self) {
+        if let Some(ccdb) = &self.sources.ccdb {
+            ccdb.clear_runtime_caches();
+        }
+    }
+    /// Access canonical workflows bound to this session's captured sources.
+    #[must_use]
+    pub fn workflows(&self) -> crate::Workflows {
+        crate::Workflows::new(self.sources.clone())
+    }
     /// Reopen the captured source paths and establish new opening defaults and caches.
     /// Existing queries, catalogs, readers and cloned sessions keep their original bindings.
     /// Environment variables are not consulted again. Keep files unchanged while in use;

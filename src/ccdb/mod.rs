@@ -95,6 +95,18 @@ pub enum CCDBError {
     /// Required environment variable is not set.
     #[error("missing {0} environment variable for CCDB connection")]
     MissingConnectionEnv(String),
+    /// Direct variation/time selectors cannot be combined with reconstruction selection.
+    #[error("calibration selector conflict: {0}")]
+    SelectorConflict(String),
+    /// A strict calibration request encountered missing assignments.
+    #[error("strict missing-data policy rejected {0} missing assignments")]
+    MissingData(usize),
+    /// A terminal operation expected exactly one result.
+    #[error("expected exactly one result, found {0}")]
+    InvalidCardinality(usize),
+    /// RCDB membership resolution failed for a composed calibration request.
+    #[error(transparent)]
+    RCDBError(#[from] crate::rcdb::RCDBError),
 }
 
 pub use self::context::{CCDBContext, NamePath, Request};

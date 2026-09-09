@@ -1,5 +1,5 @@
 use super::{
-    runs::PyRunSelection,
+    runs::{PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet},
     tuple::{TypedIterator, TypedTuple},
 };
 use crate::calibrations::*;
@@ -7,7 +7,15 @@ use crate::{Id, RunNumber};
 use pyo3::{
     exceptions::{PyKeyError, PyRuntimeError},
     prelude::*,
+    types::PyDict,
 };
+
+#[derive(FromPyObject)]
+enum PyCalibrationInput {
+    Selection(PyRunSelection),
+    Set(PyRunSet),
+    Query(PyRunQuery),
+}
 
 fn error(e: crate::ccdb::CCDBError) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
@@ -116,11 +124,14 @@ impl PyCalibrationTable {
             .map_err(error)
     }
     /// Build a lazy numeric query using captured opening defaults; no RCDB membership check.
-    fn for_runs(&self, selection: &PyRunSelection) -> PyResult<PyCalibrationQuery> {
-        self.0
-            .for_runs(selection.0.clone())
-            .map(PyCalibrationQuery)
-            .map_err(error)
+    fn for_runs(&self, selection: PyCalibrationInput) -> PyResult<PyCalibrationQuery> {
+        match selection {
+            PyCalibrationInput::Selection(selection) => self.0.for_runs(selection.0),
+            PyCalibrationInput::Set(runs) => self.0.for_run_set(&runs.0),
+            PyCalibrationInput::Query(query) => self.0.for_query(&query.0),
+        }
+        .map(PyCalibrationQuery)
+        .map_err(error)
     }
     fn __repr__(&self) -> String {
         format!(
@@ -128,6 +139,36 @@ impl PyCalibrationTable {
             self.path(),
             self.n_rows()
         )
+    }
+}
+
+/// Explicit latest or per-period REST reconstruction selection.
+#[pyclass(
+    name = "ReconstructionSelection",
+    module = "gluex",
+    frozen,
+    from_py_object
+)]
+#[derive(Clone)]
+pub struct PyReconstructionSelection(pub(crate) ReconstructionSelection);
+#[pymethods]
+impl PyReconstructionSelection {
+    #[staticmethod]
+    fn latest() -> Self {
+        Self(ReconstructionSelection::latest())
+    }
+    #[staticmethod]
+    fn periods(selections: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let mut native = Vec::with_capacity(selections.len());
+        for (key, value) in selections.iter() {
+            let period = key.extract::<PyRef<'_, super::core::PyRunPeriod>>()?;
+            let selection = value.extract::<PyRef<'_, super::core::PyRESTVersionSelection>>()?;
+            native.push((period.0, selection.0));
+        }
+        Ok(Self(ReconstructionSelection::periods(native)))
+    }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
     }
 }
 
@@ -171,12 +212,43 @@ impl PyCalibrationProvenance {
         PyRunSelection(self.0.selection().clone())
     }
     #[getter]
+    fn runs(&self) -> Option<PyRunProvenance> {
+        self.0.runs().cloned().map(PyRunProvenance)
+    }
+    #[getter]
+    fn run_report(&self) -> Option<PyRunReport> {
+        self.0.run_report().cloned().map(PyRunReport)
+    }
+    #[getter]
     fn variation(&self) -> &str {
         self.0.variation()
     }
     #[getter]
     fn as_of(&self) -> chrono::DateTime<chrono::Utc> {
         self.0.as_of()
+    }
+    #[getter]
+    fn resolved_reconstruction(
+        &self,
+    ) -> std::collections::BTreeMap<String, (String, chrono::DateTime<chrono::Utc>)> {
+        self.0
+            .resolved_reconstruction()
+            .iter()
+            .map(|(period, context)| {
+                (
+                    period.data_name().to_owned(),
+                    (context.variation.clone(), context.timestamp),
+                )
+            })
+            .collect()
+    }
+    #[getter]
+    fn missing_policy(&self) -> &'static str {
+        self.0.policy().as_str()
+    }
+    #[getter]
+    fn fallback_run(&self) -> Option<RunNumber> {
+        self.0.fallback_run()
     }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
@@ -188,6 +260,13 @@ impl PyCalibrationProvenance {
 pub struct PyCalibrationQuery(CalibrationQuery);
 #[pymethods]
 impl PyCalibrationQuery {
+    /// Return an immutable query with a timeout in seconds.
+    fn timeout(&self, seconds: f64) -> PyResult<Self> {
+        Ok(Self(
+            self.0
+                .with_timeout(crate::python::execution::timeout(seconds)?),
+        ))
+    }
     /// Return a new query requesting this variation; invalid variations fail on collection.
     fn with_variation(&self, variation: String) -> Self {
         Self(self.0.with_variation(variation))
@@ -195,6 +274,23 @@ impl PyCalibrationQuery {
     /// Return a new query with an inclusive cutoff. Requires a timezone-aware datetime.
     fn as_of(&self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
         Self(self.0.as_of(timestamp))
+    }
+    /// Resolve calibration selectors independently for each run period.
+    fn with_reconstruction(&self, selection: &PyReconstructionSelection) -> Self {
+        Self(self.0.with_reconstruction(selection.0.clone()))
+    }
+    /// Explicitly use source-opening defaults for all run periods.
+    fn latest_reconstruction(&self) -> Self {
+        Self(
+            self.0
+                .with_reconstruction(ReconstructionSelection::latest()),
+        )
+    }
+    fn strict(&self) -> Self {
+        Self(self.0.strict())
+    }
+    fn fallback_to(&self, run: RunNumber) -> Self {
+        Self(self.0.fallback_to(run))
     }
 
     #[getter]
@@ -204,12 +300,58 @@ impl PyCalibrationQuery {
     /// Collect numeric assignments and report missing runs. Releases the GIL.
     /// Execution and malformed-payload errors raise RuntimeError.
     fn collect(&self, py: Python<'_>) -> PyResult<PyCalibrationSeries> {
-        py.detach(|| self.0.collect())
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals
+            .finish(py.detach(|| query.collect()))
             .map(PyCalibrationSeries)
+    }
+    #[pyo3(signature = (*, chunk_size=1024))]
+    fn stream(&self, chunk_size: usize) -> PyResult<PyCalibrationStream> {
+        let signals = crate::python::execution::PythonExecution::new();
+        self.0
+            .with_interrupt_check(signals.checker())
+            .stream(chunk_size)
+            .map(|stream| PyCalibrationStream(stream, signals))
             .map_err(error)
+    }
+    fn first(&self, py: Python<'_>) -> PyResult<Option<PyCalibrationSeries>> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals
+            .finish(py.detach(|| query.first()))
+            .map(|value| value.map(PyCalibrationSeries))
+    }
+    fn one(&self, py: Python<'_>) -> PyResult<PyCalibrationSeries> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals
+            .finish(py.detach(|| query.one()))
+            .map(PyCalibrationSeries)
+    }
+    fn count(&self, py: Python<'_>) -> PyResult<usize> {
+        let signals = crate::python::execution::PythonExecution::new();
+        let query = self.0.with_interrupt_check(signals.checker());
+        signals.finish(py.detach(|| query.count()))
     }
     fn __repr__(&self) -> String {
         format!("CalibrationQuery({:?})", self.0.provenance())
+    }
+}
+
+/// Iterator yielding bounded Calibration Series chunks.
+#[pyclass(name = "CalibrationStream", module = "gluex")]
+pub struct PyCalibrationStream(CalibrationStream, crate::python::execution::PythonExecution);
+#[pymethods]
+impl PyCalibrationStream {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyCalibrationSeries>> {
+        Ok(self
+            .1
+            .finish(py.detach(|| self.0.next().transpose()))?
+            .map(PyCalibrationSeries))
     }
 }
 
@@ -363,6 +505,18 @@ impl PyCalibrationReport {
     #[getter]
     fn missing_runs(&self) -> TypedTuple<RunNumber> {
         TypedTuple(self.0.missing_runs().to_vec())
+    }
+    #[getter]
+    fn substitutions(&self) -> TypedTuple<(RunNumber, RunNumber)> {
+        TypedTuple(self.0.substitutions().to_vec())
+    }
+    #[getter]
+    fn evaluated_runs(&self) -> TypedTuple<RunNumber> {
+        TypedTuple(self.0.evaluated_runs().to_vec())
+    }
+    #[getter]
+    fn complete(&self) -> bool {
+        self.0.complete()
     }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)

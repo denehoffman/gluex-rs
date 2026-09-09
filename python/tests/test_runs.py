@@ -1,7 +1,11 @@
 """Recorded membership and immutable Condition Definition discovery."""
 
 import shutil
+import signal
 import sqlite3
+import subprocess
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,11 +35,52 @@ def test_recorded_membership_and_catalog(rcdb_path: Path) -> None:
     with pytest.raises(KeyError):
         _ = catalog['absent']
     with pytest.raises(AttributeError):
-        catalog['event_count'].name = 'changed'
+        catalog['event_count'].name = 'changed'  # ty: ignore[invalid-assignment]
     with pytest.raises(AttributeError):
-        result.numbers = ()
+        result.numbers = ()  # ty: ignore[invalid-assignment]
     del gx
     assert tuple(query.collect()) == (2, 3, 5)
+
+
+def test_run_query_timeout_is_immutable() -> None:
+    query = gluex.open().runs(gluex.RunSelection.range(2, 5))
+    with pytest.raises(RuntimeError, match='interrupted'):
+        query.timeout(0.0).collect()
+    assert query.collect().numbers == (2, 3, 4, 5)
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='uses POSIX signal delivery')
+def test_keyboard_interrupt_stops_domain_evaluation(rcdb_path: Path, tmp_path: Path) -> None:
+    fixture = tmp_path / 'large.sqlite'
+    shutil.copyfile(rcdb_path, fixture)
+    with sqlite3.connect(fixture) as connection:
+        connection.execute("""
+            WITH RECURSIVE numbers(n) AS (
+                SELECT 200000 UNION ALL SELECT n + 1 FROM numbers WHERE n < 500000
+            ) INSERT INTO runs(number) SELECT n FROM numbers
+        """)
+    script = """
+import gluex
+import sys
+try:
+    gx = gluex.open(rcdb=sys.argv[1], ccdb=gluex.DISABLED)
+    gx.runs(gluex.RunSelection.range(200000, 500000)).count()
+except KeyboardInterrupt:
+    print("interrupted")
+else:
+    raise SystemExit("query unexpectedly completed")
+"""
+    process = subprocess.Popen(  # noqa: S603 - executable, script, and path are test-controlled
+        [sys.executable, '-c', script, str(fixture)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    time.sleep(0.05)
+    process.send_signal(signal.SIGINT)
+    stdout, stderr = process.communicate(timeout=10)
+    assert process.returncode == 0, stderr
+    assert stdout.strip() == 'interrupted'
 
 
 @pytest.mark.parametrize(
@@ -85,9 +130,9 @@ def test_condition_projection(rcdb_path: Path) -> None:
     with pytest.raises(ValueError):
         query.select(['absent'])
     with pytest.raises(TypeError):
-        query.select([2])
+        query.select([2])  # ty: ignore[invalid-argument-type]
     with pytest.raises(AttributeError):
-        result.runs = ()
+        result.runs = ()  # ty: ignore[invalid-assignment]
 
 
 @pytest.mark.parametrize('text', ['broken', 'garbage 2014 garbage', '2014'])
@@ -100,6 +145,10 @@ def test_projected_timestamp_rejects_corruption(rcdb_path, tmp_path, text):
     query = gx.runs(gluex.RunSelection.runs([2])).select(['run_start_time'])
     with pytest.raises(RuntimeError, match='run_start_time at run 2'):
         query.collect()
+    with pytest.raises(RuntimeError, match='run_start_time at run 2'):
+        next(query.strict().stream(chunk_size=1))
+    with pytest.raises(RuntimeError, match='run_start_time at run 2'):
+        next(query.fill('run_start_time', value=datetime.now(timezone.utc)).stream(chunk_size=1))
 
 
 def test_condition_columns_preserve_types_nulls_and_filter_reports(rcdb_path, tmp_path):
@@ -126,3 +175,37 @@ def test_condition_columns_preserve_types_nulls_and_filter_reports(rcdb_path, tm
     assert filtered.column('event_count') == (5000,)
     assert filtered.runs.report.unknown_runs == (3,)
     assert len(filtered.provenance.runs.predicates) == 1
+
+
+def test_streaming_terminals_and_missing_policies(rcdb_path):
+    gx = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED)
+    query = gx.runs(gluex.RunSelection.range(2, 5))
+    chunks = [chunk for chunk in query.stream(chunk_size=2) if chunk is not None]
+    assert tuple(run for chunk in chunks for run in chunk) == query.collect().numbers
+    assert chunks[0].report.complete is False
+    assert chunks[-1].report.complete is True
+    assert query.first() == 2
+    assert query.count() == 4
+    with pytest.raises(RuntimeError, match='exactly one'):
+        query.one()
+    abandoned = query.stream(chunk_size=1)
+    next(abandoned)
+    del abandoned
+    assert query.count() == 4
+
+    projected = query.select(['event_count', 'is_valid_run_end'])
+    projected_chunks = [chunk for chunk in projected.stream(chunk_size=2) if chunk is not None]
+    assert projected_chunks[0].runs.numbers == (2, 3)
+    first = projected.first()
+    assert first is not None
+    assert first.runs.numbers == (2,)
+    assert projected.count() == 4
+    with pytest.raises(RuntimeError, match='missing'):
+        projected.strict().collect()
+    filled = projected.fill('is_valid_run_end', value=False).collect()
+    assert filled[3, 'is_valid_run_end'] is False
+    assert filled.report.substitutions == ((3, 'is_valid_run_end'), (5, 'is_valid_run_end'))
+    assert filled.provenance.missing_policy == 'fallback'
+    assert filled.provenance.fallback_fields == ('is_valid_run_end',)
+    with pytest.raises((TypeError, ValueError)):
+        projected.fill('is_valid_run_end', value='wrong')

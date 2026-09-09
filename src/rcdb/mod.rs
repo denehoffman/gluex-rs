@@ -86,6 +86,12 @@ pub enum RCDBError {
     /// No approved-production alias has been defined for the run period.
     #[error("approved-production selection is not defined for run period {0:?}")]
     UnsupportedApprovedProductionRunPeriod(crate::core::RunPeriod),
+    /// A terminal operation expected exactly one result.
+    #[error("expected exactly one result, found {0}")]
+    InvalidCardinality(usize),
+    /// A query configured with strict missing-data handling found omissions.
+    #[error("strict missing-data policy rejected {0} missing values")]
+    MissingData(usize),
 }
 
 pub use self::context::{RCDBContext, RunSelection};

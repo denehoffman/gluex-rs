@@ -109,11 +109,11 @@ pub(crate) mod generation {
         /// Build a manifest from a Laddu channel and optional model.
         #[new]
         #[pyo3(signature = (
-            channel: "laddu.Channel",
+            channel: "object",
             *,
-            model: "laddu.Model | None" = None,
-            parameters: "Sequence[float] | dict[str, float] | None" = None,
-            scalars: "dict[str, laddu.ScalarSource] | None" = None,
+            model: "object | None" = None,
+            parameters: "list[float] | tuple[float, ...] | dict[str, float] | None" = None,
+            scalars: "dict[str, object] | None" = None,
             max_weight=None,
             pilot_proposals=10_000,
             safety_scale=2.0,
@@ -279,11 +279,11 @@ pub(crate) mod generation {
     /// Convert a supported laddu channel to strict standalone-generation JSON.
     #[pyfunction]
     #[pyo3(signature = (
-        channel: "laddu.Channel",
+        channel: "object",
         *,
-        model: "laddu.Model | None" = None,
-        parameters: "Sequence[float] | dict[str, float] | None" = None,
-        scalars: "dict[str, laddu.ScalarSource] | None" = None,
+        model: "object | None" = None,
+        parameters: "list[float] | tuple[float, ...] | dict[str, float] | None" = None,
+        scalars: "dict[str, object] | None" = None,
         max_weight=None,
         pilot_proposals=10_000,
         safety_scale=2.0,
@@ -354,7 +354,7 @@ pub(crate) mod generation {
     impl PyGlueXHddmConfig {
         #[new]
         #[pyo3(signature = (
-            channel: "laddu.Channel",
+            channel: "object",
             *,
             beam="beam",
             target="target",
@@ -404,7 +404,7 @@ pub(crate) mod generation {
         }
 
         /// Write every event in a laddu dataset to `path`.
-        #[pyo3(signature = (dataset: "laddu.Dataset", path))]
+        #[pyo3(signature = (dataset: "object", path))]
         fn write(&self, py: Python<'_>, dataset: &Bound<'_, PyAny>, path: PathBuf) -> PyResult<()> {
             // Bridge through Parquet because laddu's Python Dataset does not expose its
             // native Dataset to other extension modules.

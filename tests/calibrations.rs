@@ -184,6 +184,16 @@ fn malformed_historical_data_is_never_reported_as_missing() {
             .with_variation("mc");
         let error = query.collect().unwrap_err().to_string();
         assert!(error.contains("/test/demo/mytable"), "{error}");
+        assert!(query.strict().stream(1).unwrap().next().unwrap().is_err());
+        assert!(
+            query
+                .fallback_to(2)
+                .stream(1)
+                .unwrap()
+                .next()
+                .unwrap()
+                .is_err()
+        );
     }
 }
 
@@ -242,4 +252,132 @@ fn historical_cutoffs_preserve_fractional_seconds() {
     let result = query.as_of(exact).collect().unwrap();
     assert_eq!(result.get(2).unwrap().assignment_id(), 230_266);
     assert_eq!(result.get(2).unwrap().created(), exact);
+}
+
+#[test]
+fn run_queries_compose_with_period_specific_reconstruction() {
+    let rcdb = fixtures::rcdb();
+    let ccdb = fixtures::ccdb();
+    let gx = GlueX::open(
+        SourceConfig::sqlite(rcdb.path()),
+        SourceConfig::sqlite(ccdb.path()),
+    )
+    .unwrap();
+    let runs = gx.runs(RunSelection::range(50_685, 50_697)).unwrap();
+    let reconstruction = gluex_rs::ReconstructionSelection::periods([(
+        gluex_rs::RunPeriod::RP2018_08,
+        gluex_rs::RESTVersionSelection::try_new(gluex_rs::RunPeriod::RP2018_08, 2).unwrap(),
+    )]);
+    let query = gx
+        .calibrations()
+        .unwrap()
+        .get("/TARGET/density")
+        .unwrap()
+        .for_query(&runs)
+        .unwrap()
+        .with_reconstruction(reconstruction);
+    let series = query.collect().unwrap();
+    assert_eq!(
+        series.items().map(|(run, _)| *run).collect::<Vec<_>>(),
+        [50_685, 50_697]
+    );
+    assert!(series.provenance().runs().is_some());
+    assert_eq!(series.provenance().resolved_reconstruction().len(), 1);
+    assert!(
+        query
+            .with_variation("default")
+            .collect()
+            .unwrap_err()
+            .to_string()
+            .contains("conflict")
+    );
+    let resolved_runs = runs.collect().unwrap();
+    let latest = gx
+        .calibrations()
+        .unwrap()
+        .get("/TARGET/density")
+        .unwrap()
+        .for_run_set(&resolved_runs)
+        .unwrap()
+        .with_reconstruction(gluex_rs::ReconstructionSelection::latest())
+        .collect()
+        .unwrap();
+    assert_eq!(latest.provenance().resolved_reconstruction().len(), 1);
+
+    let valid_end = gx.conditions().unwrap()["is_valid_run_end"]
+        .eq(true)
+        .unwrap();
+    let filtered = gx
+        .runs(RunSelection::range(2, 4))
+        .unwrap()
+        .filter(valid_end);
+    let composed = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_query(&filtered)
+        .unwrap()
+        .collect()
+        .unwrap();
+    assert_eq!(
+        composed.provenance().run_report().unwrap().unknown_runs(),
+        &[3]
+    );
+}
+
+#[test]
+fn calibration_streams_share_payloads_and_apply_missing_policies() {
+    let fixture = fixtures::ccdb();
+    let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+    let table = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .clone();
+    let query = table.for_runs(RunSelection::range(1, 4)).unwrap();
+    let chunks = query
+        .stream(2)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(chunks.len(), 2);
+    assert!(std::ptr::eq(
+        chunks[0].get(1).unwrap().payload(),
+        chunks[1].get(3).unwrap().payload()
+    ));
+    assert_eq!(query.count().unwrap(), 4);
+    assert_eq!(query.first().unwrap().unwrap().items().len(), 1);
+    let mut abandoned = query.stream(1).unwrap();
+    assert!(abandoned.next().unwrap().is_ok());
+    drop(abandoned);
+    assert_eq!(query.count().unwrap(), 4);
+
+    let missing = gx
+        .calibrations()
+        .unwrap()
+        .get("/TARGET/density")
+        .unwrap()
+        .for_runs(RunSelection::runs([2, 50_685]))
+        .unwrap();
+    assert!(
+        missing
+            .strict()
+            .collect()
+            .unwrap_err()
+            .to_string()
+            .contains("missing")
+    );
+    let filled = missing.fallback_to(50_685).collect().unwrap();
+    assert_eq!(
+        filled.get(2).unwrap().constant_set_id(),
+        filled.get(50_685).unwrap().constant_set_id()
+    );
+    assert_eq!(filled.report().substitutions(), &[(2, 50_685)]);
+    assert_eq!(
+        filled.provenance().policy(),
+        gluex_rs::MissingDataPolicy::Fallback
+    );
+    assert_eq!(filled.provenance().fallback_run(), Some(50_685));
 }

@@ -6,7 +6,26 @@ use pyo3::{
 };
 
 use super::{ccdb::ccdb::PyCCDB, rcdb::rcdb::PyRCDB};
-use crate::{Capabilities, GlueX, GlueXError, SourceConfig, Sources};
+use crate::{CacheInfo, Capabilities, GlueX, GlueXError, SourceConfig, Sources};
+
+/// Inspectable cache bounds and current occupancy.
+#[pyclass(name = "CacheInfo", module = "gluex", frozen)]
+pub struct PyCacheInfo(CacheInfo);
+
+#[pymethods]
+impl PyCacheInfo {
+    #[getter]
+    fn calibration_payload_capacity(&self) -> usize {
+        self.0.calibration_payload_capacity()
+    }
+    #[getter]
+    fn ccdb_metadata_entries(&self) -> usize {
+        self.0.ccdb_metadata_entries()
+    }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
+    }
+}
 
 fn session_error(error: GlueXError) -> PyErr {
     match error {
@@ -112,6 +131,26 @@ pub struct PyGlueX(GlueX);
 
 #[pymethods]
 impl PyGlueX {
+    /// Inspect cache bounds and current shared metadata occupancy.
+    #[getter]
+    fn cache_info(&self) -> PyCacheInfo {
+        PyCacheInfo(self.0.cache_info())
+    }
+
+    /// Set the per-stream decoded calibration payload budget; the minimum is one.
+    fn set_calibration_payload_cache_capacity(&self, capacity: usize) {
+        self.0.set_calibration_payload_cache_capacity(capacity);
+    }
+
+    /// Clear disposable CCDB metadata caches; collected results remain immutable.
+    fn clear_caches(&self) {
+        self.0.clear_caches();
+    }
+    /// Canonical workflows bound to this session's captured sources.
+    #[getter]
+    fn workflows(&self) -> super::workflows::PyWorkflows {
+        super::workflows::PyWorkflows(self.0.workflows())
+    }
     /// Reopen captured paths and renew defaults for new queries. Releases the GIL.
     /// Existing handles/results keep their bindings. Environment is not re-read.
     /// Failure raises ValueError and leaves this session unchanged. Keep files unchanged

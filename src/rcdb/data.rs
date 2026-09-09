@@ -43,6 +43,30 @@ impl Value {
         Self::new(ValueType::Time, Repr::Time(value))
     }
 
+    pub(crate) fn from_operand(
+        value_type: ValueType,
+        operand: crate::ConditionOperand,
+    ) -> crate::rcdb::RCDBResult<Self> {
+        let invalid = || {
+            crate::rcdb::RCDBError::InvalidValue(format!(
+                "fallback type does not match {}",
+                value_type.as_str()
+            ))
+        };
+        match (value_type, operand) {
+            (ValueType::Int, crate::ConditionOperand::Int(value)) => Ok(Self::int(value)),
+            (ValueType::Float, crate::ConditionOperand::Float(value)) if value.is_finite() => {
+                Ok(Self::float(value))
+            }
+            (ValueType::Bool, crate::ConditionOperand::Bool(value)) => Ok(Self::bool(value)),
+            (ValueType::Time, crate::ConditionOperand::Time(value)) => Ok(Self::time(value)),
+            (kind, crate::ConditionOperand::Text(value)) if kind.is_textual() => {
+                Ok(Self::text(kind, Some(value)))
+            }
+            _ => Err(invalid()),
+        }
+    }
+
     /// Returns the declared RCDB type of the value.
     #[must_use]
     pub const fn value_type(&self) -> ValueType {
