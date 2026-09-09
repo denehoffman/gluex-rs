@@ -1,10 +1,10 @@
 use crate::ccdb::{
     CCDBError, CCDBResult,
+    assignment::{AssignmentCandidate, ResolvedAssignment, resolve_candidates},
     context::{CCDBContext, Request},
     data::{ColumnLayout, Data},
     models::{
-        AssignmentMetaLite, ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta,
-        VariationMeta,
+        ColumnMeta, ColumnType, ConstantSetMeta, DirectoryMeta, TypeTableMeta, VariationMeta,
     },
 };
 use crate::core::{Id, RunNumber, utils::resolve_path};
@@ -13,7 +13,7 @@ use dashmap::DashMap;
 use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{Connection, OpenFlags};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     env,
     path::Path,
     sync::{
@@ -812,76 +812,37 @@ impl TypeTableHandle {
                AND (rr.id IS NULL OR rr.runMin > rr.runMax
                     OR (rr.runMax >= ? AND rr.runMin <= ?))",
             )?;
-            let valid_assignments = stmt
-            .query_map((self.meta.id, var_meta.id, min_run, max_run), |row| {
-                let meta = AssignmentMetaLite {
-                    id: row.get(0)?,
-                    created: row.get(1)?,
-                    constant_set_id: row.get(2)?,
-                };
-                let constant_set = ConstantSetMeta {
-                    id: row.get(3)?,
-                    created: row.get(4)?,
-                    modified: row.get(5)?,
-                    vault: row.get(6)?,
-                    constant_type_id: row.get(7)?,
-                };
-                let run_min: RunNumber = row.get(8)?;
-                let run_max: RunNumber = row.get(9)?;
-                Ok((meta, constant_set, run_min, run_max))
-            })?
-            .collect::<Result<Vec<(AssignmentMetaLite, ConstantSetMeta, RunNumber, RunNumber)>, _>>(
-            )?;
-            for (assignment, _, run_min, run_max) in &valid_assignments {
-                if run_min > run_max {
-                    return Err(CCDBError::InvalidMetadata(format!(
-                        "assignment {} has reversed run bounds",
-                        assignment.id()
-                    )));
-                }
-            }
-            let mut best: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
-            let mut best_id: HashMap<RunNumber, Id> = HashMap::new();
-            let mut constant_set_cache: HashMap<Id, Arc<ConstantSetMeta>> = HashMap::new();
-            for &run in runs {
-                if options.interrupted() {
-                    return Err(crate::execution::interrupted_error().into());
-                }
-                for (meta, constant_set, rmin, rmax) in &valid_assignments {
-                    if run >= *rmin && run <= *rmax {
-                        let cur_best = best_id.get(&run);
-                        let created = crate::core::parsers::parse_database_timestamp(&meta.created)
-                            .map_err(|error| {
-                                CCDBError::InvalidMetadata(format!(
-                                    "assignment {}: {error}",
-                                    meta.id()
-                                ))
-                            })?;
-                        if created > timestamp {
-                            continue;
+            let raw_candidates = stmt
+                .query_map((self.meta.id, var_meta.id, min_run, max_run), |row| {
+                    let id: Id = row.get(0)?;
+                    let created: String = row.get(1)?;
+                    let constant_set_id: Id = row.get(2)?;
+                    let constant_set = ConstantSetMeta {
+                        id: row.get(3)?,
+                        created: row.get(4)?,
+                        modified: row.get(5)?,
+                        vault: row.get(6)?,
+                        constant_type_id: row.get(7)?,
+                    };
+                    let run_min: RunNumber = row.get(8)?;
+                    let run_max: RunNumber = row.get(9)?;
+                    Ok((id, created, constant_set_id, constant_set, run_min, run_max))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let candidates = raw_candidates
+                .into_iter()
+                .map(
+                    |(id, created, constant_set_id, constant_set, run_min, run_max)| {
+                        if constant_set.id != constant_set_id {
+                            return Err(CCDBError::InvalidMetadata(format!(
+                                "assignment {id} references inconsistent constant set metadata"
+                            )));
                         }
-                        if cur_best.is_none_or(|id| meta.id() > *id) {
-                            let cs_entry = constant_set_cache
-                                .entry(constant_set.id)
-                                .or_insert_with(|| Arc::new(constant_set.clone()))
-                                .clone();
-                            best.insert(
-                                run,
-                                ResolvedAssignment {
-                                    constant_set: cs_entry,
-                                    id: meta.id(),
-                                    created,
-                                    variation: var_meta.name.clone(),
-                                    run_min: *rmin,
-                                    run_max: *rmax,
-                                },
-                            );
-                            best_id.insert(run, meta.id());
-                        }
-                    }
-                }
-            }
-            Ok(best)
+                        AssignmentCandidate::try_new(id, &created, constant_set, run_min, run_max)
+                    },
+                )
+                .collect::<CCDBResult<Vec<_>>>()?;
+            resolve_candidates(runs, &candidates, &var_meta.name, timestamp, options)
         })
     }
     fn load_vaults_with_options(
@@ -908,14 +869,4 @@ impl TypeTableHandle {
             })
             .collect::<CCDBResult<BTreeMap<RunNumber, Data>>>()
     }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ResolvedAssignment {
-    pub constant_set: Arc<ConstantSetMeta>,
-    pub id: Id,
-    pub created: DateTime<Utc>,
-    pub variation: String,
-    pub run_min: RunNumber,
-    pub run_max: RunNumber,
 }

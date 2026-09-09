@@ -215,14 +215,6 @@ impl RunQuery {
         query
     }
 
-    #[cfg(feature = "python")]
-    pub(crate) fn with_interrupt_check(
-        &self,
-        check: impl Fn() -> bool + Send + Sync + 'static,
-    ) -> Self {
-        self.with_execution(self.execution.clone().with_interrupt_check(check))
-    }
-
     /// Inspect the numeric scope without executing the query.
     #[must_use]
     pub const fn selection(&self) -> &RunSelection {
@@ -244,6 +236,10 @@ impl RunQuery {
     /// # Errors
     /// Returns a contextual RCDB error if execution or run decoding fails.
     pub fn collect(&self) -> DatabaseResult<RunSet> {
+        crate::execution::execute_terminal(self, Self::collect_inner)
+    }
+
+    fn collect_inner(&self) -> DatabaseResult<RunSet> {
         let mut numbers = Vec::new();
         let mut unknown_runs = Vec::new();
         let mut evaluated_runs = Vec::new();
@@ -317,6 +313,10 @@ impl RunQuery {
     /// # Errors
     /// Returns a contextual RCDB error if candidate or predicate evaluation fails.
     pub fn first(&self) -> DatabaseResult<Option<RunNumber>> {
+        crate::execution::execute_terminal(self, Self::first_inner)
+    }
+
+    fn first_inner(&self) -> DatabaseResult<Option<RunNumber>> {
         for chunk in self.stream(1)? {
             if let Some(run) = chunk?.numbers().first() {
                 return Ok(Some(*run));
@@ -330,6 +330,10 @@ impl RunQuery {
     /// # Errors
     /// Returns a contextual RCDB error if candidate or predicate evaluation fails.
     pub fn count(&self) -> DatabaseResult<usize> {
+        crate::execution::execute_terminal(self, Self::count_inner)
+    }
+
+    fn count_inner(&self) -> DatabaseResult<usize> {
         self.stream(1024)?
             .try_fold(0usize, |count, chunk| Ok(count + chunk?.numbers().len()))
     }
@@ -339,6 +343,10 @@ impl RunQuery {
     /// # Errors
     /// Returns a cardinality error or a contextual RCDB evaluation error.
     pub fn one(&self) -> DatabaseResult<RunNumber> {
+        crate::execution::execute_terminal(self, Self::one_inner)
+    }
+
+    fn one_inner(&self) -> DatabaseResult<RunNumber> {
         let mut found = Vec::with_capacity(2);
         for chunk in self.stream(2)? {
             found.extend_from_slice(chunk?.numbers());
@@ -353,6 +361,21 @@ impl RunQuery {
     }
 }
 
+impl crate::execution::TerminalQuery for RunQuery {
+    fn execution_options(&self) -> &crate::ExecutionOptions {
+        &self.execution
+    }
+
+    #[cfg(feature = "python")]
+    fn with_execution_options(&self, options: crate::ExecutionOptions) -> Self {
+        self.with_execution(options)
+    }
+
+    fn interruption_error(&self) -> crate::DatabaseError {
+        crate::rcdb::RCDBError::from(crate::execution::interrupted_error()).into()
+    }
+}
+
 /// Bounded iterator over completed portions of a Run Query.
 pub struct RunStream {
     query: RunQuery,
@@ -363,6 +386,20 @@ pub struct RunStream {
 impl Iterator for RunStream {
     type Item = DatabaseResult<RunSet>;
     fn next(&mut self) -> Option<Self::Item> {
+        if self.complete {
+            return None;
+        }
+        let query = self.query.clone();
+        let result = crate::execution::execute_terminal(&query, |_| self.next_inner());
+        if result.is_err() {
+            self.complete = true;
+        }
+        result.transpose()
+    }
+}
+
+impl RunStream {
+    fn next_inner(&mut self) -> DatabaseResult<Option<RunSet>> {
         while !self.complete {
             let context = RCDBContext::from_selection(self.query.selection.clone());
             let page = self.query.reader.fetch_run_page_with_options(
@@ -375,20 +412,23 @@ impl Iterator for RunStream {
                 Ok(page) => page,
                 Err(error) => {
                     self.complete = true;
-                    return Some(Err(error.into()));
+                    return Err(error.into());
                 }
             };
             self.offset = self.offset.saturating_add(consumed);
             self.complete = complete;
             if candidates.is_empty() {
                 if complete {
-                    return Some(self.query.evaluate_candidates(Vec::new(), true));
+                    return self.query.evaluate_candidates(Vec::new(), true).map(Some);
                 }
                 continue;
             }
-            return Some(self.query.evaluate_candidates(candidates, complete));
+            return self
+                .query
+                .evaluate_candidates(candidates, complete)
+                .map(Some);
         }
-        None
+        Ok(None)
     }
 }
 
@@ -751,15 +791,6 @@ impl ConditionQuery {
         query.query = query.query.with_timeout(duration);
         query
     }
-    #[cfg(feature = "python")]
-    pub(crate) fn with_interrupt_check(
-        &self,
-        check: impl Fn() -> bool + Send + Sync + 'static,
-    ) -> Self {
-        let mut query = self.clone();
-        query.query = query.query.with_interrupt_check(check);
-        query
-    }
     pub(crate) fn definition(&self, name: &str) -> DatabaseResult<ConditionDefinition> {
         Ok(self
             .query
@@ -784,6 +815,10 @@ impl ConditionQuery {
     /// # Errors
     /// Returns contextual errors for malformed values or failed database execution.
     pub fn collect(&self) -> DatabaseResult<ConditionResults> {
+        crate::execution::execute_terminal(self, Self::collect_inner)
+    }
+
+    fn collect_inner(&self) -> DatabaseResult<ConditionResults> {
         let mut chunks = self.stream(1024)?;
         let Some(first) = chunks.next() else {
             return self.collect_for_runs(RunSet {
@@ -893,6 +928,10 @@ impl ConditionQuery {
     /// # Errors
     /// Returns a contextual RCDB evaluation or value-decoding error.
     pub fn first(&self) -> DatabaseResult<Option<ConditionResults>> {
+        crate::execution::execute_terminal(self, Self::first_inner)
+    }
+
+    fn first_inner(&self) -> DatabaseResult<Option<ConditionResults>> {
         let Some(chunk) = self.query.first()? else {
             return Ok(None);
         };
@@ -905,7 +944,7 @@ impl ConditionQuery {
     /// # Errors
     /// Returns a contextual RCDB evaluation error.
     pub fn count(&self) -> DatabaseResult<usize> {
-        self.query.count()
+        crate::execution::execute_terminal(self, |query| query.query.count())
     }
 
     /// Return exactly one projected row, rejecting any other cardinality.
@@ -913,8 +952,29 @@ impl ConditionQuery {
     /// # Errors
     /// Returns a cardinality, RCDB evaluation, or value-decoding error.
     pub fn one(&self) -> DatabaseResult<ConditionResults> {
+        crate::execution::execute_terminal(self, Self::one_inner)
+    }
+
+    fn one_inner(&self) -> DatabaseResult<ConditionResults> {
         let run = self.query.one()?;
         self.collect_for_runs(self.query.evaluate_candidates(vec![run], true)?)
+    }
+}
+
+impl crate::execution::TerminalQuery for ConditionQuery {
+    fn execution_options(&self) -> &crate::ExecutionOptions {
+        &self.query.execution
+    }
+
+    #[cfg(feature = "python")]
+    fn with_execution_options(&self, options: crate::ExecutionOptions) -> Self {
+        let mut query = self.clone();
+        query.query = query.query.with_execution(options);
+        query
+    }
+
+    fn interruption_error(&self) -> crate::DatabaseError {
+        crate::rcdb::RCDBError::from(crate::execution::interrupted_error()).into()
     }
 }
 
@@ -926,9 +986,21 @@ pub struct ConditionStream {
 impl Iterator for ConditionStream {
     type Item = DatabaseResult<ConditionResults>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.runs
-            .next()
-            .map(|runs| runs.and_then(|runs| self.query.collect_for_runs(runs)))
+        if self.runs.complete {
+            return None;
+        }
+        let query = self.query.clone();
+        let result = crate::execution::execute_terminal(&query, |_| {
+            self.runs
+                .next()
+                .transpose()?
+                .map(|runs| self.query.collect_for_runs(runs))
+                .transpose()
+        });
+        if result.is_err() {
+            self.runs.complete = true;
+        }
+        result.transpose()
     }
 }
 

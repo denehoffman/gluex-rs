@@ -4,6 +4,8 @@
 //! and Conditions Database (CCDB).
 use thiserror::Error;
 
+pub(crate) mod assignment;
+
 /// Context handling for run-, variation-, and timestamp-aware requests.
 pub mod context;
 /// Column-oriented data structures returned from CCDB queries.

@@ -158,34 +158,23 @@ impl PyRunQuery {
     /// Collect recorded runs without implicit production cuts. Releases the GIL.
     /// Database execution errors raise RuntimeError.
     fn collect(&self, py: Python<'_>) -> PyResult<PyRunSet> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals.finish(py.detach(|| query.collect())).map(PyRunSet)
+        crate::python::execution::PythonExecution::execute(py, &self.0, RunQuery::collect)
+            .map(PyRunSet)
     }
     /// Iterate bounded result chunks. Abandoning the iterator releases its reader.
     #[pyo3(signature = (*, chunk_size=1024))]
     fn stream(&self, chunk_size: usize) -> PyResult<PyRunStream> {
-        let signals = crate::python::execution::PythonExecution::new();
-        self.0
-            .with_interrupt_check(signals.checker())
-            .stream(chunk_size)
-            .map(|stream| PyRunStream(stream, signals))
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        crate::python::execution::PythonExecution::stream(&self.0, |query| query.stream(chunk_size))
+            .map(|(stream, signals)| PyRunStream(stream, signals))
     }
     fn first(&self, py: Python<'_>) -> PyResult<Option<RunNumber>> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals.finish(py.detach(|| query.first()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, RunQuery::first)
     }
     fn one(&self, py: Python<'_>) -> PyResult<RunNumber> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals.finish(py.detach(|| query.one()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, RunQuery::one)
     }
     fn count(&self, py: Python<'_>) -> PyResult<usize> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals.finish(py.detach(|| query.count()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, RunQuery::count)
     }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
@@ -201,10 +190,7 @@ impl PyRunStream {
         slf
     }
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyRunSet>> {
-        Ok(self
-            .1
-            .finish(py.detach(|| self.0.next().transpose()))?
-            .map(PyRunSet))
+        Ok(self.1.next(py, || self.0.next().transpose())?.map(PyRunSet))
     }
 }
 
@@ -447,39 +433,24 @@ impl PyConditionQuery {
     }
     /// Collect optional columns; malformed values and execution failures raise RuntimeError.
     fn collect(&self, py: Python<'_>) -> PyResult<PyConditionResults> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals
-            .finish(py.detach(|| query.collect()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, |query| query.collect())
             .map(PyConditionResults)
     }
     #[pyo3(signature = (*, chunk_size=1024))]
     fn stream(&self, chunk_size: usize) -> PyResult<PyConditionStream> {
-        let signals = crate::python::execution::PythonExecution::new();
-        self.0
-            .with_interrupt_check(signals.checker())
-            .stream(chunk_size)
-            .map(|stream| PyConditionStream(stream, signals))
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        crate::python::execution::PythonExecution::stream(&self.0, |query| query.stream(chunk_size))
+            .map(|(stream, signals)| PyConditionStream(stream, signals))
     }
     fn first(&self, py: Python<'_>) -> PyResult<Option<PyConditionResults>> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals
-            .finish(py.detach(|| query.first()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, |query| query.first())
             .map(|value| value.map(PyConditionResults))
     }
     fn one(&self, py: Python<'_>) -> PyResult<PyConditionResults> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals
-            .finish(py.detach(|| query.one()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, |query| query.one())
             .map(PyConditionResults)
     }
     fn count(&self, py: Python<'_>) -> PyResult<usize> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals.finish(py.detach(|| query.count()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, |query| query.count())
     }
     fn strict(&self) -> Self {
         Self(self.0.strict())
@@ -514,7 +485,7 @@ impl PyConditionStream {
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyConditionResults>> {
         Ok(self
             .1
-            .finish(py.detach(|| self.0.next().transpose()))?
+            .next(py, || self.0.next().transpose())?
             .map(PyConditionResults))
     }
 }

@@ -43,6 +43,55 @@ impl PythonExecution {
             result.map_err(|error| PyRuntimeError::new_err(error.to_string()))
         }
     }
+
+    pub(crate) fn execute<Q, T>(
+        py: Python<'_>,
+        query: &Q,
+        execute: impl FnOnce(&Q) -> crate::DatabaseResult<T> + Send,
+    ) -> PyResult<T>
+    where
+        Q: crate::execution::TerminalQuery + Send + Sync,
+        T: Send,
+    {
+        let signals = Self::new();
+        let query = query.with_execution_options(
+            query
+                .execution_options()
+                .clone()
+                .with_interrupt_check(signals.checker()),
+        );
+        signals.finish(py.detach(move || execute(&query)))
+    }
+
+    pub(crate) fn stream<Q, S>(
+        query: &Q,
+        stream: impl FnOnce(&Q) -> crate::DatabaseResult<S>,
+    ) -> PyResult<(S, Self)>
+    where
+        Q: crate::execution::TerminalQuery,
+    {
+        let signals = Self::new();
+        let query = query.with_execution_options(
+            query
+                .execution_options()
+                .clone()
+                .with_interrupt_check(signals.checker()),
+        );
+        stream(&query)
+            .map(|stream| (stream, signals))
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    pub(crate) fn next<T>(
+        &self,
+        py: Python<'_>,
+        next: impl FnOnce() -> crate::DatabaseResult<Option<T>> + Send,
+    ) -> PyResult<Option<T>>
+    where
+        T: Send,
+    {
+        self.finish(py.detach(next))
+    }
 }
 
 pub(crate) fn timeout(seconds: f64) -> PyResult<std::time::Duration> {

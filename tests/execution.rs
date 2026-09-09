@@ -107,6 +107,103 @@ fn cancellation_interrupts_in_flight_run_evaluation_and_releases_the_reader() {
 }
 
 #[test]
+fn cancelled_run_and_condition_terminals_share_cleanup_and_leave_reader_reusable() {
+    let rcdb = fixtures::rcdb();
+    let gx = GlueX::open(SourceConfig::sqlite(rcdb.path()), SourceConfig::Disabled).unwrap();
+    let token = CancellationToken::new();
+    let run_query = gx
+        .runs(RunSelection::range(2, 5))
+        .unwrap()
+        .with_cancellation(token.clone());
+    let condition_query = run_query.select(["event_count"]).unwrap();
+    token.cancel();
+
+    assert!(
+        run_query
+            .collect()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    assert!(
+        run_query
+            .first()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    assert!(
+        run_query
+            .one()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    assert!(
+        run_query
+            .count()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    let mut run_stream = run_query.stream(1).unwrap();
+    assert!(
+        run_stream
+            .next()
+            .unwrap()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    assert!(run_stream.next().is_none());
+
+    assert!(
+        condition_query
+            .collect()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    assert!(
+        condition_query
+            .first()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    assert!(
+        condition_query
+            .one()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    assert!(
+        condition_query
+            .count()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    let mut condition_stream = condition_query.stream(1).unwrap();
+    assert!(
+        condition_stream
+            .next()
+            .unwrap()
+            .unwrap_err()
+            .to_string()
+            .contains("interrupted")
+    );
+    assert!(condition_stream.next().is_none());
+
+    let reusable = gx.runs(RunSelection::range(2, 5)).unwrap();
+    let mut abandoned = reusable.select(["event_count"]).unwrap().stream(1).unwrap();
+    assert!(abandoned.next().unwrap().is_ok());
+    drop(abandoned);
+    assert_eq!(reusable.count().unwrap(), 4);
+}
+
+#[test]
 fn cancellation_interrupts_in_flight_calibration_resolution() {
     let ccdb = fixtures::ccdb();
     let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(ccdb.path())).unwrap();

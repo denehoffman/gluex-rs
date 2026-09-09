@@ -1,5 +1,8 @@
 #![allow(missing_docs)]
-use gluex_rs::{GlueX, RunSelection, SourceConfig};
+use gluex_rs::{
+    GlueX, RunSelection, SourceConfig,
+    ccdb::{CCDB, CCDBContext},
+};
 #[path = "fixtures/rust.rs"]
 mod fixtures;
 
@@ -154,6 +157,120 @@ fn historical_inheritance_prefers_child_then_highest_eligible_assignment_id() {
         .collect()
         .unwrap();
     assert_eq!(old.get(2).unwrap().assignment_id(), 300_000);
+}
+
+#[test]
+fn assignment_oracles_cover_intervals_cutoffs_and_lower_level_equivalence() {
+    let fixture = fixtures::ccdb();
+    rusqlite::Connection::open(fixture.path())
+        .unwrap()
+        .execute_batch(
+            "
+        DELETE FROM assignments WHERE constantSetId IN (76, 230302);
+        INSERT INTO runRanges (id, runMin, runMax) VALUES
+          (10, 10, 20),
+          (11, 15, 25),
+          (12, 30, 30);
+        INSERT INTO constantSets (id, vault, constantTypeId) VALUES
+          (300000, '0|0|0|0|0|0', 81),
+          (300001, '1|1|1|1|1|1', 81),
+          (300002, '2|2|2|2|2|2', 81),
+          (300003, '3|3|3|3|3|3', 81),
+          (300004, '4|4|4|4|4|4', 81);
+        INSERT INTO assignments (id, created, variationId, runRangeId, constantSetId) VALUES
+          (300000, '2019-12-31 23:59:59', 1, 10, 300000),
+          (300001, '2020-01-01 00:00:00', 1, 10, 300001),
+          (300002, '2020-01-01 00:00:00', 1, 11, 300002),
+          (300003, '2020-01-01 00:00:01', 1, 10, 300003),
+          (300004, '2020-01-01 00:00:00', 1, 12, 300004);
+    ",
+        )
+        .unwrap();
+    let runs = [9, 10, 14, 15, 20, 21, 25, 26, 30, 31];
+    let cutoff = gluex_rs::parsers::parse_timestamp("2020-01-01 00:00:00").unwrap();
+    let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+    let series = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(RunSelection::runs(runs))
+        .unwrap()
+        .as_of(cutoff)
+        .collect()
+        .unwrap();
+
+    assert_eq!(series.get(10).unwrap().assignment_id(), 300_001);
+    assert_eq!(series.get(14).unwrap().assignment_id(), 300_001);
+    assert_eq!(series.get(15).unwrap().assignment_id(), 300_002);
+    assert_eq!(series.get(20).unwrap().assignment_id(), 300_002);
+    assert_eq!(series.get(21).unwrap().assignment_id(), 300_002);
+    assert_eq!(series.get(25).unwrap().assignment_id(), 300_002);
+    assert_eq!(series.get(30).unwrap().assignment_id(), 300_004);
+    assert_eq!(series.report().missing_runs(), &[9, 26, 31]);
+
+    let lower = CCDB::open(fixture.path())
+        .unwrap()
+        .fetch(
+            "/test/demo/mytable",
+            &CCDBContext::default()
+                .with_runs(runs)
+                .with_timestamp(cutoff),
+        )
+        .unwrap();
+    assert_eq!(
+        lower.keys().copied().collect::<Vec<_>>(),
+        series.items().map(|(run, _)| *run).collect::<Vec<_>>()
+    );
+    for (run, entry) in series.items() {
+        assert_eq!(
+            lower.get(run).unwrap().named_double("x", 0),
+            entry.payload().named_double("x", 0)
+        );
+    }
+
+    let before = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(RunSelection::runs([10, 15, 20, 21]))
+        .unwrap()
+        .as_of(cutoff - chrono::Duration::seconds(1))
+        .collect()
+        .unwrap();
+    assert_eq!(before.get(10).unwrap().assignment_id(), 300_000);
+    assert_eq!(before.get(15).unwrap().assignment_id(), 300_000);
+    assert_eq!(before.get(20).unwrap().assignment_id(), 300_000);
+    assert_eq!(before.report().missing_runs(), &[21]);
+}
+
+#[test]
+fn malformed_candidate_timestamps_are_validated_when_loaded() {
+    let fixture = fixtures::ccdb();
+    rusqlite::Connection::open(fixture.path())
+        .unwrap()
+        .execute_batch(
+            "
+        INSERT INTO runRanges (id, runMin, runMax) VALUES (10, 5, 5);
+        UPDATE assignments
+        SET created = 'not-a-date', runRangeId = 10
+        WHERE id = 230266;
+    ",
+        )
+        .unwrap();
+    let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+    let error = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(RunSelection::runs([1, 10]))
+        .unwrap()
+        .collect()
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("assignment 230266"), "{error}");
 }
 
 #[test]
