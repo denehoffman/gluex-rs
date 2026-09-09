@@ -19,6 +19,9 @@ pub type CCDBResult<T> = Result<T, CCDBError>;
 /// Errors that can occur while interacting with CCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum CCDBError {
+    /// Unified composed-query evaluation failed.
+    #[error(transparent)]
+    DatabaseError(#[from] crate::DatabaseError),
     /// Malformed assignment or variation metadata.
     #[error("invalid CCDB metadata: {0}")]
     InvalidMetadata(String),

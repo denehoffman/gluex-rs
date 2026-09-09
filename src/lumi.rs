@@ -3,6 +3,7 @@
 //! This crate builds run-dependent flux and luminosity histograms from RCDB and
 //! CCDB calibration sources.
 
+use crate::calibrations::{CalibrationCatalog, CalibrationPayload, CalibrationSeries};
 use crate::ccdb::{CCDB, CCDBContext, CCDBError};
 use crate::core::Histogram;
 use crate::rcdb::{RCDB, RCDBContext, RCDBError};
@@ -228,6 +229,106 @@ pub struct FluxCache {
     pub target_scattering_centers: (f64, f64),
 }
 
+pub(crate) struct LuminosityBatch {
+    pub histograms: HashMap<RunNumber, FluxHistograms>,
+    pub missing: HashMap<RunNumber, &'static str>,
+}
+
+struct FluxCacheBatch {
+    entries: HashMap<RunNumber, FluxCache>,
+    missing: HashMap<RunNumber, &'static str>,
+}
+
+fn invalid_schema(path: &str, detail: &str) -> CCDBError {
+    CCDBError::InvalidMetadata(format!("{path}: {detail}"))
+}
+
+fn collect_calibration(
+    catalog: &CalibrationCatalog,
+    path: &str,
+    runs: &[RunNumber],
+    context: &CCDBContext,
+    options: &crate::ExecutionOptions,
+) -> Result<CalibrationSeries, CCDBError> {
+    let table = catalog
+        .get(path)
+        .ok_or_else(|| CCDBError::TableNotFoundError(path.to_owned()))?;
+    Ok(table
+        .for_runs(crate::RunSelection::runs(runs.iter().copied()))?
+        .with_variation(context.variation.clone())
+        .as_of(context.timestamp)
+        .with_execution(options.clone())
+        .collect()?)
+}
+
+fn required_double(
+    data: &CalibrationPayload,
+    column: usize,
+    row: usize,
+    path: &str,
+) -> Result<f64, CCDBError> {
+    data.double(column, row).ok_or_else(|| {
+        invalid_schema(
+            path,
+            &format!("expected a double at row {row}, column {column}"),
+        )
+    })
+}
+
+#[allow(clippy::type_complexity)]
+fn fetch_three_double_rows(
+    catalog: &CalibrationCatalog,
+    path: &str,
+    runs: &[RunNumber],
+    context: &CCDBContext,
+    options: &crate::ExecutionOptions,
+) -> Result<HashMap<RunNumber, Vec<(f64, f64, f64)>>, CCDBError> {
+    let series = collect_calibration(catalog, path, runs, context, options)?;
+    series
+        .items()
+        .map(|(&run, entry)| {
+            let data = entry.payload();
+            let rows = (0..data.n_rows())
+                .map(|row| {
+                    Ok((
+                        required_double(data, 0, row, path)?,
+                        required_double(data, 1, row, path)?,
+                        required_double(data, 2, row, path)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, CCDBError>>()?;
+            Ok((run, rows))
+        })
+        .collect()
+}
+
+fn fetch_two_double_rows(
+    catalog: &CalibrationCatalog,
+    path: &str,
+    runs: &[RunNumber],
+    context: &CCDBContext,
+    options: &crate::ExecutionOptions,
+    first_column: usize,
+    second_column: usize,
+) -> Result<HashMap<RunNumber, Vec<(f64, f64)>>, CCDBError> {
+    let series = collect_calibration(catalog, path, runs, context, options)?;
+    series
+        .items()
+        .map(|(&run, entry)| {
+            let data = entry.payload();
+            let rows = (0..data.n_rows())
+                .map(|row| {
+                    Ok((
+                        required_double(data, first_column, row, path)?,
+                        required_double(data, second_column, row, path)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, CCDBError>>()?;
+            Ok((run, rows))
+        })
+        .collect()
+}
+
 #[allow(clippy::too_many_lines)]
 fn get_flux_cache(
     run_period: RunPeriod,
@@ -237,9 +338,12 @@ fn get_flux_cache(
     rcdb: &RCDB,
     ccdb: &CCDB,
     options: &crate::ExecutionOptions,
-) -> Result<HashMap<RunNumber, FluxCache>, LuminosityError> {
+) -> Result<FluxCacheBatch, LuminosityError> {
     if runs.is_empty() {
-        return Ok(HashMap::new());
+        return Ok(FluxCacheBatch {
+            entries: HashMap::new(),
+            missing: HashMap::new(),
+        });
     }
     let run_context = RCDBContext::default().with_runs(runs.iter().copied());
     let run_context = if polarized {
@@ -247,173 +351,171 @@ fn get_flux_cache(
     } else {
         run_context
     };
-    let polarimeter_converter: HashMap<RunNumber, Converter> = rcdb
-        .fetch_with_options(["polarimeter_converter"], &run_context, options)?
-        .into_iter()
-        .map(|(r, pc_map)| {
-            let mut converter = pc_map
-                .get("polarimeter_converter")
-                .ok_or(LuminosityError::MissingRunInput {
-                    run: r,
-                    input: "polarimeter converter",
-                })?
-                .as_string()
-                .ok_or(LuminosityError::MissingRunInput {
-                    run: r,
-                    input: "text polarimeter converter",
-                })?
-                .parse()?;
-            if !matches!(
-                converter,
-                Converter::Be75um | Converter::Be750um | Converter::Be50um,
-            ) && r > 10633
-                && r < 10694
-            {
-                converter = Converter::Be75um; // no converter in RCDB but 75um found in logbook
-            }
-            Ok((r, converter))
-        })
-        .collect::<Result<HashMap<RunNumber, Converter>, LuminosityError>>()?;
-    let ccdb_context = CCDBContext::default().with_runs(runs.iter().copied());
+    let converter_rows =
+        rcdb.fetch_with_options(["polarimeter_converter"], &run_context, options)?;
+    let mut polarimeter_converter = HashMap::new();
+    for (r, pc_map) in converter_rows {
+        let Some(value) = pc_map.get("polarimeter_converter") else {
+            continue;
+        };
+        let text = value.as_string().ok_or_else(|| {
+            CCDBError::InvalidMetadata(format!(
+                "RCDB polarimeter_converter for run {r} is not text"
+            ))
+        })?;
+        let mut converter: Converter = text.parse()?;
+        if !matches!(
+            converter,
+            Converter::Be75um | Converter::Be750um | Converter::Be50um,
+        ) && r > 10633
+            && r < 10694
+        {
+            converter = Converter::Be75um; // no converter in RCDB but 75um found in logbook
+        }
+        polarimeter_converter.insert(r, converter);
+    }
+    let ccdb_context = ccdb.default_context(runs.iter().copied());
     let ccdb_context_restver = ccdb_context
         .clone()
         .with_variation(&rest_context.variation)
         .with_timestamp(rest_context.timestamp);
-    let livetime_ratio: HashMap<RunNumber, f64> = ccdb
-        .fetch_with_options(
-            "/PHOTON_BEAM/pair_spectrometer/lumi/trig_live",
-            &ccdb_context,
-            options,
-        )?
-        .into_iter()
-        .map(|(run, data)| {
-            let missing = || LuminosityError::MissingRunInput {
-                run,
-                input: "pair-spectrometer livetime",
-            };
-            let livetime = data.column(1).ok_or_else(missing)?;
-            let live = livetime.row(0).as_double().ok_or_else(missing)?;
-            let total = livetime.row(3).as_double().ok_or_else(missing)?;
-            if total <= 0.0 {
-                return Err(missing());
-            }
-            Ok((run, live / total))
-        })
-        .collect::<Result<_, LuminosityError>>()?;
+    let catalog = CalibrationCatalog::new(ccdb);
+    let livetime_series = collect_calibration(
+        &catalog,
+        "/PHOTON_BEAM/pair_spectrometer/lumi/trig_live",
+        runs,
+        &ccdb_context,
+        options,
+    )?;
+    let mut livetime_ratio = HashMap::new();
+    for (&run, entry) in livetime_series.items() {
+        let data = entry.payload();
+        let live = required_double(data, 1, 0, livetime_series.provenance().table())?;
+        let total = required_double(data, 1, 3, livetime_series.provenance().table())?;
+        if total > 0.0 {
+            livetime_ratio.insert(run, live / total);
+        }
+    }
     let mut livetime_scaling: HashMap<RunNumber, f64> = HashMap::new();
     for (run, converter) in polarimeter_converter {
-        let radiation_lengths =
-            converter
-                .radiation_lengths()
-                .ok_or(LuminosityError::MissingRunInput {
-                    run,
-                    input: "usable polarimeter converter",
-                })?;
+        let Some(radiation_lengths) = converter.radiation_lengths() else {
+            continue;
+        };
         // See https://doi.org/10.1103/RevModPhys.46.815 Section IV parts B, C, and D
-        livetime_scaling.insert(
-            run,
-            livetime_ratio
-                .get(&run)
-                .copied()
-                .ok_or(LuminosityError::MissingRunInput {
-                    run,
-                    input: "pair-spectrometer livetime",
-                })?
-                * 9.0
-                / (7.0 * radiation_lengths),
-        );
+        let Some(ratio) = livetime_ratio.get(&run).copied() else {
+            continue;
+        };
+        livetime_scaling.insert(run, ratio * 9.0 / (7.0 * radiation_lengths));
     }
     let pair_spectrometer_parameters =
-        fetch_pair_spectrometer_parameters(ccdb, &ccdb_context, options)?;
+        fetch_pair_spectrometer_parameters(&catalog, runs, &ccdb_context, options)?;
     let mut photon_endpoint_energy =
-        fetch_photon_endpoint_energy(ccdb, &ccdb_context_restver, options)?;
-    let microscope_tagged_flux = fetch_tagm_tagged_flux(ccdb, &ccdb_context, options)?;
+        fetch_photon_endpoint_energy(&catalog, runs, &ccdb_context_restver, options)?;
+    let microscope_tagged_flux = fetch_tagm_tagged_flux(&catalog, runs, &ccdb_context, options)?;
     let mut microscope_scaled_energy_range =
-        fetch_tagm_scaled_energy_range(ccdb, &ccdb_context_restver, options)?;
-    let hodoscope_tagged_flux = fetch_tagh_tagged_flux(ccdb, &ccdb_context, options)?;
+        fetch_tagm_scaled_energy_range(&catalog, runs, &ccdb_context_restver, options)?;
+    let hodoscope_tagged_flux = fetch_tagh_tagged_flux(&catalog, runs, &ccdb_context, options)?;
     let mut hodoscope_scaled_energy_range =
-        fetch_tagh_scaled_energy_range(ccdb, &ccdb_context_restver, options)?;
+        fetch_tagh_scaled_energy_range(&catalog, runs, &ccdb_context_restver, options)?;
     let mut photon_endpoint_calibration =
-        fetch_photon_endpoint_calibration(ccdb, &ccdb_context_restver, options)?;
+        fetch_photon_endpoint_calibration(&catalog, runs, &ccdb_context_restver, options)?;
     // Density is in mg/cm^3, so to get the number of scattering centers, we multiply density by
     // the target length to get mg/cm^2, then we multiply by 1e-3 to get g/cm^2. We then multiply
     // by 1e-24 cm^2/barn to get g/barn, and finally by Avogadro's constant to get g/(mol * barn).
     // Finally, we divide by 1 g/mol (proton molar mass) to get protons/barn
     let factor = 1e-24 * AVOGADRO_CONSTANT * 1e-3 * TARGET_LENGTH_CM;
-    let target_scattering_centers: HashMap<RunNumber, (f64, f64)> = ccdb
-        .fetch_with_options("/TARGET/density", &ccdb_context, options)?
-        .into_iter()
-        .filter_map(|(r, d)| Some((r, (d.double(0, 0)? * factor, d.double(1, 0)? * factor))))
-        .collect();
+    let density_series =
+        collect_calibration(&catalog, "/TARGET/density", runs, &ccdb_context, options)?;
+    let mut target_scattering_centers = HashMap::new();
+    for (&run, entry) in density_series.items() {
+        let data = entry.payload();
+        let density = required_double(data, 0, 0, density_series.provenance().table())?;
+        let error = required_double(data, 1, 0, density_series.provenance().table())?;
+        target_scattering_centers.insert(run, (density * factor, error * factor));
+    }
 
     if run_period == RunPeriod::RP2019_11 {
         let override_context = ccdb_context.with_timestamp(rp2019_11_override_timestamp());
         apply_run_override(
             &mut photon_endpoint_energy,
-            fetch_photon_endpoint_energy(ccdb, &override_context, options)?,
+            fetch_photon_endpoint_energy(&catalog, runs, &override_context, options)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
         apply_run_override(
             &mut microscope_scaled_energy_range,
-            fetch_tagm_scaled_energy_range(ccdb, &override_context, options)?,
+            fetch_tagm_scaled_energy_range(&catalog, runs, &override_context, options)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
         apply_run_override(
             &mut hodoscope_scaled_energy_range,
-            fetch_tagh_scaled_energy_range(ccdb, &override_context, options)?,
+            fetch_tagh_scaled_energy_range(&catalog, runs, &override_context, options)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
         apply_run_override(
             &mut photon_endpoint_calibration,
-            fetch_photon_endpoint_calibration(ccdb, &override_context, options)?,
+            fetch_photon_endpoint_calibration(&catalog, runs, &override_context, options)?,
             RP2019_11_OVERRIDE_START,
             run_period.max_run(),
         );
     }
-    let required = |run, input| LuminosityError::MissingRunInput { run, input };
     let mut cache = HashMap::new();
-    for (run, livetime_scaling) in livetime_scaling {
-        let pair_spectrometer_parameters = *pair_spectrometer_parameters
-            .get(&run)
-            .ok_or_else(|| required(run, "pair-spectrometer acceptance"))?;
-        let photon_endpoint_energy = *photon_endpoint_energy
-            .get(&run)
-            .ok_or_else(|| required(run, "photon endpoint energy"))?;
+    let mut missing = HashMap::new();
+    for &run in runs {
+        let Some(&livetime_scaling) = livetime_scaling.get(&run) else {
+            missing.insert(run, "polarimeter converter or pair-spectrometer livetime");
+            continue;
+        };
+        let Some(&pair_spectrometer_parameters) = pair_spectrometer_parameters.get(&run) else {
+            missing.insert(run, "pair-spectrometer acceptance");
+            continue;
+        };
+        let Some(&photon_endpoint_energy) = photon_endpoint_energy.get(&run) else {
+            missing.insert(run, "photon endpoint energy");
+            continue;
+        };
         let photon_endpoint_calibration = photon_endpoint_calibration.get(&run).copied();
-        let target_scattering_centers = *target_scattering_centers
-            .get(&run)
-            .ok_or_else(|| required(run, "target density"))?;
+        let Some(&target_scattering_centers) = target_scattering_centers.get(&run) else {
+            missing.insert(run, "target density");
+            continue;
+        };
+        let Some(microscope_flux_rows) = microscope_tagged_flux.get(&run).cloned() else {
+            missing.insert(run, "TAGM tagged flux");
+            continue;
+        };
+        let Some(microscope_energy_rows) = microscope_scaled_energy_range.get(&run).cloned() else {
+            missing.insert(run, "TAGM scaled energy range");
+            continue;
+        };
+        let Some(hodoscope_flux_rows) = hodoscope_tagged_flux.get(&run).cloned() else {
+            missing.insert(run, "TAGH tagged flux");
+            continue;
+        };
+        let Some(hodoscope_energy_rows) = hodoscope_scaled_energy_range.get(&run).cloned() else {
+            missing.insert(run, "TAGH scaled energy range");
+            continue;
+        };
         cache.insert(
             run,
             FluxCache {
                 livetime_scaling,
                 pair_spectrometer_parameters,
                 photon_endpoint_energy,
-                tagm_tagged_flux: microscope_tagged_flux
-                    .get(&run)
-                    .ok_or_else(|| required(run, "TAGM tagged flux"))?
-                    .clone(),
-                tagm_scaled_energy_range: microscope_scaled_energy_range
-                    .get(&run)
-                    .ok_or_else(|| required(run, "TAGM scaled energy range"))?
-                    .clone(),
-                tagh_tagged_flux: hodoscope_tagged_flux
-                    .get(&run)
-                    .ok_or_else(|| required(run, "TAGH tagged flux"))?
-                    .clone(),
-                tagh_scaled_energy_range: hodoscope_scaled_energy_range
-                    .get(&run)
-                    .ok_or_else(|| required(run, "TAGH scaled energy range"))?
-                    .clone(),
+                tagm_tagged_flux: microscope_flux_rows,
+                tagm_scaled_energy_range: microscope_energy_rows,
+                tagh_tagged_flux: hodoscope_flux_rows,
+                tagh_scaled_energy_range: hodoscope_energy_rows,
                 photon_endpoint_calibration,
                 target_scattering_centers,
             },
         );
     }
-    Ok(cache)
+    Ok(FluxCacheBatch {
+        entries: cache,
+        missing,
+    })
 }
 
 /// Photon flux and luminosity histograms aggregated across TAGM and TAGH detectors.
@@ -441,140 +543,97 @@ fn pair_spectrometer_acceptance(x: f64, args: (f64, f64, f64)) -> f64 {
 }
 
 fn fetch_pair_spectrometer_parameters(
-    ccdb: &CCDB,
+    catalog: &CalibrationCatalog,
+    runs: &[RunNumber],
     context: &CCDBContext,
     options: &crate::ExecutionOptions,
 ) -> Result<HashMap<RunNumber, (f64, f64, f64)>, CCDBError> {
-    Ok(ccdb
-        .fetch_with_options(
-            "/PHOTON_BEAM/pair_spectrometer/lumi/PS_accept",
-            context,
-            options,
-        )?
-        .into_iter()
-        .filter_map(|(r, d)| {
-            let row = d.row(0).ok()?;
-            Some((r, (row.double(0)?, row.double(1)?, row.double(2)?)))
+    let path = "/PHOTON_BEAM/pair_spectrometer/lumi/PS_accept";
+    let series = collect_calibration(catalog, path, runs, context, options)?;
+    series
+        .items()
+        .map(|(&run, entry)| {
+            let data = entry.payload();
+            Ok((
+                run,
+                (
+                    required_double(data, 0, 0, path)?,
+                    required_double(data, 1, 0, path)?,
+                    required_double(data, 2, 0, path)?,
+                ),
+            ))
         })
-        .collect())
+        .collect()
 }
 
 fn fetch_photon_endpoint_energy(
-    ccdb: &CCDB,
+    catalog: &CalibrationCatalog,
+    runs: &[RunNumber],
     context: &CCDBContext,
     options: &crate::ExecutionOptions,
 ) -> Result<HashMap<RunNumber, f64>, CCDBError> {
-    Ok(ccdb
-        .fetch_with_options("/PHOTON_BEAM/endpoint_energy", context, options)?
-        .into_iter()
-        .filter_map(|(r, d)| Some((r, d.value(0, 0)?.as_double()?)))
-        .collect())
+    let path = "/PHOTON_BEAM/endpoint_energy";
+    let series = collect_calibration(catalog, path, runs, context, options)?;
+    series
+        .items()
+        .map(|(&run, entry)| Ok((run, required_double(entry.payload(), 0, 0, path)?)))
+        .collect()
 }
 
 #[allow(clippy::type_complexity)]
 fn fetch_tagm_tagged_flux(
-    ccdb: &CCDB,
+    catalog: &CalibrationCatalog,
+    runs: &[RunNumber],
     context: &CCDBContext,
     options: &crate::ExecutionOptions,
 ) -> Result<HashMap<RunNumber, Vec<(f64, f64, f64)>>, CCDBError> {
-    Ok(ccdb
-        .fetch_with_options(
-            "/PHOTON_BEAM/pair_spectrometer/lumi/tagm/tagged",
-            context,
-            options,
-        )?
-        .into_iter()
-        .map(|(r, d)| {
-            (
-                r,
-                d.iter_rows()
-                    .filter_map(|row| Some((row.double(0)?, row.double(1)?, row.double(2)?)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect())
+    let path = "/PHOTON_BEAM/pair_spectrometer/lumi/tagm/tagged";
+    fetch_three_double_rows(catalog, path, runs, context, options)
 }
 
 fn fetch_tagm_scaled_energy_range(
-    ccdb: &CCDB,
+    catalog: &CalibrationCatalog,
+    runs: &[RunNumber],
     context: &CCDBContext,
     options: &crate::ExecutionOptions,
 ) -> Result<HashMap<RunNumber, Vec<(f64, f64)>>, CCDBError> {
-    Ok(ccdb
-        .fetch_with_options(
-            "/PHOTON_BEAM/microscope/scaled_energy_range",
-            context,
-            options,
-        )?
-        .into_iter()
-        .map(|(r, d)| {
-            (
-                r,
-                d.iter_rows()
-                    .filter_map(|row| Some((row.double(1)?, row.double(2)?)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect())
+    let path = "/PHOTON_BEAM/microscope/scaled_energy_range";
+    fetch_two_double_rows(catalog, path, runs, context, options, 1, 2)
 }
 
 #[allow(clippy::type_complexity)]
 fn fetch_tagh_tagged_flux(
-    ccdb: &CCDB,
+    catalog: &CalibrationCatalog,
+    runs: &[RunNumber],
     context: &CCDBContext,
     options: &crate::ExecutionOptions,
 ) -> Result<HashMap<RunNumber, Vec<(f64, f64, f64)>>, CCDBError> {
-    Ok(ccdb
-        .fetch_with_options(
-            "/PHOTON_BEAM/pair_spectrometer/lumi/tagh/tagged",
-            context,
-            options,
-        )?
-        .into_iter()
-        .map(|(r, d)| {
-            (
-                r,
-                d.iter_rows()
-                    .filter_map(|row| Some((row.double(0)?, row.double(1)?, row.double(2)?)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect())
+    let path = "/PHOTON_BEAM/pair_spectrometer/lumi/tagh/tagged";
+    fetch_three_double_rows(catalog, path, runs, context, options)
 }
 
 fn fetch_tagh_scaled_energy_range(
-    ccdb: &CCDB,
+    catalog: &CalibrationCatalog,
+    runs: &[RunNumber],
     context: &CCDBContext,
     options: &crate::ExecutionOptions,
 ) -> Result<HashMap<RunNumber, Vec<(f64, f64)>>, CCDBError> {
-    Ok(ccdb
-        .fetch_with_options(
-            "/PHOTON_BEAM/hodoscope/scaled_energy_range",
-            context,
-            options,
-        )?
-        .into_iter()
-        .map(|(r, d)| {
-            (
-                r,
-                d.iter_rows()
-                    .filter_map(|row| Some((row.double(1)?, row.double(2)?)))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect())
+    let path = "/PHOTON_BEAM/hodoscope/scaled_energy_range";
+    fetch_two_double_rows(catalog, path, runs, context, options, 1, 2)
 }
 
 fn fetch_photon_endpoint_calibration(
-    ccdb: &CCDB,
+    catalog: &CalibrationCatalog,
+    runs: &[RunNumber],
     context: &CCDBContext,
     options: &crate::ExecutionOptions,
 ) -> Result<HashMap<RunNumber, f64>, CCDBError> {
-    Ok(ccdb
-        .fetch_with_options("/PHOTON_BEAM/hodoscope/endpoint_calib", context, options)?
-        .into_iter()
-        .filter_map(|(r, d)| Some((r, d.double(0, 0)?)))
-        .collect())
+    let path = "/PHOTON_BEAM/hodoscope/endpoint_calib";
+    let series = collect_calibration(catalog, path, runs, context, options)?;
+    series
+        .items()
+        .map(|(&run, entry)| Ok((run, required_double(entry.payload(), 0, 0, path)?)))
+        .collect()
 }
 
 fn apply_run_override<T>(
@@ -590,6 +649,107 @@ fn apply_run_override<T>(
     }
 }
 
+fn empty_flux_histograms(edges: &[f64]) -> Result<FluxHistograms, LuminosityError> {
+    Ok(FluxHistograms {
+        tagged_flux: Histogram::empty_with_edges(edges.to_vec())?,
+        tagm_flux: Histogram::empty_with_edges(edges.to_vec())?,
+        tagh_flux: Histogram::empty_with_edges(edges.to_vec())?,
+        tagged_luminosity: Histogram::empty_with_edges(edges.to_vec())?,
+    })
+}
+
+#[allow(clippy::too_many_lines)]
+fn flux_histograms_for_run(
+    edges: &[f64],
+    run: RunNumber,
+    data: &FluxCache,
+    coherent_peak: bool,
+) -> Result<FluxHistograms, LuminosityError> {
+    if data.tagm_tagged_flux.len() != data.tagm_scaled_energy_range.len() {
+        return Err(invalid_schema(
+            "TAGM luminosity inputs",
+            "tagged-flux and scaled-energy rows are not aligned",
+        )
+        .into());
+    }
+    if data.tagh_tagged_flux.len() != data.tagh_scaled_energy_range.len() {
+        return Err(invalid_schema(
+            "TAGH luminosity inputs",
+            "tagged-flux and scaled-energy rows are not aligned",
+        )
+        .into());
+    }
+    let mut histograms = empty_flux_histograms(edges)?;
+    let delta_e = data
+        .photon_endpoint_calibration
+        .map_or(0.0, |calibration| data.photon_endpoint_energy - calibration);
+    for (tagged_flux, e_range) in data
+        .tagm_tagged_flux
+        .iter()
+        .zip(&data.tagm_scaled_energy_range)
+    {
+        let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1)).mul_add(0.5, delta_e);
+        if coherent_peak {
+            let (low, high) = crate::core::run_periods::coherent_peak(run);
+            if energy < low || energy > high {
+                continue;
+            }
+        }
+        let acceptance = pair_spectrometer_acceptance(energy, data.pair_spectrometer_parameters);
+        if acceptance <= 0.0 {
+            continue;
+        }
+        let count = tagged_flux.1 * data.livetime_scaling / acceptance;
+        let error = tagged_flux.2 * data.livetime_scaling / acceptance;
+        histograms
+            .tagged_flux
+            .fill_weighted_with_error(energy, count, error)?;
+        histograms
+            .tagm_flux
+            .fill_weighted_with_error(energy, count, error)?;
+    }
+    for (tagged_flux, e_range) in data
+        .tagh_tagged_flux
+        .iter()
+        .zip(&data.tagh_scaled_energy_range)
+    {
+        let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1)).mul_add(0.5, delta_e);
+        if coherent_peak {
+            let (low, high) = crate::core::run_periods::coherent_peak(run);
+            if energy < low || energy > high {
+                continue;
+            }
+        }
+        let acceptance = pair_spectrometer_acceptance(energy, data.pair_spectrometer_parameters);
+        if acceptance <= 0.0 {
+            continue;
+        }
+        let count = tagged_flux.1 * data.livetime_scaling / acceptance;
+        let error = tagged_flux.2 * data.livetime_scaling / acceptance;
+        histograms
+            .tagged_flux
+            .fill_weighted_with_error(energy, count, error)?;
+        histograms
+            .tagh_flux
+            .fill_weighted_with_error(energy, count, error)?;
+    }
+    let (scattering_centers, scattering_centers_error) = data.target_scattering_centers;
+    for index in 0..histograms.tagged_flux.bins() {
+        let flux = histograms.tagged_flux.counts()[index];
+        if flux <= 0.0 {
+            continue;
+        }
+        let luminosity = flux * scattering_centers / 1e12;
+        let flux_error = histograms.tagged_flux.errors()[index] / flux;
+        let target_error = scattering_centers_error / scattering_centers;
+        histograms.tagged_luminosity.set_count(index, luminosity)?;
+        histograms
+            .tagged_luminosity
+            .set_error(index, luminosity * target_error.hypot(flux_error))?;
+    }
+    Ok(histograms)
+}
+
 impl Luminosity {
     /// Construct tagged photon-flux and luminosity histograms for a run context.
     ///
@@ -603,144 +763,69 @@ impl Luminosity {
     /// # Errors
     /// Returns a [`LuminosityError`] if RCDB/CCDB data cannot be fetched or the run
     /// selection is invalid after filtering.
-    #[allow(clippy::too_many_lines)]
-    pub fn fetch(
+    pub(crate) fn fetch_each(
         &self,
         edges: &[f64],
         ctx: &LuminosityContext,
         options: &crate::ExecutionOptions,
-    ) -> Result<FluxHistograms, LuminosityError> {
-        let mut cache: HashMap<RunNumber, FluxCache> = HashMap::new();
-        let coherent_peak = ctx.coherent_peak();
-        let mut tagged_flux_hist = Histogram::empty_with_edges(edges.to_vec())?;
-        let mut microscope_flux_hist = Histogram::empty_with_edges(edges.to_vec())?;
-        let mut hodoscope_flux_hist = Histogram::empty_with_edges(edges.to_vec())?;
-        let mut tagged_luminosity_hist = Histogram::empty_with_edges(edges.to_vec())?;
-        let mut target_scattering_centers = None;
-        let run_numbers: Vec<RunNumber> = ctx.runs().to_vec();
+    ) -> Result<LuminosityBatch, LuminosityError> {
+        let run_numbers = ctx.runs();
         if run_numbers.is_empty() {
             return Err(LuminosityError::EmptyRunSelection);
         }
         let mut runs_by_period: HashMap<RunPeriod, Vec<RunNumber>> = HashMap::new();
-        for run in &run_numbers {
-            let period = RunPeriod::try_from(*run)?;
-            runs_by_period.entry(period).or_default().push(*run);
+        for &run in run_numbers {
+            runs_by_period
+                .entry(RunPeriod::try_from(run)?)
+                .or_default()
+                .push(run);
         }
-        let mut run_periods: Vec<RunPeriod> = runs_by_period.keys().copied().collect();
-        run_periods.sort_unstable();
-        for rp in &run_periods {
+        let readers = self.readers();
+        let mut cache = HashMap::new();
+        let mut missing = HashMap::new();
+        for (period, runs) in runs_by_period {
             let rest_context =
                 ctx.rest_context()
-                    .get(rp)
+                    .get(&period)
                     .ok_or(LuminosityError::MissingRunInput {
-                        run: runs_by_period[rp][0],
+                        run: runs[0],
                         input: "resolved reconstruction context",
                     })?;
-            let readers = self.readers();
-            cache.extend(get_flux_cache(
-                *rp,
-                runs_by_period
-                    .get(rp)
-                    .map_or(&[][..], |runs| runs.as_slice()),
+            let batch = get_flux_cache(
+                period,
+                &runs,
                 ctx.polarized(),
                 rest_context,
                 &readers.rcdb,
                 &readers.ccdb,
                 options,
-            )?);
+            )?;
+            cache.extend(batch.entries);
+            missing.extend(batch.missing);
         }
-        for run in run_numbers {
+        let mut histograms = HashMap::new();
+        for &run in run_numbers {
             if options.interrupted() {
                 return Err(RCDBError::from(crate::execution::interrupted_error()).into());
             }
-            if let Some(data) = cache.get(&run) {
-                let delta_e = match data.photon_endpoint_calibration {
-                    Some(calibration) => data.photon_endpoint_energy - calibration,
-                    None if run > 60000 => {
-                        return Err(LuminosityError::MissingEndpointCalibration(run));
-                    }
-                    None => 0.0,
-                };
-                // Fill microscope
-                for (tagged_flux, e_range) in data
-                    .tagm_tagged_flux
-                    .iter()
-                    .zip(data.tagm_scaled_energy_range.iter())
-                {
-                    let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1))
-                        .mul_add(0.5, delta_e);
-
-                    if coherent_peak {
-                        let (coherent_peak_low, coherent_peak_high) =
-                            crate::core::run_periods::coherent_peak(run);
-                        if energy < coherent_peak_low || energy > coherent_peak_high {
-                            continue;
-                        }
-                    }
-                    let acceptance =
-                        pair_spectrometer_acceptance(energy, data.pair_spectrometer_parameters);
-                    if acceptance <= 0.0 {
-                        continue;
-                    }
-                    let count = tagged_flux.1 * data.livetime_scaling / acceptance;
-                    let error = tagged_flux.2 * data.livetime_scaling / acceptance;
-                    tagged_flux_hist.fill_weighted_with_error(energy, count, error)?;
-                    microscope_flux_hist.fill_weighted_with_error(energy, count, error)?;
-                }
-                // Fill hodoscope
-                for (tagged_flux, e_range) in data
-                    .tagh_tagged_flux
-                    .iter()
-                    .zip(data.tagh_scaled_energy_range.iter())
-                {
-                    let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1))
-                        .mul_add(0.5, delta_e);
-
-                    if coherent_peak {
-                        let (coherent_peak_low, coherent_peak_high) =
-                            crate::core::run_periods::coherent_peak(run);
-                        if energy < coherent_peak_low || energy > coherent_peak_high {
-                            continue;
-                        }
-                    }
-                    let acceptance =
-                        pair_spectrometer_acceptance(energy, data.pair_spectrometer_parameters);
-                    if acceptance <= 0.0 {
-                        continue;
-                    }
-                    let count = tagged_flux.1 * data.livetime_scaling / acceptance;
-                    let error = tagged_flux.2 * data.livetime_scaling / acceptance;
-                    tagged_flux_hist.fill_weighted_with_error(energy, count, error)?;
-                    hodoscope_flux_hist.fill_weighted_with_error(energy, count, error)?;
-                }
-                target_scattering_centers = Some(data.target_scattering_centers);
-            } else {
-                return Err(LuminosityError::MissingRunInput {
-                    run,
-                    input: "luminosity inputs after run constraints",
-                });
+            let Some(data) = cache.get(&run) else {
+                missing
+                    .entry(run)
+                    .or_insert("luminosity inputs after run constraints");
+                continue;
+            };
+            if data.photon_endpoint_calibration.is_none() && run > 60_000 {
+                missing.insert(run, "photon endpoint calibration");
+                continue;
             }
+            histograms.insert(
+                run,
+                flux_histograms_for_run(edges, run, data, ctx.coherent_peak())?,
+            );
         }
-        if let Some((n_scattering_centers, n_scattering_centers_error)) = target_scattering_centers
-        {
-            for ibin in 0..tagged_flux_hist.bins() {
-                let flux = tagged_flux_hist.counts()[ibin];
-                if flux <= 0.0 {
-                    continue;
-                }
-                let luminosity = flux * n_scattering_centers / 1e12;
-                let flux_error = tagged_flux_hist.errors()[ibin] / flux;
-                let target_error = n_scattering_centers_error / n_scattering_centers;
-                tagged_luminosity_hist.set_count(ibin, luminosity)?;
-                tagged_luminosity_hist
-                    .set_error(ibin, luminosity * target_error.hypot(flux_error))?;
-            }
-        }
-        Ok(FluxHistograms {
-            tagged_flux: tagged_flux_hist,
-            tagm_flux: microscope_flux_hist,
-            tagh_flux: hodoscope_flux_hist,
-            tagged_luminosity: tagged_luminosity_hist,
+        Ok(LuminosityBatch {
+            histograms,
+            missing,
         })
     }
 }

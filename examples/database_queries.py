@@ -10,8 +10,8 @@ def print_luminosity(gx: gluex.GlueX, run_query: gluex.RunQuery) -> None:
     resolved_runs = run_query.collect()
     luminosity = gx.workflows.luminosity(
         resolved_runs,
-        gluex.ReconstructionSelection.latest(),
-        [8.0, 8.5, 9.0],
+        reconstruction=gluex.ReconstructionSelection.latest(),
+        edges=[8.0, 8.5, 9.0],
     ).collect()
     print('Tagged luminosity (1/pb):', luminosity.histograms.tagged_luminosity.counts)
     print('Luminosity run report:', luminosity.report)

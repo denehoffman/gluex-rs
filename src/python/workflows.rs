@@ -16,6 +16,7 @@ pub struct PyWorkflows(pub(crate) Workflows);
 #[pymethods]
 impl PyWorkflows {
     /// Build a lazy luminosity request from a resolved RunSet and explicit reconstruction.
+    #[pyo3(signature = (runs, *, reconstruction, edges))]
     fn luminosity(
         &self,
         runs: &PyRunSet,
@@ -36,10 +37,12 @@ pub struct PyLuminosityQuery(LuminosityQuery);
 
 #[pymethods]
 impl PyLuminosityQuery {
+    #[pyo3(signature = (*, enabled))]
     fn coherent_peak(&self, enabled: bool) -> Self {
         Self(self.0.with_coherent_peak(enabled))
     }
 
+    #[pyo3(signature = (*, enabled))]
     fn polarized(&self, enabled: bool) -> Self {
         Self(self.0.with_polarized(enabled))
     }
@@ -49,7 +52,14 @@ impl PyLuminosityQuery {
         Self(self.0.report_missing())
     }
 
+    /// Substitute an explicitly chosen run when a selected run lacks luminosity inputs.
+    #[pyo3(signature = (*, run))]
+    fn fallback_to(&self, run: RunNumber) -> Self {
+        Self(self.0.fallback_to(run))
+    }
+
     /// Return an immutable request with a timeout in seconds.
+    #[pyo3(signature = (*, seconds))]
     fn timeout(&self, seconds: f64) -> PyResult<Self> {
         Ok(Self(
             self.0.with_timeout(super::execution::timeout(seconds)?),
@@ -143,6 +153,14 @@ impl PyLuminosityProvenance {
     #[getter]
     fn ccdb_source(&self) -> &str {
         self.0.ccdb_source()
+    }
+    #[getter]
+    fn requested_reconstruction(&self) -> PyReconstructionSelection {
+        PyReconstructionSelection(self.0.requested_reconstruction().clone())
+    }
+    #[getter]
+    fn calibration_default_as_of(&self) -> chrono::DateTime<chrono::Utc> {
+        self.0.calibration_default_as_of()
     }
     #[getter]
     fn procedure_version(&self) -> &str {

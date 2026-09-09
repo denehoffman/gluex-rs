@@ -1,9 +1,9 @@
 //! Source-bound calibration discovery and explicit numeric retrieval.
 use crate::{
-    Id, RESTVersionContext, RESTVersionSelection, RunNumber, RunPeriod, RunProvenance, RunQuery,
-    RunSelection, RunSet,
+    DatabaseResult, Id, RESTVersionContext, RESTVersionSelection, RunNumber, RunPeriod,
+    RunProvenance, RunQuery, RunSelection, RunSet,
     ccdb::{
-        CCDB, CCDBError, CCDBResult, ColumnMeta, Data, TypeTableMeta,
+        CCDB, CCDBError, Data,
         database::{ResolvedAssignment, TypeTableHandle},
     },
 };
@@ -137,6 +137,110 @@ pub struct CalibrationTable {
     handle: TypeTableHandle,
     source: String,
 }
+
+/// Backend-neutral metadata for a calibration table.
+#[derive(Debug, Clone)]
+pub struct CalibrationTableMetadata(crate::ccdb::TypeTableMeta);
+
+impl CalibrationTableMetadata {
+    /// Stable table identifier.
+    #[must_use]
+    pub const fn id(&self) -> Id {
+        self.0.id()
+    }
+    /// Local table name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.0.name()
+    }
+    /// Declared row count.
+    #[must_use]
+    pub const fn n_rows(&self) -> i64 {
+        self.0.n_rows()
+    }
+    /// Declared column count.
+    #[must_use]
+    pub const fn n_columns(&self) -> i64 {
+        self.0.n_columns()
+    }
+    /// Number of recorded assignments.
+    #[must_use]
+    pub const fn n_assignments(&self) -> i64 {
+        self.0.n_assignments()
+    }
+    /// Free-form table description.
+    #[must_use]
+    pub fn description(&self) -> &str {
+        self.0.comment()
+    }
+}
+
+/// Storage-independent calibration cell type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalibrationValueType {
+    /// 32-bit signed integer.
+    Int,
+    /// 32-bit unsigned integer.
+    UInt,
+    /// 64-bit signed integer.
+    Long,
+    /// 64-bit unsigned integer.
+    ULong,
+    /// 64-bit floating-point value.
+    Double,
+    /// UTF-8 text.
+    String,
+    /// Boolean.
+    Bool,
+}
+
+impl CalibrationValueType {
+    /// Stable user-facing type name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Int => "int",
+            Self::UInt => "uint",
+            Self::Long => "long",
+            Self::ULong => "ulong",
+            Self::Double => "double",
+            Self::String => "string",
+            Self::Bool => "bool",
+        }
+    }
+}
+
+impl From<crate::ccdb::ColumnType> for CalibrationValueType {
+    fn from(value: crate::ccdb::ColumnType) -> Self {
+        match value {
+            crate::ccdb::ColumnType::Int => Self::Int,
+            crate::ccdb::ColumnType::UInt => Self::UInt,
+            crate::ccdb::ColumnType::Long => Self::Long,
+            crate::ccdb::ColumnType::ULong => Self::ULong,
+            crate::ccdb::ColumnType::Double => Self::Double,
+            crate::ccdb::ColumnType::String => Self::String,
+            crate::ccdb::ColumnType::Bool => Self::Bool,
+        }
+    }
+}
+
+/// Backend-neutral description of one named calibration column.
+#[derive(Debug, Clone)]
+pub struct CalibrationColumn(crate::ccdb::ColumnMeta);
+
+impl CalibrationColumn {
+    /// Column name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.0.name()
+    }
+    /// Declared cell type.
+    #[must_use]
+    pub fn value_type(&self) -> CalibrationValueType {
+        self.0.column_type().into()
+    }
+}
+
 impl CalibrationTable {
     /// Absolute table path.
     #[must_use]
@@ -145,27 +249,31 @@ impl CalibrationTable {
     }
     /// Table metadata without reading assignments or constants.
     #[must_use]
-    pub const fn metadata(&self) -> &TypeTableMeta {
-        self.handle.meta()
+    pub fn metadata(&self) -> CalibrationTableMetadata {
+        CalibrationTableMetadata(self.handle.meta().clone())
     }
     /// Ordered, named columns without reading constants.
     ///
     /// # Errors
     /// Returns a contextual error for malformed column metadata or database failures.
-    pub fn columns(&self) -> CCDBResult<Vec<ColumnMeta>> {
-        self.handle.columns()
+    pub fn columns(&self) -> DatabaseResult<Vec<CalibrationColumn>> {
+        self.handle
+            .columns()
+            .map(|columns| columns.into_iter().map(CalibrationColumn).collect())
+            .map_err(Into::into)
     }
     /// Build an unevaluated numeric request using default variation and source opening time.
     /// RCDB membership is never consulted. Reversed ranges are empty.
     ///
     /// # Errors
     /// Rejects `RunSelection::All`; calibration requests require explicit numeric scope.
-    pub fn for_runs(&self, selection: RunSelection) -> CCDBResult<CalibrationQuery> {
+    pub fn for_runs(&self, selection: RunSelection) -> DatabaseResult<CalibrationQuery> {
         let selection = match selection {
             RunSelection::All => {
                 return Err(CCDBError::InvalidPathError(
                     "calibration requests require explicit numeric Run Selection".into(),
-                ));
+                )
+                .into());
             }
             RunSelection::Runs(runs) => RunSelection::runs(runs),
             selection @ RunSelection::Range { .. } => selection,
@@ -177,7 +285,7 @@ impl CalibrationTable {
     ///
     /// # Errors
     /// Reserved for validation shared with the other calibration constructors.
-    pub fn for_run_set(&self, runs: &RunSet) -> CCDBResult<CalibrationQuery> {
+    pub fn for_run_set(&self, runs: &RunSet) -> DatabaseResult<CalibrationQuery> {
         Ok(self.query(
             CalibrationInput::Resolved(runs.clone()),
             Some(runs.provenance().clone()),
@@ -189,7 +297,7 @@ impl CalibrationTable {
     ///
     /// # Errors
     /// Reserved for validation shared with the other calibration constructors.
-    pub fn for_query(&self, runs: &RunQuery) -> CCDBResult<CalibrationQuery> {
+    pub fn for_query(&self, runs: &RunQuery) -> DatabaseResult<CalibrationQuery> {
         Ok(self.query(
             CalibrationInput::Query(runs.clone()),
             Some(runs.provenance()),
@@ -366,7 +474,6 @@ impl CalibrationQuery {
         query
     }
 
-    #[cfg(feature = "python")]
     pub(crate) fn with_execution(&self, execution: crate::ExecutionOptions) -> Self {
         let mut query = self.clone();
         query.execution = execution;
@@ -433,15 +540,11 @@ impl CalibrationQuery {
     ///
     /// # Errors
     /// Database, metadata and payload decoding failures are errors, not missing assignments.
-    pub fn collect(&self) -> CCDBResult<CalibrationSeries> {
-        self.collect_inner().map_err(|source| CCDBError::Retrieval {
-            table: self.provenance.table.clone(),
-            variation: self.provenance.variation.clone(),
-            as_of: self.provenance.as_of,
-            source: Box::new(source),
-        })
+    pub fn collect(&self) -> DatabaseResult<CalibrationSeries> {
+        self.collect_inner()
+            .map_err(|source| crate::DatabaseError::with_context(self.error_context(), source))
     }
-    fn collect_inner(&self) -> CCDBResult<CalibrationSeries> {
+    fn collect_inner(&self) -> DatabaseResult<CalibrationSeries> {
         let mut chunks = self.stream_inner(1024)?;
         let mut result = CalibrationSeries {
             entries: BTreeMap::new(),
@@ -466,30 +569,33 @@ impl CalibrationQuery {
     ///
     /// # Errors
     /// Rejects zero-sized chunks, selector conflicts, and invalid composed inputs.
-    pub fn stream(&self, chunk_size: usize) -> CCDBResult<CalibrationStream> {
+    pub fn stream(&self, chunk_size: usize) -> DatabaseResult<CalibrationStream> {
         self.stream_inner(chunk_size)
-            .map_err(|source| CCDBError::Retrieval {
-                table: self.provenance.table.clone(),
-                variation: self.provenance.variation.clone(),
-                as_of: self.provenance.as_of,
-                source: Box::new(source),
-            })
+            .map_err(|source| crate::DatabaseError::with_context(self.error_context(), source))
     }
 
-    fn stream_inner(&self, chunk_size: usize) -> CCDBResult<CalibrationStream> {
+    fn error_context(&self) -> String {
+        format!(
+            "calibration {} ({}, as of {})",
+            self.provenance.table, self.provenance.variation, self.provenance.as_of
+        )
+    }
+
+    fn stream_inner(&self, chunk_size: usize) -> DatabaseResult<CalibrationStream> {
         if self.execution.interrupted() {
-            return Err(crate::execution::interrupted_error().into());
+            return Err(CCDBError::from(crate::execution::interrupted_error()).into());
         }
         if chunk_size == 0 {
-            return Err(CCDBError::InvalidPathError(
-                "stream chunk size must be positive".into(),
-            ));
+            return Err(
+                CCDBError::InvalidPathError("stream chunk size must be positive".into()).into(),
+            );
         }
         if matches!(self.provenance.selector, CalibrationSelector::Conflict) {
             return Err(CCDBError::SelectorConflict(
                 "reconstruction selection cannot be combined with direct variation/as-of arguments"
                     .into(),
-            ));
+            )
+            .into());
         }
         let input = match &self.input {
             CalibrationInput::Numeric(selection) => {
@@ -520,7 +626,7 @@ impl CalibrationQuery {
     ///
     /// # Errors
     /// Returns a contextual calibration or composed RCDB evaluation error.
-    pub fn first(&self) -> CCDBResult<Option<CalibrationSeries>> {
+    pub fn first(&self) -> DatabaseResult<Option<CalibrationSeries>> {
         self.stream(1)?.next().transpose()
     }
 
@@ -528,7 +634,7 @@ impl CalibrationQuery {
     ///
     /// # Errors
     /// Returns a contextual calibration or composed RCDB evaluation error.
-    pub fn count(&self) -> CCDBResult<usize> {
+    pub fn count(&self) -> DatabaseResult<usize> {
         self.stream(1024)?
             .try_fold(0usize, |count, chunk| Ok(count + chunk?.entries.len()))
     }
@@ -537,12 +643,12 @@ impl CalibrationQuery {
     ///
     /// # Errors
     /// Returns a cardinality or contextual calibration evaluation error.
-    pub fn one(&self) -> CCDBResult<CalibrationSeries> {
+    pub fn one(&self) -> DatabaseResult<CalibrationSeries> {
         let result = self.collect()?;
         if result.entries.len() == 1 {
             Ok(result)
         } else {
-            Err(CCDBError::InvalidCardinality(result.entries.len()))
+            Err(CCDBError::InvalidCardinality(result.entries.len()).into())
         }
     }
 }
@@ -610,7 +716,7 @@ enum CalibrationRunStream {
 pub struct CalibrationStream {
     query: CalibrationQuery,
     input: CalibrationRunStream,
-    payloads: BTreeMap<Id, Arc<Data>>,
+    payloads: BTreeMap<Id, Arc<CalibrationPayload>>,
     resolved_reconstruction: BTreeMap<RunPeriod, RESTVersionContext>,
     run_report: Option<crate::RunReport>,
     failed: bool,
@@ -621,7 +727,7 @@ struct CalibrationRunChunk {
     report: Option<crate::RunReport>,
 }
 impl CalibrationStream {
-    fn next_runs(&mut self) -> CCDBResult<Option<CalibrationRunChunk>> {
+    fn next_runs(&mut self) -> DatabaseResult<Option<CalibrationRunChunk>> {
         match &mut self.input {
             CalibrationRunStream::Numeric(cursor) => {
                 Ok(cursor
@@ -649,40 +755,37 @@ impl CalibrationStream {
                     report: None,
                 }))
             }
-            CalibrationRunStream::Query(stream) => stream
-                .next()
-                .transpose()
-                .map(|chunk| {
-                    chunk.map(|runs| CalibrationRunChunk {
-                        runs: runs.numbers().to_vec(),
-                        complete: runs.report().complete(),
-                        report: Some(runs.report().clone()),
-                    })
+            CalibrationRunStream::Query(stream) => stream.next().transpose().map(|chunk| {
+                chunk.map(|runs| CalibrationRunChunk {
+                    runs: runs.numbers().to_vec(),
+                    complete: runs.report().complete(),
+                    report: Some(runs.report().clone()),
                 })
-                .map_err(Into::into),
+            }),
         }
     }
 
     fn resolve_assignments(
         &mut self,
         runs: &[RunNumber],
-    ) -> CCDBResult<BTreeMap<RunNumber, ResolvedAssignment>> {
+    ) -> DatabaseResult<BTreeMap<RunNumber, ResolvedAssignment>> {
         let selector = self.query.provenance.selector.clone();
         let reconstruction = match selector {
             CalibrationSelector::Defaults | CalibrationSelector::Direct => {
-                return self.query.table.handle.resolve_assignments_with_options(
+                return Ok(self.query.table.handle.resolve_assignments_with_options(
                     runs,
                     &self.query.provenance.variation,
                     self.query.provenance.as_of,
                     &self.query.execution,
-                );
+                )?);
             }
             CalibrationSelector::Reconstruction(reconstruction) => reconstruction,
             CalibrationSelector::Conflict => {
                 return Err(CCDBError::SelectorConflict(
                     "reconstruction selection cannot be combined with direct variation/as-of arguments"
                         .into(),
-                ));
+                )
+                .into());
             }
         };
         let mut grouped: BTreeMap<RunPeriod, Vec<RunNumber>> = BTreeMap::new();
@@ -719,9 +822,9 @@ impl CalibrationStream {
         Ok(assignments)
     }
 
-    fn decode_entry(&mut self, assignment: ResolvedAssignment) -> CCDBResult<CalibrationEntry> {
+    fn decode_entry(&mut self, assignment: ResolvedAssignment) -> DatabaseResult<CalibrationEntry> {
         if self.query.execution.interrupted() {
-            return Err(crate::execution::interrupted_error().into());
+            return Err(CCDBError::from(crate::execution::interrupted_error()).into());
         }
         let id = assignment.constant_set.id();
         let payload = if let Some(payload) = self.payloads.get(&id) {
@@ -734,11 +837,11 @@ impl CalibrationStream {
                     self.query.table.path()
                 ))
             })?;
-            let payload = Arc::new(Data::from_vault(
+            let payload = Arc::new(CalibrationPayload(Data::from_vault(
                 assignment.constant_set.vault(),
                 layout,
                 n_rows,
-            )?);
+            )?));
             self.payloads.insert(id, Arc::clone(&payload));
             if self.payloads.len() > self.query.table.handle.payload_cache_capacity()
                 && let Some(evicted) = self.payloads.keys().copied().find(|key| *key != id)
@@ -753,7 +856,11 @@ impl CalibrationStream {
         })
     }
 
-    fn evaluate(&mut self, runs: Vec<RunNumber>, complete: bool) -> CCDBResult<CalibrationSeries> {
+    fn evaluate(
+        &mut self,
+        runs: Vec<RunNumber>,
+        complete: bool,
+    ) -> DatabaseResult<CalibrationSeries> {
         let mut resolution_runs = runs.clone();
         if let Some(fallback) = self.query.provenance.fallback_run
             && !resolution_runs.contains(&fallback)
@@ -764,7 +871,7 @@ impl CalibrationStream {
         let mut decoded = BTreeMap::new();
         for (run, assignment) in assignments {
             if self.query.execution.interrupted() {
-                return Err(crate::execution::interrupted_error().into());
+                return Err(CCDBError::from(crate::execution::interrupted_error()).into());
             }
             decoded.insert(run, self.decode_entry(assignment)?);
         }
@@ -776,7 +883,7 @@ impl CalibrationStream {
         if self.query.provenance.policy == crate::MissingDataPolicy::Strict
             && !missing_runs.is_empty()
         {
-            return Err(CCDBError::MissingData(missing_runs.len()));
+            return Err(CCDBError::MissingData(missing_runs.len()).into());
         }
         let mut entries: BTreeMap<_, _> = runs
             .iter()
@@ -814,19 +921,17 @@ impl CalibrationStream {
     }
 }
 impl Iterator for CalibrationStream {
-    type Item = CCDBResult<CalibrationSeries>;
+    type Item = DatabaseResult<CalibrationSeries>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.failed {
             return None;
         }
         if self.query.execution.interrupted() {
             self.failed = true;
-            return Some(Err(CCDBError::Retrieval {
-                table: self.query.provenance.table.clone(),
-                variation: self.query.provenance.variation.clone(),
-                as_of: self.query.provenance.as_of,
-                source: Box::new(CCDBError::from(crate::execution::interrupted_error())),
-            }));
+            return Some(Err(crate::DatabaseError::with_context(
+                self.query.error_context(),
+                CCDBError::from(crate::execution::interrupted_error()).into(),
+            )));
         }
         match self.next_runs() {
             Ok(Some(chunk)) => {
@@ -841,22 +946,17 @@ impl Iterator for CalibrationStream {
                 if result.is_err() {
                     self.failed = true;
                 }
-                Some(result.map_err(|source| CCDBError::Retrieval {
-                    table: self.query.provenance.table.clone(),
-                    variation: self.query.provenance.variation.clone(),
-                    as_of: self.query.provenance.as_of,
-                    source: Box::new(source),
+                Some(result.map_err(|source| {
+                    crate::DatabaseError::with_context(self.query.error_context(), source)
                 }))
             }
             Ok(None) => None,
             Err(source) => {
                 self.failed = true;
-                Some(Err(CCDBError::Retrieval {
-                    table: self.query.provenance.table.clone(),
-                    variation: self.query.provenance.variation.clone(),
-                    as_of: self.query.provenance.as_of,
-                    source: Box::new(source),
-                }))
+                Some(Err(crate::DatabaseError::with_context(
+                    self.query.error_context(),
+                    source,
+                )))
             }
         }
     }
@@ -866,7 +966,7 @@ impl Iterator for CalibrationStream {
 #[derive(Debug, Clone)]
 pub struct CalibrationEntry {
     assignment: ResolvedAssignment,
-    payload: Arc<Data>,
+    payload: Arc<CalibrationPayload>,
 }
 impl CalibrationEntry {
     /// Effective assignment identifier.
@@ -896,16 +996,74 @@ impl CalibrationEntry {
     }
     /// Immutable constants, shared by entries resolving to the same constant set.
     #[must_use]
-    pub fn payload(&self) -> &Data {
+    pub fn payload(&self) -> &CalibrationPayload {
         &self.payload
     }
+}
+
+/// One immutable, shared Calibration Payload independent of its storage backend.
+#[derive(Debug)]
+pub struct CalibrationPayload(Data);
+
+impl CalibrationPayload {
+    /// Number of rows in the payload.
+    #[must_use]
+    pub const fn n_rows(&self) -> usize {
+        self.0.n_rows()
+    }
+    /// Ordered column names.
+    #[must_use]
+    pub fn column_names(&self) -> &[String] {
+        self.0.column_names()
+    }
+    /// Read a named floating-point cell.
+    #[must_use]
+    pub fn named_double(&self, name: &str, row: usize) -> Option<f64> {
+        self.0.named_double(name, row)
+    }
+    pub(crate) fn double(&self, column: usize, row: usize) -> Option<f64> {
+        self.0.double(column, row)
+    }
+    /// Read one named column using a storage-independent typed view.
+    #[must_use]
+    pub fn column(&self, name: &str) -> Option<CalibrationColumnValues<'_>> {
+        use crate::ccdb::Column;
+        Some(match self.0.named_column(name)? {
+            Column::Int(values) => CalibrationColumnValues::Int(values),
+            Column::UInt(values) => CalibrationColumnValues::UInt(values),
+            Column::Long(values) => CalibrationColumnValues::Long(values),
+            Column::ULong(values) => CalibrationColumnValues::ULong(values),
+            Column::Double(values) => CalibrationColumnValues::Double(values),
+            Column::String(values) => CalibrationColumnValues::String(values),
+            Column::Bool(values) => CalibrationColumnValues::Bool(values),
+        })
+    }
+}
+
+/// Borrowed typed values from a Calibration Payload column.
+#[derive(Debug, Clone, Copy)]
+pub enum CalibrationColumnValues<'a> {
+    /// Signed 32-bit integers.
+    Int(&'a [i32]),
+    /// Unsigned 32-bit integers.
+    UInt(&'a [u32]),
+    /// Signed 64-bit integers.
+    Long(&'a [i64]),
+    /// Unsigned 64-bit integers.
+    ULong(&'a [u64]),
+    /// Floating-point values.
+    Double(&'a [f64]),
+    /// UTF-8 text values.
+    String(&'a [String]),
+    /// Boolean values.
+    Bool(&'a [bool]),
 }
 
 /// Immutable association of requested numeric runs with available assignments.
 #[derive(Debug, Clone)]
 pub struct CalibrationSeries {
     entries: BTreeMap<RunNumber, CalibrationEntry>,
-    payloads: BTreeMap<Id, Arc<Data>>,
+    payloads: BTreeMap<Id, Arc<CalibrationPayload>>,
     provenance: CalibrationProvenance,
     report: CalibrationReport,
 }

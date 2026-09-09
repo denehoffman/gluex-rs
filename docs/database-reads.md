@@ -104,8 +104,10 @@ Python. Invalid UTF-8 text is an error, while BLOB bytes remain unchanged.
 **Rust migration:** unrestricted `RCDB::connection()` and `CCDB::connection()`
 handles are no longer public. Replace direct prepared-statement reads with
 `raw`; this keeps the reading interface enforceably read-only. The existing fetch
-interfaces remain available. Raw queries materialize their results; cancellation
-and streaming are not part of this surface yet.
+interfaces remain available. Raw queries materialize their results rather than
+streaming. Rust callers can pass `ExecutionOptions` to `raw_with_options`; Python
+callers use the keyword-only `timeout` argument and may interrupt an in-flight
+read with `KeyboardInterrupt`.
 
 A runnable installed-package example is
 [`examples/database_reads.py`](../examples/database_reads.py).
@@ -151,7 +153,7 @@ syntax. Named `approved_production(period)` predicates use the supported existin
 period-specific approval definitions; unsupported periods raise an error.
 
 Rust uses `definition.gt(10.0)?`, `eq(true)?`, and the other comparison methods,
-with `query.filter(predicate)` and `&`, `|`, `!` composition. Rust float operands
+with `query.where_predicate(predicate)` and `&`, `|`, `!` composition. Rust float operands
 are explicitly floating point. Time operands are `chrono::DateTime<Utc>`.
 `gluex_rs::approved_production(period)?` returns an explicit `RunPredicate`.
 `RunSet::report().unknown_runs()` borrows the completed exclusion list.
@@ -201,7 +203,7 @@ remain usable after the original root is dropped, with source files kept unchang
 
 Rust starts with `gx.calibrations()?`, then
 `catalog.get("/TARGET/density").unwrap().for_runs(selection)?.collect()?`.
-Use `series.items()`, `entry.payload().named_column("density")` and
+Use `series.items()`, `entry.payload().column("density")` and
 `series.report().missing_runs()` for borrowed access. Table `metadata()` and
 `columns()` expose immutable metadata values. Existing lower-level RCDB and CCDB
 fetch APIs remain available.
@@ -242,11 +244,14 @@ remain available through `result.runs.report.unknown_runs`.
 `result.provenance.fields` retains projected names. Malformed encoded values
 (including invalid timestamps, JSON, boolean values and numeric types) raise
 `RuntimeError` with run/name context; they are never converted to missing values.
-Collection releases the GIL. Strict and fallback policies are a later ticket.
+Collection releases the GIL. `strict()` rejects any missing projected value.
+`fill(name, value=...)` applies a caller-supplied, type-checked substitution for
+that condition and records every substituted `(run, name)` cell in the report
+and provenance; malformed values and execution failures remain errors.
 
 Rust uses `query.select(["beam_current", "polarization_direction"])?`,
-`result.get(run, name)?` for `Option<&rcdb::Value>`, and `result.column(name)?`
-for an aligned slice of optional typed values. Invalid lookups return `RCDBError`.
+`result.get(run, name)?` for `Option<&ConditionValue>`, and `result.column(name)?`
+for an aligned slice of optional typed values. Invalid lookups return `DatabaseError`.
 
 ## Streaming and terminal operations
 
@@ -418,20 +423,30 @@ reconstruction = gluex.ReconstructionSelection.periods({
         gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
 })
 result = gx.workflows.luminosity(
-    runs, reconstruction, [8.0, 8.5, 9.0]
+    runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0]
 ).collect()
 print(result.histograms.tagged_luminosity.counts)  # inverse picobarns
 print(result.report.selected_runs, result.report.used_runs)
 print(result.provenance.runs, result.provenance.rcdb_source, result.provenance.ccdb_source)
+print(result.provenance.requested_reconstruction)
 print(result.provenance.resolved_reconstruction)
+print(result.provenance.calibration_default_as_of)
 ```
 
 The default missing-input policy is strict. `report_missing()` instead excludes
 only runs with genuinely absent scientific inputs and records the reason; malformed
 payloads, schema failures, invalid selectors, and database errors always raise.
+`fallback_to(run)` instead supplies the complete, valid luminosity inputs of one
+explicitly chosen run whenever a selected run lacks required inputs. Each
+`(selected_run, fallback_run)` replacement is retained in `report.substitutions`;
+the result still identifies the selected run as used. A missing or malformed
+fallback remains an error.
 Missing or zero livetime is a missing scientific input, never an implicit 1.0
 scale. `ReconstructionSelection.latest()` resolves at the captured CCDB opening
-time, so delaying collection cannot change that default.
+time, so delaying collection cannot change that default. Non-REST calibration
+lookups use that same captured cutoff. Provenance retains both the requested
+reconstruction selector and its resolved period mapping, distinguishing an
+explicit `latest()` request from a period-specific override.
 The result records procedure version `gluex-luminosity-v1`, its provisional
 scientific-review status, the pair-production reference, and the explicit
 RP2019-11 endpoint-constant exception. It also retains both source identities,

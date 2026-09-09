@@ -23,10 +23,13 @@ pub mod cli;
     clippy::suspicious
 )]
 pub mod core;
+/// Backend-neutral errors returned by unified database requests.
+pub mod database;
 /// Cancellation and timeout controls for synchronous evaluation.
 pub mod execution;
 /// Monte Carlo generation and HDDM writing utilities.
 pub mod generation;
+pub use database::{DatabaseError, DatabaseResult};
 pub use execution::{CancellationToken, ExecutionOptions};
 /// Photon-flux and tagged-luminosity calculations.
 pub mod lumi;
@@ -37,8 +40,8 @@ pub mod rcdb;
 pub mod runs;
 pub use runs::{
     ConditionCatalog, ConditionDefinition, ConditionProvenance, ConditionQuery, ConditionReport,
-    ConditionResults, ConditionStream, MissingDataPolicy, RunProvenance, RunQuery, RunReport,
-    RunSelection, RunSet, RunStream,
+    ConditionResults, ConditionStream, ConditionValue, ConditionValueType, MissingDataPolicy,
+    RunPredicate, RunProvenance, RunQuery, RunReport, RunSelection, RunSet, RunStream,
 };
 
 /// Enforced read-only raw rows and parameters.
@@ -74,13 +77,24 @@ pub use core::{
     enums, parsers, particles, run_periods, utils,
 };
 
-/// Typed operands and composable run predicates.
-pub use rcdb::conditions::{ConditionOperand, Expr as RunPredicate, aliases::approved_production};
+/// Typed operands for Condition Predicate construction.
+pub use rcdb::conditions::ConditionOperand;
+
+/// Build the explicit named approved-production Condition Predicate for a run period.
+///
+/// # Errors
+/// Rejects periods without a documented approved-production definition.
+pub fn approved_production(period: RunPeriod) -> DatabaseResult<RunPredicate> {
+    rcdb::conditions::aliases::approved_production(period)
+        .map(RunPredicate)
+        .map_err(Into::into)
+}
 
 /// Calibration catalogs and explicit numeric queries.
 pub mod calibrations;
 pub use calibrations::{
-    CalibrationCatalog, CalibrationDirectory, CalibrationEntry, CalibrationProvenance,
-    CalibrationQuery, CalibrationReport, CalibrationSeries, CalibrationStream, CalibrationTable,
-    ReconstructionSelection,
+    CalibrationCatalog, CalibrationColumn, CalibrationColumnValues, CalibrationDirectory,
+    CalibrationEntry, CalibrationPayload, CalibrationProvenance, CalibrationQuery,
+    CalibrationReport, CalibrationSeries, CalibrationStream, CalibrationTable,
+    CalibrationTableMetadata, CalibrationValueType, ReconstructionSelection,
 };

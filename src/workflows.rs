@@ -64,6 +64,7 @@ impl Workflows {
             coherent_peak: false,
             polarized: false,
             policy: MissingDataPolicy::Strict,
+            fallback_run: None,
             execution: ExecutionOptions::default(),
         }
     }
@@ -79,6 +80,7 @@ pub struct LuminosityQuery {
     coherent_peak: bool,
     polarized: bool,
     policy: MissingDataPolicy,
+    fallback_run: Option<RunNumber>,
     execution: ExecutionOptions,
 }
 
@@ -104,6 +106,19 @@ impl LuminosityQuery {
     pub fn report_missing(&self) -> Self {
         let mut query = self.clone();
         query.policy = MissingDataPolicy::Report;
+        query.fallback_run = None;
+        query
+    }
+
+    /// Use the complete luminosity inputs for `run` when a selected run has missing inputs.
+    ///
+    /// The substitution is explicit and recorded in the result report. The fallback run must
+    /// have a reconstruction selection and a complete set of valid workflow inputs.
+    #[must_use]
+    pub fn fallback_to(&self, run: RunNumber) -> Self {
+        let mut query = self.clone();
+        query.policy = MissingDataPolicy::Fallback;
+        query.fallback_run = Some(run);
         query
     }
 
@@ -148,46 +163,79 @@ impl LuminosityQuery {
         let ccdb_source = ccdb.connection_path().to_owned();
         let source_opened_at = ccdb.opened_at();
         let calculator = Luminosity::from_readers(rcdb, ccdb);
+        let mut resolution_runs = self.runs.numbers().to_vec();
+        if let Some(run) = self.fallback_run {
+            resolution_runs.push(run);
+        }
         let resolved =
-            resolve_reconstruction(self.runs.numbers(), &self.reconstruction, source_opened_at)?;
+            resolve_reconstruction(&resolution_runs, &self.reconstruction, source_opened_at)?;
         let contexts: HashMap<RunPeriod, RESTVersionContext> =
             resolved.clone().into_iter().collect();
         let mut histograms = empty_histograms(&self.edges)?;
         let mut used_runs = Vec::new();
         let mut excluded_runs = Vec::new();
+        let mut substitutions = Vec::new();
+        let context = LuminosityContext::new(resolution_runs, contexts)?
+            .with_coherent_peak(self.coherent_peak)
+            .with_polarized(self.polarized);
+        let batch = calculator.fetch_each(&self.edges, &context, &self.execution)?;
         for &run in self.runs.numbers() {
             if self.execution.interrupted() {
                 return Err(WorkflowError::Interrupted);
             }
-            let context = LuminosityContext::new(vec![run], contexts.clone())?
-                .with_coherent_peak(self.coherent_peak)
-                .with_polarized(self.polarized);
-            match calculator.fetch(&self.edges, &context, &self.execution) {
-                Ok(run_histograms) => {
-                    add_histograms(&mut histograms, &run_histograms)?;
-                    used_runs.push(run);
-                }
-                Err(
-                    error @ (LuminosityError::MissingRunInput { .. }
-                    | LuminosityError::MissingEndpointCalibration(_)),
-                ) if self.policy == MissingDataPolicy::Report => {
-                    excluded_runs.push((run, error.to_string()));
-                }
-                Err(error) => return Err(error.into()),
+            if let Some(run_histograms) = batch.histograms.get(&run) {
+                add_histograms(&mut histograms, run_histograms)?;
+                used_runs.push(run);
+                continue;
             }
+            let input = batch
+                .missing
+                .get(&run)
+                .copied()
+                .unwrap_or("luminosity inputs after run constraints");
+            if self.policy == MissingDataPolicy::Report {
+                excluded_runs.push((
+                    run,
+                    LuminosityError::MissingRunInput { run, input }.to_string(),
+                ));
+                continue;
+            }
+            if self.policy == MissingDataPolicy::Fallback {
+                let fallback_run = self.fallback_run.ok_or(LuminosityError::MissingRunInput {
+                    run,
+                    input: "explicit fallback run",
+                })?;
+                let fallback_histograms = batch.histograms.get(&fallback_run).ok_or_else(|| {
+                    LuminosityError::MissingRunInput {
+                        run: fallback_run,
+                        input: batch
+                            .missing
+                            .get(&fallback_run)
+                            .copied()
+                            .unwrap_or("fallback luminosity inputs"),
+                    }
+                })?;
+                add_histograms(&mut histograms, fallback_histograms)?;
+                used_runs.push(run);
+                substitutions.push((run, fallback_run));
+                continue;
+            }
+            return Err(LuminosityError::MissingRunInput { run, input }.into());
         }
         let report = LuminosityReport {
             selected_runs: self.runs.numbers().to_vec(),
             used_runs,
             excluded_runs,
-            substitutions: Vec::new(),
+            substitutions,
             complete: true,
         };
         let provenance = LuminosityProvenance {
             runs: self.runs.provenance().clone(),
             rcdb_source,
             ccdb_source,
+            requested_reconstruction: self.reconstruction.clone(),
             resolved_reconstruction: resolved,
+            calibration_default_as_of: source_opened_at,
             procedure_version: LUMINOSITY_PROCEDURE_VERSION,
             procedure_status: "provisional",
             references: vec!["https://doi.org/10.1103/RevModPhys.46.815"],
@@ -268,7 +316,9 @@ pub struct LuminosityProvenance {
     runs: RunProvenance,
     rcdb_source: String,
     ccdb_source: String,
+    requested_reconstruction: ReconstructionSelection,
     resolved_reconstruction: BTreeMap<RunPeriod, RESTVersionContext>,
+    calibration_default_as_of: DateTime<Utc>,
     procedure_version: &'static str,
     procedure_status: &'static str,
     references: Vec<&'static str>,
@@ -294,10 +344,20 @@ impl LuminosityProvenance {
     pub fn ccdb_source(&self) -> &str {
         &self.ccdb_source
     }
+    /// Reconstruction selector requested by the caller before resolution.
+    #[must_use]
+    pub const fn requested_reconstruction(&self) -> &ReconstructionSelection {
+        &self.requested_reconstruction
+    }
     /// Effective reconstruction selection for each represented period.
     #[must_use]
     pub const fn resolved_reconstruction(&self) -> &BTreeMap<RunPeriod, RESTVersionContext> {
         &self.resolved_reconstruction
+    }
+    /// Default calibration cutoff captured when the bound CCDB source opened.
+    #[must_use]
+    pub const fn calibration_default_as_of(&self) -> DateTime<Utc> {
+        self.calibration_default_as_of
     }
     /// Stable implementation identifier.
     #[must_use]
@@ -362,7 +422,7 @@ impl LuminosityReport {
     pub fn excluded_runs(&self) -> &[(RunNumber, String)] {
         &self.excluded_runs
     }
-    /// Explicit fallback substitutions. No physical fallback is invented by this procedure.
+    /// Explicit selected-run to fallback-run substitutions.
     #[must_use]
     pub fn substitutions(&self) -> &[(RunNumber, RunNumber)] {
         &self.substitutions

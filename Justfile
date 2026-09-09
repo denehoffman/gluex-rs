@@ -17,6 +17,7 @@ build-rust:
 
 build-python: create-venv
     uvx --with "maturin[patchelf]>=1.11,<2" maturin develop --release --uv --generate-stubs
+    {{python}} scripts/finalize_generated_stubs.py
 
 build: build-rust build-python
 

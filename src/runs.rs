@@ -1,8 +1,8 @@
 //! Numeric Run Selections and explicitly resolved recorded Run Sets.
 
 use crate::{
-    RunNumber, RunPeriod,
-    rcdb::{RCDB, RCDBContext, RCDBResult},
+    DatabaseResult, RunNumber, RunPeriod,
+    rcdb::{RCDB, RCDBContext},
 };
 
 /// Declared treatment of unavailable requested scientific inputs.
@@ -81,13 +81,13 @@ impl RunSelection {
 pub struct RunProvenance {
     source: String,
     selection: RunSelection,
-    predicates: Vec<crate::rcdb::Expr>,
+    predicates: Vec<crate::RunPredicate>,
 }
 
 impl RunProvenance {
     /// Explicit predicates, combined with conjunction.
     #[must_use]
-    pub fn predicates(&self) -> &[crate::rcdb::Expr] {
+    pub fn predicates(&self) -> &[crate::RunPredicate] {
         &self.predicates
     }
 
@@ -137,7 +137,7 @@ impl RunSet {
 pub struct RunQuery {
     reader: RCDB,
     selection: RunSelection,
-    predicates: Vec<crate::rcdb::Expr>,
+    predicates: Vec<crate::RunPredicate>,
     execution: crate::ExecutionOptions,
 }
 
@@ -149,20 +149,20 @@ impl RunQuery {
     pub fn select(
         &self,
         fields: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> RCDBResult<ConditionQuery> {
+    ) -> DatabaseResult<ConditionQuery> {
         let catalog = self.reader.conditions();
         let mut names = Vec::new();
         for field in fields {
             let name = field.as_ref();
             if catalog.get(name).is_none() {
-                return Err(crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()));
+                return Err(crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()).into());
             }
             if !names.iter().any(|n| n == name) {
                 names.push(name.to_owned());
             }
         }
         if names.is_empty() {
-            return Err(crate::rcdb::RCDBError::EmptyConditionList);
+            return Err(crate::rcdb::RCDBError::EmptyConditionList.into());
         }
         Ok(ConditionQuery {
             query: self.clone(),
@@ -172,9 +172,9 @@ impl RunQuery {
         })
     }
 
-    /// Return a new query with an additional predicate; the original is unchanged.
+    /// Return a new query with an additional Condition Predicate; the original is unchanged.
     #[must_use]
-    pub fn filter(&self, predicate: crate::rcdb::Expr) -> Self {
+    pub fn where_predicate(&self, predicate: crate::RunPredicate) -> Self {
         let mut query = self.clone();
         query.predicates.push(predicate);
         query
@@ -243,7 +243,7 @@ impl RunQuery {
     ///
     /// # Errors
     /// Returns a contextual RCDB error if execution or run decoding fails.
-    pub fn collect(&self) -> RCDBResult<RunSet> {
+    pub fn collect(&self) -> DatabaseResult<RunSet> {
         let mut numbers = Vec::new();
         let mut unknown_runs = Vec::new();
         let mut evaluated_runs = Vec::new();
@@ -268,11 +268,13 @@ impl RunQuery {
         &self,
         candidates: Vec<RunNumber>,
         complete: bool,
-    ) -> RCDBResult<RunSet> {
+    ) -> DatabaseResult<RunSet> {
         if self.execution.interrupted() {
-            return Err(crate::execution::interrupted_error().into());
+            return Err(crate::rcdb::RCDBError::from(crate::execution::interrupted_error()).into());
         }
-        let predicate = crate::rcdb::conditions::all(self.predicates.clone());
+        let predicate = crate::rcdb::conditions::all(
+            self.predicates.iter().map(|predicate| predicate.0.clone()),
+        );
         let selection = RunSelection::runs(candidates.iter().copied());
         let context = RCDBContext::from_selection(selection.clone()).filter(predicate.clone());
         let unknown_context = RCDBContext::from_selection(selection).filter(predicate.unknown());
@@ -295,11 +297,12 @@ impl RunQuery {
     ///
     /// # Errors
     /// A chunk size of zero is invalid.
-    pub fn stream(&self, chunk_size: usize) -> RCDBResult<RunStream> {
+    pub fn stream(&self, chunk_size: usize) -> DatabaseResult<RunStream> {
         if chunk_size == 0 {
             return Err(crate::rcdb::RCDBError::InvalidValue(
                 "stream chunk size must be positive".into(),
-            ));
+            )
+            .into());
         }
         Ok(RunStream {
             query: self.clone(),
@@ -313,7 +316,7 @@ impl RunQuery {
     ///
     /// # Errors
     /// Returns a contextual RCDB error if candidate or predicate evaluation fails.
-    pub fn first(&self) -> RCDBResult<Option<RunNumber>> {
+    pub fn first(&self) -> DatabaseResult<Option<RunNumber>> {
         for chunk in self.stream(1)? {
             if let Some(run) = chunk?.numbers().first() {
                 return Ok(Some(*run));
@@ -326,7 +329,7 @@ impl RunQuery {
     ///
     /// # Errors
     /// Returns a contextual RCDB error if candidate or predicate evaluation fails.
-    pub fn count(&self) -> RCDBResult<usize> {
+    pub fn count(&self) -> DatabaseResult<usize> {
         self.stream(1024)?
             .try_fold(0usize, |count, chunk| Ok(count + chunk?.numbers().len()))
     }
@@ -335,18 +338,18 @@ impl RunQuery {
     ///
     /// # Errors
     /// Returns a cardinality error or a contextual RCDB evaluation error.
-    pub fn one(&self) -> RCDBResult<RunNumber> {
+    pub fn one(&self) -> DatabaseResult<RunNumber> {
         let mut found = Vec::with_capacity(2);
         for chunk in self.stream(2)? {
             found.extend_from_slice(chunk?.numbers());
             if found.len() > 1 {
-                return Err(crate::rcdb::RCDBError::InvalidCardinality(found.len()));
+                return Err(crate::rcdb::RCDBError::InvalidCardinality(found.len()).into());
             }
         }
         found
             .first()
             .copied()
-            .ok_or(crate::rcdb::RCDBError::InvalidCardinality(0))
+            .ok_or_else(|| crate::rcdb::RCDBError::InvalidCardinality(0).into())
     }
 }
 
@@ -358,7 +361,7 @@ pub struct RunStream {
     complete: bool,
 }
 impl Iterator for RunStream {
-    type Item = RCDBResult<RunSet>;
+    type Item = DatabaseResult<RunSet>;
     fn next(&mut self) -> Option<Self::Item> {
         while !self.complete {
             let context = RCDBContext::from_selection(self.query.selection.clone());
@@ -372,7 +375,7 @@ impl Iterator for RunStream {
                 Ok(page) => page,
                 Err(error) => {
                     self.complete = true;
-                    return Some(Err(error));
+                    return Some(Err(error.into()));
                 }
             };
             self.offset = self.offset.saturating_add(consumed);
@@ -400,8 +403,254 @@ impl std::fmt::Debug for RunQuery {
     }
 }
 
-/// An immutable Condition Definition with its database-native metadata.
-pub type ConditionDefinition = crate::rcdb::models::ConditionTypeMeta;
+/// Storage-independent value category for a named run condition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConditionValueType {
+    /// Signed integer.
+    Int,
+    /// Floating-point number.
+    Float,
+    /// Boolean.
+    Bool,
+    /// UTC timestamp.
+    Time,
+    /// UTF-8 text.
+    String,
+    /// JSON text.
+    Json,
+    /// Opaque text/blob payload.
+    Blob,
+}
+
+/// Composable, backend-neutral three-valued Condition Predicate.
+#[derive(Debug, Clone)]
+pub struct RunPredicate(pub(crate) crate::rcdb::conditions::Expr);
+
+impl std::fmt::Display for RunPredicate {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl std::ops::Not for RunPredicate {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        Self(!self.0)
+    }
+}
+
+impl std::ops::BitAnd for RunPredicate {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl std::ops::BitOr for RunPredicate {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl ConditionValueType {
+    /// Stable user-facing type name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Int => "int",
+            Self::Float => "float",
+            Self::Bool => "bool",
+            Self::Time => "time",
+            Self::String => "string",
+            Self::Json => "json",
+            Self::Blob => "blob",
+        }
+    }
+}
+
+impl From<crate::rcdb::ValueType> for ConditionValueType {
+    fn from(value: crate::rcdb::ValueType) -> Self {
+        match value {
+            crate::rcdb::ValueType::Int => Self::Int,
+            crate::rcdb::ValueType::Float => Self::Float,
+            crate::rcdb::ValueType::Bool => Self::Bool,
+            crate::rcdb::ValueType::Time => Self::Time,
+            crate::rcdb::ValueType::String => Self::String,
+            crate::rcdb::ValueType::Json => Self::Json,
+            crate::rcdb::ValueType::Blob => Self::Blob,
+        }
+    }
+}
+
+/// Immutable backend-neutral run-condition value.
+#[derive(Debug, Clone)]
+pub struct ConditionValue(crate::rcdb::Value);
+
+impl ConditionValue {
+    /// Declared value category.
+    #[must_use]
+    pub fn value_type(&self) -> ConditionValueType {
+        self.0.value_type().into()
+    }
+    /// Text payload, when applicable.
+    #[must_use]
+    pub fn as_string(&self) -> Option<&str> {
+        self.0.as_string()
+    }
+    /// Integer payload, when applicable.
+    #[must_use]
+    pub fn as_int(&self) -> Option<i64> {
+        self.0.as_int()
+    }
+    /// Floating-point payload, when applicable.
+    #[must_use]
+    pub fn as_float(&self) -> Option<f64> {
+        self.0.as_float()
+    }
+    /// Boolean payload, when applicable.
+    #[must_use]
+    pub fn as_bool(&self) -> Option<bool> {
+        self.0.as_bool()
+    }
+    /// UTC timestamp payload, when applicable.
+    #[must_use]
+    pub fn as_time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.0.as_time()
+    }
+}
+
+/// Immutable backend-neutral description of a named run condition.
+#[derive(Debug, Clone)]
+pub struct ConditionDefinition(crate::rcdb::models::ConditionTypeMeta);
+
+impl ConditionDefinition {
+    /// Database-native identifier retained for advanced inspection.
+    #[must_use]
+    pub const fn id(&self) -> crate::Id {
+        self.0.id()
+    }
+
+    /// Dynamic condition name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    /// Declared value type.
+    #[must_use]
+    pub fn value_type(&self) -> ConditionValueType {
+        self.0.value_type().into()
+    }
+
+    /// Native creation timestamp text, or an empty string.
+    #[must_use]
+    pub fn created(&self) -> String {
+        self.0.created()
+    }
+
+    /// Available description, or an empty string.
+    #[must_use]
+    pub fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    /// Build a predicate matching recorded non-null values.
+    #[must_use]
+    pub fn is_present(&self) -> crate::RunPredicate {
+        crate::RunPredicate(self.0.is_present())
+    }
+
+    /// Build a predicate matching absent or null values.
+    #[must_use]
+    pub fn is_missing(&self) -> crate::RunPredicate {
+        crate::RunPredicate(self.0.is_missing())
+    }
+
+    /// Build a typed equality predicate.
+    ///
+    /// # Errors
+    /// Rejects values incompatible with this Condition Definition's value type.
+    pub fn eq(
+        &self,
+        value: impl Into<crate::ConditionOperand>,
+    ) -> DatabaseResult<crate::RunPredicate> {
+        self.0
+            .eq(value)
+            .map(crate::RunPredicate)
+            .map_err(Into::into)
+    }
+
+    /// Build a typed inequality predicate.
+    ///
+    /// # Errors
+    /// Rejects values incompatible with this Condition Definition's value type.
+    pub fn ne(
+        &self,
+        value: impl Into<crate::ConditionOperand>,
+    ) -> DatabaseResult<crate::RunPredicate> {
+        self.0
+            .ne(value)
+            .map(crate::RunPredicate)
+            .map_err(Into::into)
+    }
+
+    /// Build a typed greater-than predicate.
+    ///
+    /// # Errors
+    /// Rejects values incompatible with this Condition Definition's value type.
+    pub fn gt(
+        &self,
+        value: impl Into<crate::ConditionOperand>,
+    ) -> DatabaseResult<crate::RunPredicate> {
+        self.0
+            .gt(value)
+            .map(crate::RunPredicate)
+            .map_err(Into::into)
+    }
+
+    /// Build a typed greater-than-or-equal predicate.
+    ///
+    /// # Errors
+    /// Rejects values incompatible with this Condition Definition's value type.
+    pub fn ge(
+        &self,
+        value: impl Into<crate::ConditionOperand>,
+    ) -> DatabaseResult<crate::RunPredicate> {
+        self.0
+            .ge(value)
+            .map(crate::RunPredicate)
+            .map_err(Into::into)
+    }
+
+    /// Build a typed less-than predicate.
+    ///
+    /// # Errors
+    /// Rejects values incompatible with this Condition Definition's value type.
+    pub fn lt(
+        &self,
+        value: impl Into<crate::ConditionOperand>,
+    ) -> DatabaseResult<crate::RunPredicate> {
+        self.0
+            .lt(value)
+            .map(crate::RunPredicate)
+            .map_err(Into::into)
+    }
+
+    /// Build a typed less-than-or-equal predicate.
+    ///
+    /// # Errors
+    /// Rejects values incompatible with this Condition Definition's value type.
+    pub fn le(
+        &self,
+        value: impl Into<crate::ConditionOperand>,
+    ) -> DatabaseResult<crate::RunPredicate> {
+        self.0
+            .le(value)
+            .map(crate::RunPredicate)
+            .map_err(Into::into)
+    }
+}
 
 /// Immutable, name-indexed catalog of dynamic Condition Definitions.
 #[derive(Debug, Clone)]
@@ -409,9 +658,14 @@ pub struct ConditionCatalog(std::collections::BTreeMap<String, ConditionDefiniti
 
 impl ConditionCatalog {
     pub(crate) fn new(
-        definitions: impl IntoIterator<Item = (String, ConditionDefinition)>,
+        definitions: impl IntoIterator<Item = (String, crate::rcdb::models::ConditionTypeMeta)>,
     ) -> Self {
-        Self(definitions.into_iter().collect())
+        Self(
+            definitions
+                .into_iter()
+                .map(|(name, definition)| (name, ConditionDefinition(definition)))
+                .collect(),
+        )
     }
 
     /// Look up a definition, returning `None` for an unknown name.
@@ -488,7 +742,7 @@ pub struct ConditionQuery {
     query: RunQuery,
     fields: Vec<String>,
     policy: MissingDataPolicy,
-    fallbacks: std::collections::BTreeMap<String, crate::rcdb::Value>,
+    fallbacks: std::collections::BTreeMap<String, ConditionValue>,
 }
 impl ConditionQuery {
     #[cfg(feature = "python")]
@@ -506,13 +760,14 @@ impl ConditionQuery {
         query.query = query.query.with_interrupt_check(check);
         query
     }
-    pub(crate) fn definition(&self, name: &str) -> RCDBResult<ConditionDefinition> {
-        self.query
+    pub(crate) fn definition(&self, name: &str) -> DatabaseResult<ConditionDefinition> {
+        Ok(self
+            .query
             .reader
             .conditions()
             .get(name)
             .cloned()
-            .ok_or_else(|| crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()))
+            .ok_or_else(|| crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()))?)
     }
     /// Captured query inputs and ordered projected names, without evaluation.
     #[must_use]
@@ -528,7 +783,7 @@ impl ConditionQuery {
     ///
     /// # Errors
     /// Returns contextual errors for malformed values or failed database execution.
-    pub fn collect(&self) -> RCDBResult<ConditionResults> {
+    pub fn collect(&self) -> DatabaseResult<ConditionResults> {
         let mut chunks = self.stream(1024)?;
         let Some(first) = chunks.next() else {
             return self.collect_for_runs(RunSet {
@@ -549,7 +804,7 @@ impl ConditionQuery {
         Ok(result)
     }
 
-    fn collect_for_runs(&self, runs: RunSet) -> RCDBResult<ConditionResults> {
+    fn collect_for_runs(&self, runs: RunSet) -> DatabaseResult<ConditionResults> {
         let rows = self.query.reader.fetch_with_options(
             &self.fields,
             &RCDBContext::from_selection(RunSelection::runs(runs.numbers().iter().copied())),
@@ -563,7 +818,11 @@ impl ConditionQuery {
                 .numbers()
                 .iter()
                 .map(|run| {
-                    let mut value = rows.get(run).and_then(|row| row.get(name)).cloned();
+                    let mut value = rows
+                        .get(run)
+                        .and_then(|row| row.get(name))
+                        .cloned()
+                        .map(ConditionValue);
                     if value.is_none() {
                         missing_values.push((*run, name.clone()));
                         if let Some(fallback) = self.fallbacks.get(name) {
@@ -579,7 +838,7 @@ impl ConditionQuery {
         missing_values.sort();
         substitutions.sort();
         if self.policy == MissingDataPolicy::Strict && !missing_values.is_empty() {
-            return Err(crate::rcdb::RCDBError::MissingData(missing_values.len()));
+            return Err(crate::rcdb::RCDBError::MissingData(missing_values.len()).into());
         }
         Ok(ConditionResults {
             runs,
@@ -605,12 +864,13 @@ impl ConditionQuery {
     ///
     /// # Errors
     /// Rejects unknown fields and fallback values that do not match the field type.
-    pub fn fill(&self, name: &str, operand: crate::ConditionOperand) -> RCDBResult<Self> {
+    pub fn fill(&self, name: &str, operand: crate::ConditionOperand) -> DatabaseResult<Self> {
         if !self.fields.iter().any(|field| field == name) {
-            return Err(crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()));
+            return Err(crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()).into());
         }
         let definition = self.definition(name)?;
-        let value = crate::rcdb::Value::from_operand(definition.value_type(), operand)?;
+        let value = crate::rcdb::Value::from_operand(definition.0.value_type(), operand)
+            .map(ConditionValue)?;
         let mut query = self.clone();
         query.policy = MissingDataPolicy::Fallback;
         query.fallbacks.insert(name.into(), value);
@@ -621,7 +881,7 @@ impl ConditionQuery {
     ///
     /// # Errors
     /// Rejects a zero chunk size.
-    pub fn stream(&self, chunk_size: usize) -> RCDBResult<ConditionStream> {
+    pub fn stream(&self, chunk_size: usize) -> DatabaseResult<ConditionStream> {
         Ok(ConditionStream {
             query: self.clone(),
             runs: self.query.stream(chunk_size)?,
@@ -632,7 +892,7 @@ impl ConditionQuery {
     ///
     /// # Errors
     /// Returns a contextual RCDB evaluation or value-decoding error.
-    pub fn first(&self) -> RCDBResult<Option<ConditionResults>> {
+    pub fn first(&self) -> DatabaseResult<Option<ConditionResults>> {
         let Some(chunk) = self.query.first()? else {
             return Ok(None);
         };
@@ -644,7 +904,7 @@ impl ConditionQuery {
     ///
     /// # Errors
     /// Returns a contextual RCDB evaluation error.
-    pub fn count(&self) -> RCDBResult<usize> {
+    pub fn count(&self) -> DatabaseResult<usize> {
         self.query.count()
     }
 
@@ -652,7 +912,7 @@ impl ConditionQuery {
     ///
     /// # Errors
     /// Returns a cardinality, RCDB evaluation, or value-decoding error.
-    pub fn one(&self) -> RCDBResult<ConditionResults> {
+    pub fn one(&self) -> DatabaseResult<ConditionResults> {
         let run = self.query.one()?;
         self.collect_for_runs(self.query.evaluate_candidates(vec![run], true)?)
     }
@@ -664,7 +924,7 @@ pub struct ConditionStream {
     runs: RunStream,
 }
 impl Iterator for ConditionStream {
-    type Item = RCDBResult<ConditionResults>;
+    type Item = DatabaseResult<ConditionResults>;
     fn next(&mut self) -> Option<Self::Item> {
         self.runs
             .next()
@@ -726,7 +986,7 @@ impl ConditionReport {
 #[derive(Debug, Clone)]
 pub struct ConditionResults {
     runs: RunSet,
-    columns: std::collections::BTreeMap<String, Vec<Option<crate::rcdb::Value>>>,
+    columns: std::collections::BTreeMap<String, Vec<Option<ConditionValue>>>,
     provenance: ConditionProvenance,
     report: ConditionReport,
 }
@@ -769,7 +1029,7 @@ impl ConditionResults {
     ///
     /// # Errors
     /// Rejects runs outside the result and names outside the projection.
-    pub fn get(&self, run: RunNumber, name: &str) -> RCDBResult<Option<&crate::rcdb::Value>> {
+    pub fn get(&self, run: RunNumber, name: &str) -> DatabaseResult<Option<&ConditionValue>> {
         let column = self.column(name)?;
         let index = self
             .runs
@@ -782,10 +1042,11 @@ impl ConditionResults {
     ///
     /// # Errors
     /// Rejects names outside the projection, distinguishing them from missing cells.
-    pub fn column(&self, name: &str) -> RCDBResult<&[Option<crate::rcdb::Value>]> {
-        self.columns
+    pub fn column(&self, name: &str) -> DatabaseResult<&[Option<ConditionValue>]> {
+        Ok(self
+            .columns
             .get(name)
             .map(Vec::as_slice)
-            .ok_or_else(|| crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()))
+            .ok_or_else(|| crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()))?)
     }
 }

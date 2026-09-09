@@ -15,7 +15,9 @@ reconstruction = gluex.ReconstructionSelection.periods({
     gluex.RunPeriod.RP2018_08:
         gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
 })
-result = gx.workflows.luminosity(runs, reconstruction, [8.0, 8.5, 9.0]).collect()
+result = gx.workflows.luminosity(
+    runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0]
+).collect()
 histograms = result.histograms
 ```
 
@@ -25,12 +27,14 @@ The behavioral changes are deliberate:
 - reconstruction is explicit and resolved per represented run period;
 - `latest()` is fixed to the CCDB source-opening time;
 - missing required inputs are strict by default, or reported with
-  `.report_missing()`;
+  `.report_missing()`; `.fallback_to(run)` applies and records an explicit
+  selected-run to fallback-run substitution;
 - absent or zero livetime is not silently replaced by 1.0;
 - multi-run luminosity applies each run's own target density before aggregation;
 - results retain selected/used/excluded runs, source-bound run provenance,
-  both database source identities, resolved reconstruction, luminosity settings,
-  procedure version, references, and exceptions.
+  both database source identities, the requested and resolved reconstruction,
+  the source-opening calibration cutoff, luminosity settings, procedure version,
+  references, and exceptions.
 
 Raw reads remain available through `gx.sources.rcdb.raw(...)` and
 `gx.sources.ccdb.raw(...)`. Run conditions and calibrations should use the typed
