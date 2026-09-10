@@ -7,6 +7,11 @@ use crate::{
 use chrono::{DateTime, Utc};
 use std::{collections::BTreeMap, sync::Arc};
 
+mod discovery;
+mod payloads;
+mod resolution;
+mod results;
+
 /// Explicit reconstruction-aware calibration selector.
 #[derive(Debug, Clone)]
 pub enum ReconstructionSelection {
@@ -38,44 +43,7 @@ pub struct CalibrationCatalog {
 }
 impl CalibrationCatalog {
     pub(crate) fn new(reader: &CCDB) -> Self {
-        let tables: BTreeMap<_, _> = reader
-            .catalog_tables()
-            .into_iter()
-            .map(|handle| {
-                (
-                    handle.full_path(),
-                    CalibrationTable {
-                        handle,
-                        source: reader.connection_path().into(),
-                    },
-                )
-            })
-            .collect();
-        let directories = reader
-            .catalog_directories()
-            .into_iter()
-            .map(|dir| {
-                let path = dir.full_path();
-                let children = dir
-                    .dirs()
-                    .into_iter()
-                    .map(|d| (d.meta().name().to_owned(), d.full_path()))
-                    .collect();
-                let local_tables = dir
-                    .tables()
-                    .into_iter()
-                    .map(|t| (t.name().to_owned(), tables[&t.full_path()].clone()))
-                    .collect();
-                (
-                    path.clone(),
-                    CalibrationDirectory {
-                        path,
-                        directories: children,
-                        tables: local_tables,
-                    },
-                )
-            })
-            .collect();
+        let (tables, directories) = discovery::discover(reader);
         Self {
             tables,
             directories,
@@ -778,91 +746,11 @@ impl CalibrationStream {
         &mut self,
         runs: &[RunNumber],
     ) -> DatabaseResult<BTreeMap<RunNumber, ResolvedAssignment>> {
-        let selector = self.query.provenance.selector.clone();
-        let reconstruction = match selector {
-            CalibrationSelector::Defaults | CalibrationSelector::Direct => {
-                return Ok(self.query.table.handle.resolve_assignments_with_options(
-                    runs,
-                    &self.query.provenance.variation,
-                    self.query.provenance.as_of,
-                    &self.query.execution,
-                )?);
-            }
-            CalibrationSelector::Reconstruction(reconstruction) => reconstruction,
-            CalibrationSelector::Conflict => {
-                return Err(CCDBError::SelectorConflict(
-                    "reconstruction selection cannot be combined with direct variation/as-of arguments"
-                        .into(),
-                )
-                .into());
-            }
-        };
-        let mut grouped: BTreeMap<RunPeriod, Vec<RunNumber>> = BTreeMap::new();
-        for &run in runs {
-            grouped
-                .entry(RunPeriod::try_from(run)?)
-                .or_default()
-                .push(run);
-        }
-        let mut assignments = BTreeMap::new();
-        for (period, period_runs) in grouped {
-            let context = match &reconstruction {
-                ReconstructionSelection::Latest => RESTVersionContext {
-                    variation: self.query.provenance.variation.clone(),
-                    timestamp: self.query.provenance.as_of,
-                },
-                ReconstructionSelection::Periods(selections) => selections
-                    .get(&period)
-                    .ok_or_else(|| {
-                        CCDBError::InvalidPathError(format!(
-                            "missing reconstruction selection for {period:?}"
-                        ))
-                    })?
-                    .resolve_context(period)?,
-            };
-            assignments.extend(self.query.table.handle.resolve_assignments_with_options(
-                &period_runs,
-                &context.variation,
-                context.timestamp,
-                &self.query.execution,
-            )?);
-            self.resolved_reconstruction.insert(period, context);
-        }
-        Ok(assignments)
+        resolution::resolve(&self.query, runs, &mut self.resolved_reconstruction)
     }
 
     fn decode_entry(&mut self, assignment: ResolvedAssignment) -> DatabaseResult<CalibrationEntry> {
-        if self.query.execution.interrupted() {
-            return Err(CCDBError::from(crate::execution::interrupted_error()).into());
-        }
-        let id = assignment.constant_set.id();
-        let payload = if let Some(payload) = self.payloads.get(&id) {
-            Arc::clone(payload)
-        } else {
-            let layout = self.query.table.handle.column_layout()?;
-            let n_rows = usize::try_from(self.query.table.metadata().n_rows()).map_err(|_| {
-                CCDBError::InvalidPathError(format!(
-                    "{}: negative row count",
-                    self.query.table.path()
-                ))
-            })?;
-            let payload = Arc::new(CalibrationPayload(Data::from_vault(
-                assignment.constant_set.vault(),
-                layout,
-                n_rows,
-            )?));
-            self.payloads.insert(id, Arc::clone(&payload));
-            if self.payloads.len() > self.query.table.handle.payload_cache_capacity()
-                && let Some(evicted) = self.payloads.keys().copied().find(|key| *key != id)
-            {
-                self.payloads.remove(&evicted);
-            }
-            payload
-        };
-        Ok(CalibrationEntry {
-            assignment,
-            payload,
-        })
+        payloads::decode(&self.query, &mut self.payloads, assignment)
     }
 
     fn evaluate(
@@ -884,49 +772,14 @@ impl CalibrationStream {
             }
             decoded.insert(run, self.decode_entry(assignment)?);
         }
-        let missing_runs: Vec<_> = runs
-            .iter()
-            .copied()
-            .filter(|run| !decoded.contains_key(run))
-            .collect();
-        if self.query.provenance.policy == crate::MissingDataPolicy::Strict
-            && !missing_runs.is_empty()
-        {
-            return Err(CCDBError::MissingData(missing_runs.len()).into());
-        }
-        let mut entries: BTreeMap<_, _> = runs
-            .iter()
-            .filter_map(|run| decoded.get(run).cloned().map(|entry| (*run, entry)))
-            .collect();
-        let mut substitutions = Vec::new();
-        if let Some(fallback) = self.query.provenance.fallback_run {
-            let entry = decoded
-                .get(&fallback)
-                .cloned()
-                .ok_or(CCDBError::MissingData(1))?;
-            for &run in &missing_runs {
-                entries.insert(run, entry.clone());
-                substitutions.push((run, fallback));
-            }
-        }
-        let mut provenance = self.query.provenance.clone();
-        provenance.resolved_reconstruction = self.resolved_reconstruction.clone();
-        provenance.run_report.clone_from(&self.run_report);
-        let payloads = entries
-            .values()
-            .map(|entry| (entry.constant_set_id(), Arc::clone(&entry.payload)))
-            .collect();
-        Ok(CalibrationSeries {
-            entries,
-            payloads,
-            provenance,
-            report: CalibrationReport {
-                missing_runs,
-                substitutions,
-                evaluated_runs: runs,
-                complete,
-            },
-        })
+        results::assemble(
+            &self.query,
+            runs,
+            complete,
+            &decoded,
+            &self.resolved_reconstruction,
+            self.run_report.as_ref(),
+        )
     }
 }
 impl Iterator for CalibrationStream {

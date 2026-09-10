@@ -42,7 +42,7 @@ def test_metadata_is_lazy_and_payload_errors_are_not_omissions(ccdb_path, tmp_pa
     query = table.for_runs(gluex.RunSelection.range(-(2**63), 2**63 - 1))
     assert query.provenance.table == table.path
     assert 'CalibrationQuery' in repr(query)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(gluex.DecodeError):
         table.for_runs(gluex.RunSelection.runs([2])).collect()
     assert len(table.for_runs(gluex.RunSelection.range(4, 2)).collect()) == 0
     with pytest.raises(RuntimeError, match='CCDB'):
@@ -161,7 +161,7 @@ def test_composed_streaming_reconstruction_and_missing_policies(rcdb_path, ccdb_
     assert shared.count() == 4
 
     missing = gx.calibrations['/TARGET/density'].for_runs(gluex.RunSelection.runs([2, 50685]))
-    with pytest.raises(RuntimeError, match='missing'):
+    with pytest.raises(gluex.MissingDataError, match='missing'):
         missing.strict().collect()
     filled = missing.fallback_to(50685).collect()
     assert filled[2].constant_set_id == filled[50685].constant_set_id

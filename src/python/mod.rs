@@ -1,6 +1,7 @@
 mod calibrations;
 mod ccdb;
 mod core;
+mod exceptions;
 mod execution;
 mod generation;
 mod lumi;
@@ -47,7 +48,7 @@ mod gluex {
         PyConditionCatalog, PyConditionDefinition, PyConditionOmission, PyConditionProvenance,
         PyConditionQuery, PyConditionReport, PyConditionResults, PyConditionStream,
         PyMissingDataConfig, PyRunAccounting, PyRunOmission, PyRunOmissionReason, PyRunPredicate,
-        PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet, PyRunStream,
+        PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet, PyRunStream, PyRuns,
         PySourceIdentity, approved_production,
     };
 
@@ -75,6 +76,7 @@ mod gluex {
 
     #[pymodule_init]
     fn init(module: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
+        super::exceptions::register(module)?;
         let modules = module.py().import("sys")?.getattr("modules")?;
         for name in ["ccdb", "generation", "lumi", "rcdb"] {
             modules.set_item(format!("gluex.{name}"), module.getattr(name)?)?;

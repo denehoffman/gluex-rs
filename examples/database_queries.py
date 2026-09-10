@@ -35,9 +35,9 @@ def main() -> None:
     selection = gluex.RunSelection.runs(args.run or [50685, 50697])
     run_query = None
     if gx.capabilities.rcdb:
-        current = gx.conditions['beam_current']
+        current = gx.runs.conditions['beam_current']
         minimum_current = 10.0
-        run_query = gx.runs(selection).where(current > minimum_current)
+        run_query = gx.runs.select(selection).where(current > minimum_current)
         for chunk in run_query.stream(chunk_size=128):
             if chunk is None:
                 continue
@@ -46,7 +46,7 @@ def main() -> None:
         print('Selected:', runs.numbers)
         print('Unknown exclusions:', runs.report.unknown_runs)
         print('Run inputs:', runs.provenance)
-        projected = gx.runs(selection).select(['beam_current', 'polarization_direction'])
+        projected = gx.runs.select(selection).columns('beam_current', 'polarization_direction')
         values = projected.collect()
         print('Condition runs:', values.runs.numbers)
         print('Beam current (nA):', values.column('beam_current'))

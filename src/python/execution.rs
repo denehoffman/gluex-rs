@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use pyo3::{
-    exceptions::{PyKeyboardInterrupt, PyRuntimeError, PyTimeoutError, PyValueError},
+    exceptions::{PyKeyboardInterrupt, PyValueError},
     prelude::*,
 };
 
@@ -34,20 +34,16 @@ impl PythonExecution {
         }
     }
 
-    pub(crate) fn finish<T, E: std::fmt::Display>(&self, result: Result<T, E>) -> PyResult<T> {
+    pub(crate) fn finish<T, E: std::error::Error + 'static>(
+        &self,
+        result: Result<T, E>,
+    ) -> PyResult<T> {
         if self.interrupted.load(Ordering::Acquire) {
             Err(PyKeyboardInterrupt::new_err(
                 "database execution interrupted",
             ))
         } else {
-            result.map_err(|error| {
-                let message = error.to_string();
-                if message.contains("execution timed out") {
-                    PyTimeoutError::new_err(message)
-                } else {
-                    PyRuntimeError::new_err(message)
-                }
-            })
+            result.map_err(|error| super::exceptions::map(&error))
         }
     }
 
@@ -58,7 +54,7 @@ impl PythonExecution {
     ) -> PyResult<T>
     where
         Q: crate::execution::TerminalQuery + Send + Sync,
-        Q::Error: std::fmt::Display + Send,
+        Q::Error: std::error::Error + Send + 'static,
         T: Send,
     {
         let signals = Self::new();
@@ -78,7 +74,7 @@ impl PythonExecution {
     ) -> PyResult<T>
     where
         T: Send,
-        E: std::fmt::Display + Send,
+        E: std::error::Error + Send + 'static,
     {
         let signals = Self::new();
         let options = options.with_interrupt_check(signals.checker());

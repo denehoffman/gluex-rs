@@ -13,6 +13,14 @@ import zipfile
 from pathlib import Path
 
 EXTERNAL_IMPORTS = 'from collections.abc import Sequence\nimport laddu\n'
+EXCEPTION_DECLARATIONS = '''\nclass MissingCapabilityError(RuntimeError): ...
+class ConfigurationError(ValueError): ...
+class QueryError(RuntimeError): ...
+class DecodeError(QueryError): ...
+class MissingDataError(QueryError): ...
+class CancellationError(QueryError): ...
+class DatabaseTimeoutError(TimeoutError): ...
+'''
 
 
 def finalize(text: str) -> str:
@@ -30,6 +38,13 @@ def finalize_file(path: Path) -> None:
     path.write_text(finalize(path.read_text()))
 
 
+def finalize_root(text: str) -> str:
+    """Declare dynamically registered exception classes in the root stub."""
+    if 'class MissingCapabilityError(' in text:
+        return text
+    return text.rstrip() + '\n' + EXCEPTION_DECLARATIONS
+
+
 def finalize_wheel(path: Path) -> None:
     with zipfile.ZipFile(path, 'r') as archive:
         members = {info.filename: archive.read(info.filename) for info in archive.infolist()}
@@ -39,6 +54,12 @@ def finalize_wheel(path: Path) -> None:
         raise ValueError(message)
     target = targets[0]
     members[target] = finalize(members[target].decode()).encode()
+    roots = [name for name in members if name.endswith('/__init__.pyi')]
+    if len(roots) != 1:
+        message = f'expected one generated __init__.pyi in {path}, found {len(roots)}'
+        raise ValueError(message)
+    root = roots[0]
+    members[root] = finalize_root(members[root].decode()).encode()
     records = [name for name in members if name.endswith('.dist-info/RECORD')]
     if len(records) != 1:
         message = f'expected one RECORD in {path}, found {len(records)}'
@@ -59,22 +80,25 @@ def finalize_wheel(path: Path) -> None:
             archive.writestr(name, data)
 
 
-def installed_stub() -> Path:
+def installed_stubs() -> list[Path]:
     spec = importlib.util.find_spec('gluex')
     if spec is None or spec.origin is None:
         message = 'the installed gluex extension could not be located'
         raise RuntimeError(message)
-    return Path(spec.origin).with_name('generation.pyi')
+    package = Path(spec.origin).parent
+    return [package / 'generation.pyi', package / '__init__.pyi']
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('paths', nargs='*', type=Path)
     args = parser.parse_args()
-    paths = args.paths or [installed_stub()]
+    paths = args.paths or installed_stubs()
     for path in paths:
         if path.suffix == '.whl':
             finalize_wheel(path)
+        elif path.name == '__init__.pyi':
+            path.write_text(finalize_root(path.read_text()))
         else:
             finalize_file(path)
 

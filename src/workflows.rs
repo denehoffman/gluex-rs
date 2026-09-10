@@ -16,6 +16,29 @@ use thiserror::Error;
 
 /// Stable identifier for the implemented luminosity procedure.
 pub const LUMINOSITY_PROCEDURE_VERSION: &str = "gluex-luminosity-v1";
+const LUMINOSITY_REFERENCES: &[&str] = &[
+    "pair production and converter radiation-length scaling: https://doi.org/10.1103/RevModPhys.46.815 (section IV.B-D)",
+];
+const LUMINOSITY_ASSUMPTIONS: &[&str] = &[
+    "nominal liquid-hydrogen target length is 29.5 cm",
+    "CCDB /TARGET/density is expressed in mg/cm^3 and its uncertainty has the same unit",
+    "photon-energy bin edges are expressed in GeV and tagged luminosity is reported in inverse picobarns",
+    "coherent-peak filtering uses the run-period bounds published by gluex-rs",
+    "REST selection supplies the variation and effective timestamp for reconstruction-dependent endpoint constants",
+];
+const LUMINOSITY_EXCEPTIONS: &[&str] = &[
+    "RP2019_11 runs 72436 and later use endpoint constants fixed at 2021-04-23T00:00:01Z",
+    "runs 10634 through 10693 with an unrecognized RCDB converter use the logbook-observed 75 um beryllium converter",
+    "runs through 60000 may omit endpoint calibration and use zero endpoint-energy correction",
+];
+const LUMINOSITY_VALIDATION_GAPS: &[&str] = &[
+    "target length 29.5 cm: authoritative experiment reference is not yet recorded",
+    "beryllium radiation length 35.28 cm: authoritative material-data reference is not yet recorded",
+    "coherent-peak run-period bounds: authoritative source beyond the CCDB-derived project table is not yet recorded",
+    "endpoint energy and endpoint-calibration handling: authoritative procedure reference is not yet recorded",
+    "REST selection and reconstruction mapping: authoritative procedure reference is not yet recorded",
+    "RP2019_11 run-72436 override and 2021-04-23T00:00:01Z cutoff: authoritative logbook or calibration reference is not yet recorded",
+];
 
 /// Failure to construct or evaluate a `GlueX` Workflow.
 #[derive(Debug, Error)]
@@ -235,10 +258,10 @@ impl LuminosityQuery {
             calibration_default_as_of: source_opened_at,
             procedure_version: LUMINOSITY_PROCEDURE_VERSION,
             procedure_status: "canonical",
-            references: vec!["https://doi.org/10.1103/RevModPhys.46.815"],
-            exceptions: vec![
-                "RP2019_11 endpoint constants after run 72435 use the documented 2021-04-23 override",
-            ],
+            references: LUMINOSITY_REFERENCES.to_vec(),
+            assumptions: LUMINOSITY_ASSUMPTIONS.to_vec(),
+            exceptions: LUMINOSITY_EXCEPTIONS.to_vec(),
+            validation_gaps: LUMINOSITY_VALIDATION_GAPS.to_vec(),
             missing_policy: self.policy,
             coherent_peak: self.coherent_peak,
             polarized: self.polarized,
@@ -341,7 +364,9 @@ pub struct LuminosityProvenance {
     procedure_version: &'static str,
     procedure_status: &'static str,
     references: Vec<&'static str>,
+    assumptions: Vec<&'static str>,
     exceptions: Vec<&'static str>,
+    validation_gaps: Vec<&'static str>,
     missing_policy: MissingDataPolicy,
     coherent_peak: bool,
     polarized: bool,
@@ -393,10 +418,20 @@ impl LuminosityProvenance {
     pub fn references(&self) -> &[&'static str] {
         &self.references
     }
+    /// Material assumptions applied by the implemented procedure.
+    #[must_use]
+    pub fn assumptions(&self) -> &[&'static str] {
+        &self.assumptions
+    }
     /// Explicit scientific exceptions applied by the implementation.
     #[must_use]
     pub fn exceptions(&self) -> &[&'static str] {
         &self.exceptions
+    }
+    /// Material claims whose authoritative experiment reference is not yet recorded.
+    #[must_use]
+    pub fn validation_gaps(&self) -> &[&'static str] {
+        &self.validation_gaps
     }
     /// Missing-input policy used by this result.
     #[must_use]

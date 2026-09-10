@@ -10,12 +10,12 @@ import gluex
 
 def main() -> None:
     gx = gluex.open(ccdb=gluex.DISABLED)
-    catalog = gx.conditions
+    catalog = gx.runs.conditions
     print(f'{len(catalog)} condition definitions')
     for name, definition in catalog.items()[:5]:
         print(name, definition.value_type, definition.description)
 
-    query = gx.runs(gluex.RunSelection.period(gluex.RunPeriod.RP2018_08))
+    query = gx.runs.select(gluex.RunPeriod.RP2018_08)
     print(query)  # Does not retrieve runs.
     result = query.collect()
     print('Recorded runs:', result.numbers)

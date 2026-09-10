@@ -177,10 +177,30 @@ impl PyLuminosityProvenance {
         )
     }
     #[getter]
+    fn assumptions(&self) -> TypedTuple<String> {
+        TypedTuple(
+            self.0
+                .assumptions()
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        )
+    }
+    #[getter]
     fn exceptions(&self) -> TypedTuple<String> {
         TypedTuple(
             self.0
                 .exceptions()
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        )
+    }
+    #[getter]
+    fn validation_gaps(&self) -> TypedTuple<String> {
+        TypedTuple(
+            self.0
+                .validation_gaps()
                 .iter()
                 .map(ToString::to_string)
                 .collect(),

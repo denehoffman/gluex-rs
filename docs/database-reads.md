@@ -7,14 +7,13 @@ scope. Keep the file unchanged while the session or its queries are in use.
 import gluex
 
 gx = gluex.open(rcdb='rcdb.sqlite', ccdb=gluex.DISABLED)
-conditions = gx.conditions
+conditions = gx.runs.conditions
 print(conditions.keys())
 print(conditions['event_count'].value_type)  # 'int'
 for name, definition in conditions.items():
     print(name, definition.description)
 
-scope = gluex.RunSelection.runs([50697, 50685, 50697])
-query = gx.runs(scope)
+query = gx.runs.select([50697, 50685, 50697])
 print(query.selection, query.provenance)  # No run retrieval.
 runs = query.collect()
 print(runs.numbers, runs.provenance.source)
@@ -25,6 +24,14 @@ expose `id`, `name`, `value_type`, `description`, and native `created` text.
 Descriptions and creation text are empty when unavailable. Iteration yields names
 in lexical order; unknown indexed names raise `KeyError`. Catalogs and definitions
 are immutable.
+
+`gx.runs.select(scope)` is the preferred query constructor. It accepts one run
+number, a sequence of run numbers, a Python `range` with its normal exclusive
+stop, a `RunPeriod`, a recognized short period name such as `"F18"`, an explicit
+`RunSelection`, or an existing `RunQuery`. `gx.runs.between(start, end)` names
+inclusive numeric bounds explicitly. `gx.runs.conditions` is the dict-like,
+inspectable condition catalog; neither facade discovery nor query construction
+retrieves run values.
 
 `RunSelection.runs(numbers)` sorts and deduplicates explicit numbers.
 `RunSelection.range(start, end)` uses **inclusive** bounds and never expands the
@@ -121,8 +128,8 @@ A runnable installed-package example is
 Condition Definitions select the operand type from their database metadata:
 
 ```python
-current = gx.conditions["beam_current"]
-query = gx.runs(gluex.RunSelection.range(50000, 59999))
+current = gx.runs.conditions["beam_current"]
+query = gx.runs.between(50000, 59999)
 selected = query.where(current > 10).collect()
 print(selected.numbers, selected.report.unknown_runs)
 
@@ -218,8 +225,8 @@ accepts independent RCDB and CCDB paths and exercises both query surfaces.
 ## Condition projections
 
 ```python
-query = gx.runs(gluex.RunSelection.range(50000, 59999))
-projected = query.select(["beam_current", "polarization_direction"])
+query = gx.runs.between(50000, 59999)
+projected = query.columns("beam_current", "polarization_direction")
 print(projected.provenance)  # No value retrieval.
 result = projected.collect()
 print(result.runs.numbers)
@@ -229,11 +236,12 @@ for run in result.runs:
 print(result.report.missing_values)
 ```
 
-`RunQuery.select(names)` returns a distinct `ConditionQuery`; its `collect()`
+`RunQuery.columns(*names)` returns a distinct `ConditionQuery`; its `collect()`
 returns `ConditionResults`, while the original Run Query still collects a
 `RunSet`. Names are validated without reading values; empty projections and
 unknown names raise `ValueError`. Duplicate names are deduplicated in request
-order. Non-string fields raise `TypeError`.
+order. Non-string fields raise `TypeError`. The temporary list-taking
+`RunQuery.select(names)` form remains available during migration.
 
 Values are native `int`, `float`, `bool`, `str`, timezone-aware UTC `datetime`, or
 `None`. JSON and RCDB blob text remain strings. A missing row or SQL NULL becomes
@@ -434,6 +442,9 @@ print(result.provenance.runs, result.provenance.rcdb_source, result.provenance.c
 print(result.provenance.requested_reconstruction)
 print(result.provenance.resolved_reconstruction)
 print(result.provenance.calibration_default_as_of)
+print(result.provenance.procedure_status, result.provenance.procedure_version)
+print(result.provenance.references, result.provenance.assumptions)
+print(result.provenance.exceptions, result.provenance.validation_gaps)
 ```
 
 The default missing-input policy is strict. `report_missing()` instead excludes
@@ -450,9 +461,14 @@ time, so delaying collection cannot change that default. Non-REST calibration
 lookups use that same captured cutoff. Provenance retains both the requested
 reconstruction selector and its resolved period mapping, distinguishing an
 explicit `latest()` request from a period-specific override.
-The result records procedure version `gluex-luminosity-v1`, its canonical
-scientific-review status, the pair-production reference, and the explicit
-RP2019-11 endpoint-constant exception. It also retains both source identities,
+The result records procedure version `gluex-luminosity-v1` and status
+`canonical`. That status is accompanied by the pair-production reference,
+material assumptions, explicit exceptions, and validation gaps wherever an
+authoritative experiment reference has not yet been recorded. The gaps cover
+the target length, beryllium radiation length, coherent-peak bounds, endpoint
+handling, REST selection, and the RP2019-11 override; they are evidence that
+still needs validating, not implicit claims of collaboration endorsement.
+The result also retains both source identities,
 Run Set provenance, and the coherent-peak/polarized settings. Multi-period requests resolve each period
 separately and aggregate per-run luminosity, including per-run target density.
 The `gluex lumi` command uses this same workflow.
@@ -460,6 +476,16 @@ The `gluex lumi` command uses this same workflow.
 Rust uses `gx.workflows().luminosity(&runs, reconstruction, edges).collect()?`.
 
 ## Cancellation, timeouts, and caches
+
+Python exposes catchable failure categories: `MissingCapabilityError` for an
+unconfigured backend, `ConfigurationError` for an invalid source,
+`MissingDataError` for strict scientific omissions, `DecodeError` for malformed
+stored values, `QueryError` for other database/query failures, and
+`CancellationError` for caller cancellation. `DatabaseTimeoutError` remains a
+subclass of Python's built-in `TimeoutError`, and host signal interruption remains
+a normal `KeyboardInterrupt`. These types preserve concise operation, table,
+condition, selector, run, and source context supplied by the corresponding Rust
+error chain; callers do not need to parse messages to distinguish categories.
 
 Raw readers accept `timeout=` in seconds. Run, condition, and calibration queries
 provide immutable `.timeout(seconds)` transformations; Rust uses
