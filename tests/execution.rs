@@ -2,7 +2,10 @@
 
 use std::{thread, time::Duration};
 
-use gluex_rs::{CancellationToken, ExecutionOptions, GlueX, RawValue, RunSelection, SourceConfig};
+use gluex_rs::{
+    CancellationToken, ExecutionError, ExecutionOptions, GlueX, RawValue, RunSelection,
+    SourceConfig,
+};
 
 #[path = "fixtures/rust.rs"]
 mod fixtures;
@@ -24,7 +27,10 @@ fn raw_timeout_interrupts_work_and_releases_the_reader() {
     let error = rcdb
         .raw_with_options(EXPENSIVE_READ, &[], &options)
         .expect_err("an expired timeout must interrupt SQLite");
-    assert!(error.to_string().contains("interrupted"));
+    assert!(matches!(
+        error,
+        gluex_rs::RawError::Execution(ExecutionError::Timeout)
+    ));
 
     let result = rcdb.raw("SELECT ?", &[RawValue::Integer(42)]).unwrap();
     assert_eq!(result.rows()[0].values(), &[RawValue::Integer(42)]);
@@ -39,7 +45,10 @@ fn explicit_cancellation_interrupts_before_execution() {
     let error = rcdb
         .raw_with_options(EXPENSIVE_READ, &[], &ExecutionOptions::cancellable(token))
         .expect_err("a cancelled request must not execute");
-    assert!(error.to_string().contains("interrupted"));
+    assert!(matches!(
+        error,
+        gluex_rs::RawError::Execution(ExecutionError::Cancelled)
+    ));
 }
 
 #[test]
@@ -58,7 +67,7 @@ fn domain_queries_honor_expired_deadlines_without_partial_results() {
         .with_timeout(Duration::ZERO)
         .collect()
         .expect_err("run evaluation must honor its deadline");
-    assert!(run_error.to_string().contains("interrupted"));
+    assert_eq!(run_error.execution_error(), Some(ExecutionError::Timeout));
 
     let calibration_error = gx
         .calibrations()
@@ -70,7 +79,41 @@ fn domain_queries_honor_expired_deadlines_without_partial_results() {
         .with_timeout(Duration::ZERO)
         .collect()
         .expect_err("calibration evaluation must honor its deadline");
-    assert!(calibration_error.to_string().contains("interrupted"));
+    assert_eq!(
+        calibration_error.execution_error(),
+        Some(ExecutionError::Timeout)
+    );
+}
+
+#[test]
+fn timeout_begins_at_each_terminal_evaluation() {
+    let rcdb = fixtures::rcdb();
+    let gx = GlueX::open(SourceConfig::sqlite(rcdb.path()), SourceConfig::Disabled).unwrap();
+    let query = gx
+        .runs(RunSelection::range(2, 5))
+        .unwrap()
+        .with_timeout(Duration::from_millis(100));
+
+    thread::sleep(Duration::from_millis(150));
+    assert_eq!(query.count().unwrap(), 4);
+    thread::sleep(Duration::from_millis(150));
+    assert_eq!(query.count().unwrap(), 4);
+}
+
+#[test]
+fn stream_timeout_excludes_consumer_idle_time() {
+    let rcdb = fixtures::rcdb();
+    let gx = GlueX::open(SourceConfig::sqlite(rcdb.path()), SourceConfig::Disabled).unwrap();
+    let query = gx
+        .runs(RunSelection::range(2, 5))
+        .unwrap()
+        .with_timeout(Duration::from_millis(100));
+    let mut stream = query.stream(1).unwrap();
+
+    thread::sleep(Duration::from_millis(150));
+    assert_eq!(stream.next().unwrap().unwrap().numbers(), &[2]);
+    thread::sleep(Duration::from_millis(150));
+    assert_eq!(stream.next().unwrap().unwrap().numbers(), &[3]);
 }
 
 #[test]
@@ -99,7 +142,7 @@ fn cancellation_interrupts_in_flight_run_evaluation_and_releases_the_reader() {
         .count()
         .expect_err("cancellation must interrupt an active domain query");
     thread.join().unwrap();
-    assert!(error.to_string().contains("interrupted"));
+    assert!(error.to_string().contains("cancelled"));
     assert_eq!(
         gx.runs(RunSelection::runs([2])).unwrap().count().unwrap(),
         1
@@ -123,28 +166,28 @@ fn cancelled_run_and_condition_terminals_share_cleanup_and_leave_reader_reusable
             .collect()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     assert!(
         run_query
             .first()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     assert!(
         run_query
             .one()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     assert!(
         run_query
             .count()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     let mut run_stream = run_query.stream(1).unwrap();
     assert!(
@@ -153,7 +196,7 @@ fn cancelled_run_and_condition_terminals_share_cleanup_and_leave_reader_reusable
             .unwrap()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     assert!(run_stream.next().is_none());
 
@@ -162,28 +205,28 @@ fn cancelled_run_and_condition_terminals_share_cleanup_and_leave_reader_reusable
             .collect()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     assert!(
         condition_query
             .first()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     assert!(
         condition_query
             .one()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     assert!(
         condition_query
             .count()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     let mut condition_stream = condition_query.stream(1).unwrap();
     assert!(
@@ -192,7 +235,7 @@ fn cancelled_run_and_condition_terminals_share_cleanup_and_leave_reader_reusable
             .unwrap()
             .unwrap_err()
             .to_string()
-            .contains("interrupted")
+            .contains("cancelled")
     );
     assert!(condition_stream.next().is_none());
 
@@ -225,7 +268,7 @@ fn cancellation_interrupts_in_flight_calibration_resolution() {
         .collect()
         .expect_err("cancellation must interrupt active assignment resolution");
     thread.join().unwrap();
-    assert!(error.to_string().contains("interrupted"));
+    assert!(error.to_string().contains("cancelled"));
     assert_eq!(
         gx.calibrations()
             .unwrap()

@@ -75,16 +75,19 @@ result = gx.sources.rcdb.raw(
 )
 print([(column.name, column.declared_type) for column in result.columns])
 for row in result.rows:
-    print(row.values)
+    print(row[0], row['run'])
 ```
 
 Parameters are keyword-only in Python, default to an empty sequence, and accept
 `None`, signed 64-bit integers, floats, strings, and bytes. Integer overflow raises
 `OverflowError`. SQL NULL, INTEGER, REAL, TEXT and BLOB return those same Python
 value types. Rows, values, and column collections are immutable tuples or frozen
-Rust-owned objects. Column metadata is available even for empty results;
-expressions may have no declared type. Duplicate column names are preserved, so
-values use positional access. SQL determines row order.
+Rust-owned objects. A row supports iteration, length, ordinary positive and
+negative integer indexing, and lookup by a unique column name. Unknown names
+raise `KeyError`, out-of-range positions raise `IndexError`, and a duplicate-name
+lookup raises `ValueError` rather than choosing silently. Column metadata is
+available even for empty results; expressions may have no declared type.
+Duplicate and empty column names are preserved. SQL determines row order.
 
 Rust uses `reader.raw(sql, &[RawValue::Integer(50000), ...])`, with
 `RawValue::{Null, Integer, Real, Text, Blob}`. Access `result.columns()`,
@@ -447,7 +450,7 @@ time, so delaying collection cannot change that default. Non-REST calibration
 lookups use that same captured cutoff. Provenance retains both the requested
 reconstruction selector and its resolved period mapping, distinguishing an
 explicit `latest()` request from a period-specific override.
-The result records procedure version `gluex-luminosity-v1`, its provisional
+The result records procedure version `gluex-luminosity-v1`, its canonical
 scientific-review status, the pair-production reference, and the explicit
 RP2019-11 endpoint-constant exception. It also retains both source identities,
 Run Set provenance, and the coherent-peak/polarized settings. Multi-period requests resolve each period
@@ -463,7 +466,10 @@ provide immutable `.timeout(seconds)` transformations; Rust uses
 `with_timeout(Duration)`. Database execution releases the Python GIL and polls
 Python signals, so `KeyboardInterrupt` stops eligible SQLite work. Interrupted
 operations return no completed report and release their cursor; the same reader
-can be used again. Rust callers may also attach a shareable `CancellationToken`.
+can be used again. Exhausted budgets raise Python `TimeoutError`; Rust retains a
+typed `ExecutionError::Timeout` through database error context. Rust callers may
+also attach a shareable `CancellationToken`, whose failure remains distinct as
+`ExecutionError::Cancelled`.
 
 `gx.cache_info` exposes the per-stream decoded calibration payload capacity and
 current disposable CCDB metadata occupancy. Use

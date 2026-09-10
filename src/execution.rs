@@ -34,9 +34,24 @@ impl CancellationToken {
 
 type InterruptCheck = Arc<dyn Fn() -> bool + Send + Sync>;
 
+/// Typed reason that active database execution stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ExecutionError {
+    /// The configured active-work budget was exhausted.
+    #[error("database execution timed out")]
+    Timeout,
+    /// A caller-owned cancellation token was cancelled.
+    #[error("database execution cancelled")]
+    Cancelled,
+    /// The language binding or host interrupted execution.
+    #[error("database execution interrupted")]
+    Interrupted,
+}
+
 /// Optional deadline and cooperative cancellation attached to query evaluation.
 #[derive(Clone, Default)]
 pub struct ExecutionOptions {
+    timeout: Option<Duration>,
     deadline: Option<Instant>,
     cancellation: Option<CancellationToken>,
     interrupt_check: Option<InterruptCheck>,
@@ -46,6 +61,7 @@ impl fmt::Debug for ExecutionOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ExecutionOptions")
             .field("deadline", &self.deadline)
+            .field("timeout", &self.timeout)
             .field(
                 "cancelled",
                 &self
@@ -58,11 +74,11 @@ impl fmt::Debug for ExecutionOptions {
 }
 
 impl ExecutionOptions {
-    /// Stop work once `duration` has elapsed, measured from this call.
+    /// Configure an execution budget. Timing begins when a terminal starts.
     #[must_use]
     pub fn timeout(duration: Duration) -> Self {
         Self {
-            deadline: Some(Instant::now() + duration),
+            timeout: Some(duration),
             ..Self::default()
         }
     }
@@ -76,10 +92,11 @@ impl ExecutionOptions {
         }
     }
 
-    /// Add or replace the deadline while retaining cancellation state.
+    /// Add or replace the execution budget while retaining cancellation state.
     #[must_use]
-    pub fn with_timeout(mut self, duration: Duration) -> Self {
-        self.deadline = Some(Instant::now() + duration);
+    pub const fn with_timeout(mut self, duration: Duration) -> Self {
+        self.timeout = Some(duration);
+        self.deadline = None;
         self
     }
 
@@ -99,14 +116,52 @@ impl ExecutionOptions {
         self
     }
 
-    pub(crate) fn interrupted(&self) -> bool {
-        self.deadline
+    pub(crate) fn failure(&self) -> Option<ExecutionError> {
+        if self.interrupt_check.as_ref().is_some_and(|check| check()) {
+            Some(ExecutionError::Interrupted)
+        } else if self
+            .cancellation
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+        {
+            Some(ExecutionError::Cancelled)
+        } else if self
+            .deadline
             .is_some_and(|deadline| Instant::now() >= deadline)
-            || self
-                .cancellation
-                .as_ref()
-                .is_some_and(CancellationToken::is_cancelled)
-            || self.interrupt_check.as_ref().is_some_and(|check| check())
+        {
+            Some(ExecutionError::Timeout)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn interrupted(&self) -> bool {
+        self.failure().is_some()
+    }
+
+    fn started(&self) -> Self {
+        let mut active = self.clone();
+        if active.deadline.is_none() {
+            active.deadline = active.timeout.map(|duration| Instant::now() + duration);
+        }
+        active
+    }
+
+    pub(crate) const fn configured_timeout(&self) -> Option<Duration> {
+        self.timeout
+    }
+
+    pub(crate) const fn deadline_is_inactive(&self) -> bool {
+        self.deadline.is_none()
+    }
+
+    pub(crate) fn for_stream_step(&self, remaining: Option<Duration>) -> Self {
+        if self.deadline.is_some() {
+            return self.clone();
+        }
+        let mut active = self.clone();
+        active.timeout = remaining;
+        active.started()
     }
 }
 
@@ -128,10 +183,43 @@ pub(crate) trait TerminalQuery: Clone {
 
     fn execution_options(&self) -> &ExecutionOptions;
 
-    #[cfg(feature = "python")]
     fn with_execution_options(&self, options: ExecutionOptions) -> Self;
 
-    fn interruption_error(&self) -> Self::Error;
+    fn interruption_error(&self, failure: ExecutionError) -> Self::Error;
+}
+
+/// Remaining active-work budget for a lazy stream.
+#[derive(Default)]
+pub(crate) struct StreamBudget {
+    remaining: Option<Duration>,
+}
+
+impl StreamBudget {
+    pub(crate) const fn new(options: &ExecutionOptions) -> Self {
+        Self {
+            remaining: options.configured_timeout(),
+        }
+    }
+
+    pub(crate) fn execute<Q, T>(
+        &mut self,
+        query: &Q,
+        execute: impl FnOnce(&Q) -> Result<T, Q::Error>,
+    ) -> Result<T, Q::Error>
+    where
+        Q: TerminalQuery,
+    {
+        let started = Instant::now();
+        let active =
+            query.with_execution_options(query.execution_options().for_stream_step(self.remaining));
+        let result = execute_terminal(&active, execute);
+        if query.execution_options().deadline_is_inactive() {
+            self.remaining = self
+                .remaining
+                .map(|remaining| remaining.saturating_sub(started.elapsed()));
+        }
+        result
+    }
 }
 
 /// Execute one active terminal step through the shared interruption boundary.
@@ -142,10 +230,15 @@ pub(crate) fn execute_terminal<Q, T>(
 where
     Q: TerminalQuery,
 {
-    if query.execution_options().interrupted() {
-        return Err(query.interruption_error());
+    let active = query.with_execution_options(query.execution_options().started());
+    if let Some(failure) = active.execution_options().failure() {
+        return Err(active.interruption_error(failure));
     }
-    execute(query)
+    let result = execute(&active);
+    active
+        .execution_options()
+        .failure()
+        .map_or(result, |failure| Err(active.interruption_error(failure)))
 }
 
 pub(crate) fn with_sqlite_progress<T, E>(
@@ -154,20 +247,25 @@ pub(crate) fn with_sqlite_progress<T, E>(
     execute: impl FnOnce() -> Result<T, E>,
 ) -> Result<T, E>
 where
-    E: From<rusqlite::Error>,
+    E: From<rusqlite::Error> + From<ExecutionError>,
 {
-    if options.interrupted() {
-        return Err(interrupted_error().into());
+    let active = options.started();
+    if let Some(failure) = active.failure() {
+        return Err(failure.into());
     }
-    let progress_options = options.clone();
+    let progress_options = active.clone();
     connection
         .progress_handler(1_000, Some(move || progress_options.interrupted()))
         .map_err(E::from)?;
     let result = execute();
     let reset = connection.progress_handler(0, None::<fn() -> bool>);
-    match (result, reset) {
-        (Ok(value), Ok(())) => Ok(value),
-        (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error.into()),
+    match (result, reset, active.failure()) {
+        (_, _, Some(failure)) => Err(failure.into()),
+        (Ok(value), Ok(()), None) => Ok(value),
+        (Err(error), _, None) => Err(error),
+        (Ok(_), Err(error), None) => Err(error.into()),
     }
 }
+
+#[cfg(test)]
+mod tests;

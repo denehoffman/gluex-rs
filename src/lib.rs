@@ -30,7 +30,7 @@ pub mod execution;
 /// Monte Carlo generation and HDDM writing utilities.
 pub mod generation;
 pub use database::{DatabaseError, DatabaseResult};
-pub use execution::{CancellationToken, ExecutionOptions};
+pub use execution::{CancellationToken, ExecutionError, ExecutionOptions};
 /// Photon-flux and tagged-luminosity calculations.
 pub mod lumi;
 /// Run Conditions Database access and predicate builders.

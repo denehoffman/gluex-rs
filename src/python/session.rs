@@ -146,7 +146,7 @@ impl PyGlueX {
     fn clear_caches(&self) {
         self.0.clear_caches();
     }
-    /// Canonical workflows bound to this session's captured sources.
+    /// Canonical GlueX workflows bound to this session's captured sources.
     #[getter]
     fn workflows(&self) -> super::workflows::PyWorkflows {
         super::workflows::PyWorkflows(self.0.workflows())

@@ -36,7 +36,7 @@ def test_root_luminosity_workflow_retains_run_and_procedure_evidence() -> None:
     assert result.report.excluded_runs == ()
     assert result.report.complete
     assert result.provenance.procedure_version == 'gluex-luminosity-v1'
-    assert result.provenance.procedure_status == 'provisional'
+    assert result.provenance.procedure_status == 'canonical'
     assert result.provenance.missing_policy == 'strict'
     assert result.provenance.runs.source == str(runs.provenance.source)
     assert result.provenance.coherent_peak is False

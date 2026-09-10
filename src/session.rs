@@ -187,7 +187,7 @@ impl GlueX {
             ccdb.clear_runtime_caches();
         }
     }
-    /// Access canonical workflows bound to this session's captured sources.
+    /// Access canonical `GlueX` workflows bound to this session's captured sources.
     #[must_use]
     pub fn workflows(&self) -> crate::Workflows {
         crate::Workflows::new(self.sources.clone())

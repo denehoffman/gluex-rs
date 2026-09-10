@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{LuminosityQuery, LuminosityResult, RunNumber, Workflows};
 
-/// Canonical workflows bound to one GlueX source generation.
+/// Canonical GlueX workflows bound to one source generation.
 #[pyclass(name = "Workflows", module = "gluex", frozen)]
 pub struct PyWorkflows(pub(crate) Workflows);
 

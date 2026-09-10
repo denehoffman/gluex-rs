@@ -6,21 +6,45 @@ use std::{error::Error, fmt};
 #[derive(Debug)]
 pub struct DatabaseError {
     source: Box<dyn Error + Send + Sync>,
+    execution: Option<crate::ExecutionError>,
 }
 
 impl DatabaseError {
     pub(crate) fn new(source: impl Error + Send + Sync + 'static) -> Self {
+        let execution = execution_error(&source);
         Self {
             source: Box::new(source),
+            execution,
         }
     }
 
     pub(crate) fn with_context(context: impl Into<String>, source: Self) -> Self {
-        Self::new(ContextError {
-            context: context.into(),
-            source,
-        })
+        let execution = source.execution;
+        Self {
+            source: Box::new(ContextError {
+                context: context.into(),
+                source,
+            }),
+            execution,
+        }
     }
+
+    /// Typed execution failure retained through domain-specific context layers.
+    #[must_use]
+    pub const fn execution_error(&self) -> Option<crate::ExecutionError> {
+        self.execution
+    }
+}
+
+fn execution_error(error: &(dyn Error + 'static)) -> Option<crate::ExecutionError> {
+    let mut source = Some(error);
+    while let Some(error) = source {
+        if let Some(failure) = error.downcast_ref::<crate::ExecutionError>() {
+            return Some(*failure);
+        }
+        source = error.source();
+    }
+    None
 }
 
 #[derive(Debug)]
@@ -55,13 +79,28 @@ impl Error for DatabaseError {
 
 impl From<crate::rcdb::RCDBError> for DatabaseError {
     fn from(source: crate::rcdb::RCDBError) -> Self {
-        Self::new(source)
+        let execution = match &source {
+            crate::rcdb::RCDBError::Execution(failure) => Some(*failure),
+            _ => None,
+        };
+        Self {
+            source: Box::new(source),
+            execution,
+        }
     }
 }
 
 impl From<crate::ccdb::CCDBError> for DatabaseError {
     fn from(source: crate::ccdb::CCDBError) -> Self {
-        Self::new(source)
+        let execution = match &source {
+            crate::ccdb::CCDBError::Execution(failure) => Some(*failure),
+            crate::ccdb::CCDBError::DatabaseError(error) => error.execution_error(),
+            _ => None,
+        };
+        Self {
+            source: Box::new(source),
+            execution,
+        }
     }
 }
 

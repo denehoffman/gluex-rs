@@ -416,7 +416,7 @@ fn workflow_cancellation_and_cache_controls_leave_the_session_reusable() {
         .with_cancellation(token)
         .collect()
         .unwrap_err();
-    assert!(matches!(error, WorkflowError::Interrupted));
+    assert!(matches!(error, WorkflowError::Cancelled));
 
     gx.clear_caches();
     assert_eq!(gx.cache_info().ccdb_metadata_entries(), 0);

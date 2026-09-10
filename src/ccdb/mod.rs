@@ -21,6 +21,9 @@ pub type CCDBResult<T> = Result<T, CCDBError>;
 /// Errors that can occur while interacting with CCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum CCDBError {
+    /// Typed cancellation, timeout, or host interruption.
+    #[error(transparent)]
+    Execution(#[from] crate::ExecutionError),
     /// Unified composed-query evaluation failed.
     #[error(transparent)]
     DatabaseError(#[from] crate::DatabaseError),

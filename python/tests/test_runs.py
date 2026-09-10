@@ -49,9 +49,27 @@ def test_recorded_membership_and_catalog(rcdb_path: Path) -> None:
 
 def test_run_query_timeout_is_immutable() -> None:
     query = gluex.open().runs(gluex.RunSelection.range(2, 5))
-    with pytest.raises(RuntimeError, match='interrupted'):
+    with pytest.raises(TimeoutError, match='timed out'):
         query.timeout(0.0).collect()
     assert query.collect().numbers == (2, 3, 4, 5)
+
+
+def test_run_timeout_starts_at_each_terminal_and_excludes_stream_idle() -> None:
+    query = gluex.open().runs(gluex.RunSelection.range(2, 5)).timeout(0.1)
+    time.sleep(0.15)
+    assert query.count() == 4
+    time.sleep(0.15)
+    assert query.count() == 4
+
+    stream = query.stream(chunk_size=1)
+    time.sleep(0.15)
+    first = next(stream)
+    assert first is not None
+    assert first.numbers == (2,)
+    time.sleep(0.15)
+    second = next(stream)
+    assert second is not None
+    assert second.numbers == (3,)
 
 
 @pytest.mark.skipif(sys.platform == 'win32', reason='uses POSIX signal delivery')

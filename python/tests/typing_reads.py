@@ -71,6 +71,8 @@ def typed_reads(gx: gluex.GlueX) -> None:
         assert_type(raw.columns, tuple[gluex.RawColumn, ...])
         assert_type(raw.columns[0].declared_type, str | None)
         assert_type(raw.rows, tuple[gluex.RawRow, ...])
+        assert_type(raw.rows[0][0], int | float | str | bytes | None)
+        assert_type(raw.rows[0]['column'], int | float | str | bytes | None)
         assert_type(raw.rows[0].values, tuple[int | float | str | bytes | None, ...])
 
     gx.runs([2])  # ty: ignore[invalid-argument-type]

@@ -19,6 +19,11 @@ def test_raw_reads_and_enforcement(source: str) -> None:
     )
     assert tuple(column.name for column in result.columns) == ('n', 'text', 'bytes', 'missing', 'real')
     assert result.rows[0].values == (2, "x'; DROP TABLE runs; --", b'\x00\xff', None, 1.5)
+    assert tuple(result.rows[0]) == result.rows[0].values
+    assert len(result.rows[0]) == 5
+    assert result.rows[0][0] == 2
+    assert result.rows[0][-1] == 1.5
+    assert result.rows[0]['text'] == "x'; DROP TABLE runs; --"
     with pytest.raises(AttributeError):
         result.rows[0].values = ()
     before = tuple(row.values for row in reader.raw('SELECT name, sql FROM sqlite_schema ORDER BY name').rows)
@@ -37,6 +42,28 @@ def test_raw_reads_and_enforcement(source: str) -> None:
     assert reader.raw('WITH t(x) AS (SELECT 2) SELECT x FROM t').rows[0].values == (2,)
 
 
+def test_raw_row_lookup_preserves_duplicate_and_empty_column_names() -> None:
+    reader = gluex.open().sources.rcdb
+    row = reader.raw('SELECT 2 AS unique_name, NULL AS "", 3 AS duplicate, 4 AS duplicate').rows[0]
+
+    assert row['unique_name'] == 2
+    assert row[''] is None
+    with pytest.raises(ValueError, match='ambiguous'):
+        _ = row['duplicate']
+    with pytest.raises(KeyError, match='missing'):
+        _ = row['missing']
+    with pytest.raises(IndexError):
+        _ = row[4]
+    with pytest.raises(IndexError):
+        _ = row[-5]
+    with pytest.raises(TypeError):
+        _ = row[1.5]  # type: ignore[index]
+
+    empty = reader.raw('SELECT 1 AS kept WHERE FALSE')
+    assert empty.rows == ()
+    assert tuple(column.name for column in empty.columns) == ('kept',)
+
+
 def test_raw_timeout_releases_reader() -> None:
     reader = gluex.open().sources.rcdb
     expensive = """
@@ -45,7 +72,7 @@ def test_raw_timeout_releases_reader() -> None:
         )
         SELECT sum(n) FROM values_
     """
-    with pytest.raises(RuntimeError, match='interrupted'):
+    with pytest.raises(TimeoutError, match='timed out'):
         reader.raw(expensive, timeout=0.0)
     assert reader.raw('SELECT 42').rows[0].values == (42,)
 
@@ -66,7 +93,7 @@ def test_raw_database_work_releases_the_gil() -> None:
         )
         SELECT sum(n) FROM values_
     """
-    with pytest.raises(RuntimeError, match='interrupted'):
+    with pytest.raises(TimeoutError, match='timed out'):
         reader.raw(expensive, timeout=0.2)
     assert progressed.is_set()
     thread.join()
