@@ -300,39 +300,24 @@ impl PyCalibrationQuery {
     /// Collect numeric assignments and report missing runs. Releases the GIL.
     /// Execution and malformed-payload errors raise RuntimeError.
     fn collect(&self, py: Python<'_>) -> PyResult<PyCalibrationSeries> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals
-            .finish(py.detach(|| query.collect()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, CalibrationQuery::collect)
             .map(PyCalibrationSeries)
     }
     #[pyo3(signature = (*, chunk_size=1024))]
     fn stream(&self, chunk_size: usize) -> PyResult<PyCalibrationStream> {
-        let signals = crate::python::execution::PythonExecution::new();
-        self.0
-            .with_interrupt_check(signals.checker())
-            .stream(chunk_size)
-            .map(|stream| PyCalibrationStream(stream, signals))
-            .map_err(error)
+        crate::python::execution::PythonExecution::stream(&self.0, |query| query.stream(chunk_size))
+            .map(|(stream, signals)| PyCalibrationStream(stream, signals))
     }
     fn first(&self, py: Python<'_>) -> PyResult<Option<PyCalibrationSeries>> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals
-            .finish(py.detach(|| query.first()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, CalibrationQuery::first)
             .map(|value| value.map(PyCalibrationSeries))
     }
     fn one(&self, py: Python<'_>) -> PyResult<PyCalibrationSeries> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals
-            .finish(py.detach(|| query.one()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, CalibrationQuery::one)
             .map(PyCalibrationSeries)
     }
     fn count(&self, py: Python<'_>) -> PyResult<usize> {
-        let signals = crate::python::execution::PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals.finish(py.detach(|| query.count()))
+        crate::python::execution::PythonExecution::execute(py, &self.0, CalibrationQuery::count)
     }
     fn __repr__(&self) -> String {
         format!("CalibrationQuery({:?})", self.0.provenance())

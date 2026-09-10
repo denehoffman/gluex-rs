@@ -68,11 +68,7 @@ impl PyLuminosityQuery {
 
     /// Evaluate while releasing the GIL and polling Python signals.
     fn collect(&self, py: Python<'_>) -> PyResult<PyLuminosityResult> {
-        let signals = PythonExecution::new();
-        let query = self.0.with_interrupt_check(signals.checker());
-        signals
-            .finish(py.detach(|| query.collect()))
-            .map(PyLuminosityResult)
+        PythonExecution::execute(py, &self.0, LuminosityQuery::collect).map(PyLuminosityResult)
     }
 
     fn __repr__(&self) -> &'static str {

@@ -6,6 +6,52 @@ use gluex_rs::{GlueX, RunSelection, SourceConfig};
 mod fixtures;
 
 #[test]
+fn provenance_and_reports_expose_structured_domain_values() {
+    let fixture = fixtures::rcdb();
+    let gx = GlueX::open(SourceConfig::sqlite(fixture.path()), SourceConfig::Disabled).unwrap();
+    let query = gx.runs(RunSelection::range(2, 4)).unwrap();
+    let result = query.collect().unwrap();
+
+    assert_eq!(
+        query.provenance().source_identity().as_str(),
+        query.provenance().source()
+    );
+    assert!(result.report().accounting().complete());
+    assert_eq!(result.report().accounting().evaluated_runs(), &[2, 3, 4]);
+
+    let projected = query
+        .select(["event_count", "is_valid_run_end"])
+        .unwrap()
+        .collect()
+        .unwrap();
+    assert_eq!(
+        projected.provenance().missing_data().policy(),
+        gluex_rs::MissingDataPolicy::Report
+    );
+    assert_eq!(projected.report().omissions()[0].run(), 3);
+    assert_eq!(
+        projected.report().omissions()[0].condition(),
+        "is_valid_run_end"
+    );
+}
+
+#[test]
+fn calibration_paths_reject_non_absolute_or_noncanonical_values() {
+    assert!(gluex_rs::CalibrationPath::try_from("/TARGET/density".to_owned()).is_ok());
+    for invalid in [
+        "",
+        "TARGET/density",
+        "/TARGET//density",
+        "/TARGET/../density",
+    ] {
+        assert!(
+            gluex_rs::CalibrationPath::try_from(invalid.to_owned()).is_err(),
+            "accepted {invalid:?}"
+        );
+    }
+}
+
+#[test]
 fn numeric_scope_collects_recorded_runs_without_scientific_cuts() {
     let fixture = fixtures::rcdb();
     let gx = GlueX::open(SourceConfig::sqlite(fixture.path()), SourceConfig::Disabled).unwrap();

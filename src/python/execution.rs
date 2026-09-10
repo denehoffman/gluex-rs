@@ -47,10 +47,11 @@ impl PythonExecution {
     pub(crate) fn execute<Q, T>(
         py: Python<'_>,
         query: &Q,
-        execute: impl FnOnce(&Q) -> crate::DatabaseResult<T> + Send,
+        execute: impl FnOnce(&Q) -> Result<T, Q::Error> + Send,
     ) -> PyResult<T>
     where
         Q: crate::execution::TerminalQuery + Send + Sync,
+        Q::Error: std::fmt::Display + Send,
         T: Send,
     {
         let signals = Self::new();
@@ -61,6 +62,20 @@ impl PythonExecution {
                 .with_interrupt_check(signals.checker()),
         );
         signals.finish(py.detach(move || execute(&query)))
+    }
+
+    pub(crate) fn execute_options<T, E>(
+        py: Python<'_>,
+        options: crate::ExecutionOptions,
+        execute: impl FnOnce(crate::ExecutionOptions) -> Result<T, E> + Send,
+    ) -> PyResult<T>
+    where
+        T: Send,
+        E: std::fmt::Display + Send,
+    {
+        let signals = Self::new();
+        let options = options.with_interrupt_check(signals.checker());
+        signals.finish(py.detach(move || execute(options)))
     }
 
     pub(crate) fn stream<Q, S>(

@@ -5,8 +5,192 @@ use crate::{
     rcdb::{RCDB, RCDBContext},
 };
 
+macro_rules! validated_text {
+    ($name:ident, $description:literal) => {
+        #[doc = $description]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            /// Borrow the validated text.
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn trusted(value: String) -> Self {
+                debug_assert!(!value.trim().is_empty());
+                Self(value)
+            }
+        }
+
+        impl TryFrom<String> for $name {
+            type Error = &'static str;
+
+            fn try_from(value: String) -> Result<Self, Self::Error> {
+                if value.trim().is_empty() {
+                    Err("value must not be empty")
+                } else {
+                    Ok(Self(value))
+                }
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                Self::try_from(<String as serde::Deserialize>::deserialize(deserializer)?)
+                    .map_err(serde::de::Error::custom)
+            }
+        }
+    };
+}
+
+validated_text!(SourceIdentity, "Validated database source identity.");
+validated_text!(Variation, "Validated calibration variation name.");
+
+/// Validated absolute calibration path.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(try_from = "String", into = "String")]
+pub struct CalibrationPath(String);
+impl CalibrationPath {
+    /// Borrow the absolute path.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+impl TryFrom<String> for CalibrationPath {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let valid = value.starts_with('/')
+            && (value == "/"
+                || value
+                    .split('/')
+                    .skip(1)
+                    .all(|segment| !segment.is_empty() && segment != "." && segment != ".."));
+        valid
+            .then_some(Self(value))
+            .ok_or("calibration path must be absolute with non-empty canonical segments")
+    }
+}
+
+impl From<CalibrationPath> for String {
+    fn from(path: CalibrationPath) -> Self {
+        path.0
+    }
+}
+
+/// Stability status of a documented scientific procedure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcedureStatus {
+    /// The procedure remains subject to validation or change.
+    Provisional,
+    /// The procedure is supported as a stable product contract.
+    Stable,
+}
+
+/// Structured accounting shared by run-bearing results.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RunAccounting {
+    evaluated_runs: Vec<RunNumber>,
+    omissions: Vec<RunOmission>,
+    complete: bool,
+}
+impl RunAccounting {
+    /// Recorded candidates examined by the terminal operation.
+    #[must_use]
+    pub fn evaluated_runs(&self) -> &[RunNumber] {
+        &self.evaluated_runs
+    }
+    /// Structured omissions from the result.
+    #[must_use]
+    pub fn omissions(&self) -> &[RunOmission] {
+        &self.omissions
+    }
+    /// Whether the original request was evaluated completely.
+    #[must_use]
+    pub const fn complete(&self) -> bool {
+        self.complete
+    }
+}
+
+/// Why a recorded run was omitted from a Run Set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunOmissionReason {
+    /// The complete predicate evaluated to SQL unknown.
+    UnknownPredicate,
+}
+
+/// One structured run omission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunOmission {
+    run: RunNumber,
+    reason: RunOmissionReason,
+}
+impl RunOmission {
+    /// Omitted run number.
+    #[must_use]
+    pub const fn run(self) -> RunNumber {
+        self.run
+    }
+    /// Structured reason for the omission.
+    #[must_use]
+    pub const fn reason(self) -> RunOmissionReason {
+        self.reason
+    }
+}
+
+/// Immutable Missing Data Policy configuration retained by a query.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MissingDataConfig {
+    policy: MissingDataPolicy,
+    fallback_fields: Vec<String>,
+}
+impl MissingDataConfig {
+    /// Declared handling policy.
+    #[must_use]
+    pub const fn policy(&self) -> MissingDataPolicy {
+        self.policy
+    }
+    /// Fields with explicit caller-provided fallback values.
+    #[must_use]
+    pub fn fallback_fields(&self) -> &[String] {
+        &self.fallback_fields
+    }
+}
+
+/// One missing condition cell identified without a positional tuple.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ConditionOmission {
+    run: RunNumber,
+    condition: String,
+}
+impl ConditionOmission {
+    /// Run containing the missing cell.
+    #[must_use]
+    pub const fn run(&self) -> RunNumber {
+        self.run
+    }
+    /// Condition name for the missing cell.
+    #[must_use]
+    pub fn condition(&self) -> &str {
+        &self.condition
+    }
+}
+
 /// Declared treatment of unavailable requested scientific inputs.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MissingDataPolicy {
     /// Preserve omissions in the result report.
     #[default]
@@ -79,7 +263,7 @@ impl RunSelection {
 /// Inputs identifying recorded membership resolution. Files must remain unchanged while in use.
 #[derive(Debug, Clone)]
 pub struct RunProvenance {
-    source: String,
+    source: SourceIdentity,
     selection: RunSelection,
     predicates: Vec<crate::RunPredicate>,
 }
@@ -94,6 +278,12 @@ impl RunProvenance {
     /// Filesystem identity of the RCDB source; not a historical snapshot.
     #[must_use]
     pub fn source(&self) -> &str {
+        self.source.as_str()
+    }
+
+    /// Validated source identity.
+    #[must_use]
+    pub const fn source_identity(&self) -> &SourceIdentity {
         &self.source
     }
 
@@ -225,7 +415,7 @@ impl RunQuery {
     #[must_use]
     pub fn provenance(&self) -> RunProvenance {
         RunProvenance {
-            source: self.reader.connection_path().to_owned(),
+            source: SourceIdentity::trusted(self.reader.connection_path().to_owned()),
             selection: self.selection.clone(),
             predicates: self.predicates.clone(),
         }
@@ -362,6 +552,8 @@ impl RunQuery {
 }
 
 impl crate::execution::TerminalQuery for RunQuery {
+    type Error = crate::DatabaseError;
+
     fn execution_options(&self) -> &crate::ExecutionOptions {
         &self.execution
     }
@@ -774,6 +966,24 @@ impl RunReport {
     pub const fn complete(&self) -> bool {
         self.complete
     }
+
+    /// Structured run accounting equivalent to the legacy report accessors.
+    #[must_use]
+    pub fn accounting(&self) -> RunAccounting {
+        RunAccounting {
+            evaluated_runs: self.evaluated_runs.clone(),
+            omissions: self
+                .unknown_runs
+                .iter()
+                .copied()
+                .map(|run| RunOmission {
+                    run,
+                    reason: RunOmissionReason::UnknownPredicate,
+                })
+                .collect(),
+            complete: self.complete,
+        }
+    }
 }
 
 /// Lazy named projection of a Run Query; construction and inspection do not read values.
@@ -962,6 +1172,8 @@ impl ConditionQuery {
 }
 
 impl crate::execution::TerminalQuery for ConditionQuery {
+    type Error = crate::DatabaseError;
+
     fn execution_options(&self) -> &crate::ExecutionOptions {
         &self.query.execution
     }
@@ -1033,6 +1245,15 @@ impl ConditionProvenance {
     pub fn fallback_fields(&self) -> &[String] {
         &self.fallback_fields
     }
+
+    /// Structured Missing Data Policy configuration.
+    #[must_use]
+    pub fn missing_data(&self) -> MissingDataConfig {
+        MissingDataConfig {
+            policy: self.policy,
+            fallback_fields: self.fallback_fields.clone(),
+        }
+    }
 }
 
 /// Completed diagnostics for missing requested condition cells.
@@ -1051,6 +1272,18 @@ impl ConditionReport {
     #[must_use]
     pub fn substitutions(&self) -> &[(RunNumber, String)] {
         &self.substitutions
+    }
+
+    /// Structured missing condition cells.
+    #[must_use]
+    pub fn omissions(&self) -> Vec<ConditionOmission> {
+        self.missing_values
+            .iter()
+            .map(|(run, condition)| ConditionOmission {
+                run: *run,
+                condition: condition.clone(),
+            })
+            .collect()
     }
 }
 
