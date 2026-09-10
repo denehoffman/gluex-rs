@@ -104,7 +104,7 @@ def test_invalid_explicit_source_does_not_fall_back(
     invalid.write_bytes(b'not a SQLite database')
     for path in [tmp_path / 'missing.sqlite', invalid, tmp_path, 'mysql://localhost/database']:
         kwargs = {'rcdb': gluex.DISABLED, 'ccdb': gluex.DISABLED, database: path}
-        with pytest.raises(ValueError, match=database.upper()):
+        with pytest.raises(gluex.ConfigurationError, match=database.upper()):
             gluex.open(**kwargs)
 
 

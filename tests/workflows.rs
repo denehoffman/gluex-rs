@@ -78,6 +78,30 @@ fn root_workflow_uses_the_supplied_run_set_without_hidden_approval() {
         result.provenance().procedure_version(),
         "gluex-luminosity-v1"
     );
+    assert_eq!(result.provenance().procedure_status(), "canonical");
+    assert!(result.provenance().references().iter().any(|reference| {
+        reference.contains("RevModPhys.46.815") && reference.contains("pair production")
+    }));
+    assert!(result.provenance().assumptions().iter().any(|assumption| {
+        assumption.contains("target length") && assumption.contains("29.5 cm")
+    }));
+    assert!(
+        result
+            .provenance()
+            .validation_gaps()
+            .iter()
+            .any(|gap| { gap.contains("coherent-peak") && gap.contains("CCDB") })
+    );
+    assert!(
+        result
+            .provenance()
+            .validation_gaps()
+            .iter()
+            .any(|gap| { gap.contains("REST") && gap.contains("reference") })
+    );
+    assert!(result.provenance().exceptions().iter().any(|exception| {
+        exception.contains("72436") && exception.contains("2021-04-23T00:00:01Z")
+    }));
     assert_eq!(result.provenance().resolved_reconstruction().len(), 1);
     assert!(!result.provenance().coherent_peak());
     assert!(!result.provenance().polarized());
@@ -160,6 +184,32 @@ fn multi_run_workflow_aggregates_independent_run_results() {
             b.histograms().tagged_flux.counts()[bin] * 141.84 * centers_per_density / 1e12
         );
     }
+}
+
+#[test]
+fn coherent_peak_reference_case_excludes_fixture_flux_above_the_period_window() {
+    let gx = GlueX::open(
+        SourceConfig::sqlite(fixtures::rcdb().path()),
+        SourceConfig::sqlite(fixtures::ccdb().path()),
+    )
+    .unwrap();
+    let runs = gx
+        .runs(RunSelection::runs([50_685]))
+        .unwrap()
+        .collect()
+        .unwrap();
+
+    let result = gx
+        .workflows()
+        .luminosity(&runs, reconstruction(), [8.0, 8.5, 9.0])
+        .with_coherent_peak(true)
+        .collect()
+        .unwrap();
+
+    // The fixture channels lie above the RP2018-08 coherent window (8.2, 8.8) GeV.
+    assert_eq!(result.histograms().tagged_flux.counts(), &[0.0, 0.0]);
+    assert_eq!(result.histograms().tagged_luminosity.counts(), &[0.0, 0.0]);
+    assert!(result.provenance().coherent_peak());
 }
 
 #[test]

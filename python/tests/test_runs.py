@@ -47,6 +47,35 @@ def test_recorded_membership_and_catalog(rcdb_path: Path) -> None:
     assert tuple(query.collect()) == (2, 3, 5)
 
 
+@pytest.mark.parametrize(
+    ('scope', 'expected'),
+    [
+        (2, (2,)),
+        ([5, 2, 3, 2], (2, 3, 5)),
+        (range(2, 5), (2, 3, 4)),
+        (range(5, 2), ()),
+        (gluex.RunPeriod.RP2018_08, (50685, 50697)),
+        ('F18', (50685, 50697)),
+        (gluex.RunSelection.runs([2, 4]), (2, 4)),
+    ],
+)
+def test_runs_facade_coerces_common_scopes(scope, expected) -> None:
+    gx = gluex.open()
+    assert gx.runs.select(scope).collect().numbers == expected
+    assert gx.runs.conditions['event_count'].name == 'event_count'
+
+
+def test_runs_facade_between_and_variadic_columns_are_unambiguous() -> None:
+    gx = gluex.open()
+    query = gx.runs.between(2, 4)
+    assert query.collect().numbers == (2, 3, 4)
+    result = query.columns('event_count', 'is_valid_run_end').collect()
+    assert result.provenance.fields == ('event_count', 'is_valid_run_end')
+    assert gx.runs.select(query).collect().numbers == (2, 3, 4)
+    with pytest.raises(TypeError):
+        gx.runs.select(2, 4)  # ty: ignore[too-many-positional-arguments]
+
+
 def test_run_query_timeout_is_immutable() -> None:
     query = gluex.open().runs(gluex.RunSelection.range(2, 5))
     with pytest.raises(TimeoutError, match='timed out'):
@@ -124,10 +153,20 @@ def test_missing_rcdb_remains_discoverable() -> None:
     gx = gluex.open(rcdb=gluex.DISABLED, ccdb=gluex.DISABLED)
     assert 'runs' in dir(gx)
     assert 'conditions' in dir(gx)
-    with pytest.raises(RuntimeError, match='RCDB'):
+    with pytest.raises(gluex.MissingCapabilityError, match='RCDB'):
         gx.runs(gluex.RunSelection.runs([2]))
-    with pytest.raises(RuntimeError, match='RCDB'):
+    with pytest.raises(gluex.MissingCapabilityError, match='RCDB'):
         _ = gx.conditions
+
+
+def test_public_exception_hierarchy_is_catchable() -> None:
+    assert issubclass(gluex.MissingCapabilityError, RuntimeError)
+    assert issubclass(gluex.ConfigurationError, ValueError)
+    assert issubclass(gluex.QueryError, RuntimeError)
+    assert issubclass(gluex.DecodeError, gluex.QueryError)
+    assert issubclass(gluex.MissingDataError, gluex.QueryError)
+    assert issubclass(gluex.CancellationError, gluex.QueryError)
+    assert issubclass(gluex.DatabaseTimeoutError, TimeoutError)
 
 
 def test_condition_projection(rcdb_path: Path) -> None:

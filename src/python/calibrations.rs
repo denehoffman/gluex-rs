@@ -4,11 +4,7 @@ use super::{
 };
 use crate::calibrations::*;
 use crate::{Id, RunNumber};
-use pyo3::{
-    exceptions::{PyKeyError, PyRuntimeError},
-    prelude::*,
-    types::PyDict,
-};
+use pyo3::{exceptions::PyKeyError, prelude::*, types::PyDict};
 
 #[derive(FromPyObject)]
 enum PyCalibrationInput {
@@ -17,8 +13,8 @@ enum PyCalibrationInput {
     Query(PyRunQuery),
 }
 
-fn error(e: impl std::fmt::Display) -> PyErr {
-    PyRuntimeError::new_err(e.to_string())
+fn error(error: crate::DatabaseError) -> PyErr {
+    super::exceptions::map(&error)
 }
 
 /// Immutable full-path mapping of calibration definitions; discovery does not fetch constants.

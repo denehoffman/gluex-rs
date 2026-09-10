@@ -23,9 +23,7 @@ def test_root_luminosity_workflow_retains_run_and_procedure_evidence() -> None:
     reconstruction = gluex.ReconstructionSelection.periods(
         {RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)}
     )
-    query = gx.workflows.luminosity(
-        runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0]
-    )
+    query = gx.workflows.luminosity(runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0])
     assert 'lazy=True' in repr(query)
     result = query.collect()
 
@@ -37,6 +35,11 @@ def test_root_luminosity_workflow_retains_run_and_procedure_evidence() -> None:
     assert result.report.complete
     assert result.provenance.procedure_version == 'gluex-luminosity-v1'
     assert result.provenance.procedure_status == 'canonical'
+    assert any('pair production' in reference for reference in result.provenance.references)
+    assert any('target length' in assumption for assumption in result.provenance.assumptions)
+    assert any('coherent-peak' in gap for gap in result.provenance.validation_gaps)
+    assert any('REST' in gap for gap in result.provenance.validation_gaps)
+    assert any('72436' in exception for exception in result.provenance.exceptions)
     assert result.provenance.missing_policy == 'strict'
     assert result.provenance.runs.source == str(runs.provenance.source)
     assert result.provenance.coherent_peak is False
@@ -54,18 +57,34 @@ def test_workflow_settings_are_keyword_only() -> None:
     reconstruction = gluex.ReconstructionSelection.latest()
 
     with pytest.raises(TypeError):
-        gx.workflows.luminosity(runs, reconstruction, [8.0, 9.0])
-    query = gx.workflows.luminosity(
-        runs, reconstruction=reconstruction, edges=[8.0, 9.0]
+        gx.workflows.luminosity(runs, reconstruction, [8.0, 9.0])  # ty: ignore[missing-argument, too-many-positional-arguments]
+    query = gx.workflows.luminosity(runs, reconstruction=reconstruction, edges=[8.0, 9.0])
+    with pytest.raises(TypeError):
+        query.coherent_peak(True)  # ty: ignore[missing-argument, too-many-positional-arguments]  # noqa: FBT003
+    with pytest.raises(TypeError):
+        query.polarized(True)  # ty: ignore[missing-argument, too-many-positional-arguments]  # noqa: FBT003
+    with pytest.raises(TypeError):
+        query.fallback_to(50685)  # ty: ignore[missing-argument, too-many-positional-arguments]
+    with pytest.raises(TypeError):
+        query.timeout(1.0)  # ty: ignore[missing-argument, too-many-positional-arguments]
+
+
+def test_coherent_peak_reference_case_records_the_selection() -> None:
+    gx = gluex.open()
+    runs = gx.runs(gluex.RunSelection.runs([50685])).collect()
+    reconstruction = gluex.ReconstructionSelection.periods(
+        {RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)}
     )
-    with pytest.raises(TypeError):
-        query.coherent_peak(True)  # noqa: FBT003 - intentional positional misuse
-    with pytest.raises(TypeError):
-        query.polarized(True)  # noqa: FBT003 - intentional positional misuse
-    with pytest.raises(TypeError):
-        query.fallback_to(50685)
-    with pytest.raises(TypeError):
-        query.timeout(1.0)
+
+    result = (
+        gx.workflows.luminosity(runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0])
+        .coherent_peak(enabled=True)
+        .collect()
+    )
+
+    assert result.histograms.tagged_flux.counts == [0.0, 0.0]
+    assert result.histograms.tagged_luminosity.counts == [0.0, 0.0]
+    assert result.provenance.coherent_peak is True
 
 
 def test_explicit_fallback_substitutes_and_reports_selected_run(
@@ -82,8 +101,7 @@ def test_explicit_fallback_substitutes_and_reports_selected_run(
     )
 
     result = (
-        gx.workflows
-        .luminosity(runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0])
+        gx.workflows.luminosity(runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0])
         .fallback_to(run=50685)
         .collect()
     )
@@ -107,9 +125,7 @@ def test_missing_policies_never_hide_incompatible_calibration_schemas(
     reconstruction = gluex.ReconstructionSelection.periods(
         {RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)}
     )
-    query = gx.workflows.luminosity(
-        runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0]
-    )
+    query = gx.workflows.luminosity(runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0])
 
     with pytest.raises(RuntimeError, match='expected a double'):
         query.report_missing().collect()

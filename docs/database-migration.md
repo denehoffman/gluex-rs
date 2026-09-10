@@ -10,7 +10,7 @@ Replace `gluex.lumi.Luminosity(...).fetch(edges, runs=..., rest_version=...)` wi
 
 ```python
 gx = gluex.open(rcdb="rcdb.sqlite", ccdb="ccdb.sqlite")
-runs = gx.runs(gluex.RunSelection.runs([50685])).collect()
+runs = gx.runs.select(50685).collect()
 reconstruction = gluex.ReconstructionSelection.periods({
     gluex.RunPeriod.RP2018_08:
         gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
@@ -23,6 +23,12 @@ histograms = result.histograms
 
 The behavioral changes are deliberate:
 
+- `gx.runs` is the discoverable run-domain facade; use `gx.runs.select(scope)`,
+  `gx.runs.between(start, end)`, and `gx.runs.conditions`;
+- project conditions with `query.columns("name", ...)`; the callable runs facade,
+  root `gx.conditions`, and list-taking `query.select(...)` remain temporary
+  migration forms;
+
 - the supplied `RunSet` is authoritative; no approved-production cut is hidden;
 - reconstruction is explicit and resolved per represented run period;
 - `latest()` is fixed to the CCDB source-opening time;
@@ -30,11 +36,14 @@ The behavioral changes are deliberate:
   `.report_missing()`; `.fallback_to(run)` applies and records an explicit
   selected-run to fallback-run substitution;
 - absent or zero livetime is not silently replaced by 1.0;
+- generic Python runtime/value failures are replaced by public capability,
+  configuration, query, decoding, missing-data, timeout, and cancellation classes;
 - multi-run luminosity applies each run's own target density before aggregation;
 - results retain selected/used/excluded runs, source-bound run provenance,
   both database source identities, the requested and resolved reconstruction,
   the source-opening calibration cutoff, luminosity settings, procedure version,
-  references, and exceptions.
+  canonical status, references, assumptions, exceptions, and explicit scientific
+  validation gaps.
 
 Raw reads remain available through `gx.sources.rcdb.raw(...)` and
 `gx.sources.ccdb.raw(...)`. Run conditions and calibrations should use the typed

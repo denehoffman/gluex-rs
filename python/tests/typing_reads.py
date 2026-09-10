@@ -12,9 +12,7 @@ def typed_luminosity(
     result: gluex.RunSet,
     reconstruction: gluex.ReconstructionSelection,
 ) -> None:
-    luminosity = gx.workflows.luminosity(
-        result, reconstruction=reconstruction, edges=[8.0, 9.0]
-    ).collect()
+    luminosity = gx.workflows.luminosity(result, reconstruction=reconstruction, edges=[8.0, 9.0]).collect()
     assert_type(luminosity, gluex.LuminosityResult)
     assert_type(luminosity.provenance.runs, gluex.RunProvenance)
     assert_type(luminosity.provenance.rcdb_source, str)
@@ -24,9 +22,7 @@ def typed_luminosity(
     assert_type(luminosity.provenance.coherent_peak, bool)
     assert_type(luminosity.provenance.polarized, bool)
     assert_type(
-        gx.workflows
-        .luminosity(result, reconstruction=reconstruction, edges=[8.0, 9.0])
-        .fallback_to(run=50685),
+        gx.workflows.luminosity(result, reconstruction=reconstruction, edges=[8.0, 9.0]).fallback_to(run=50685),
         gluex.LuminosityQuery,
     )
 
@@ -75,7 +71,6 @@ def typed_reads(gx: gluex.GlueX) -> None:
         assert_type(raw.rows[0]['column'], int | float | str | bytes | None)
         assert_type(raw.rows[0].values, tuple[int | float | str | bytes | None, ...])
 
-    gx.runs([2])  # ty: ignore[invalid-argument-type]
     gluex.RunSelection.range('2', 5)  # ty: ignore[invalid-argument-type]
     gx.sources.rcdb.raw('SELECT ?', [2])  # ty: ignore[too-many-positional-arguments]
     gx.sources.ccdb.raw('SELECT ?', parameters=[object()])  # ty: ignore[invalid-argument-type]

@@ -1,9 +1,6 @@
 use std::path::PathBuf;
 
-use pyo3::{
-    exceptions::{PyRuntimeError, PyValueError},
-    prelude::*,
-};
+use pyo3::prelude::*;
 
 use super::{ccdb::ccdb::PyCCDB, rcdb::rcdb::PyRCDB};
 use crate::{CacheInfo, Capabilities, GlueX, GlueXError, SourceConfig, Sources};
@@ -28,10 +25,7 @@ impl PyCacheInfo {
 }
 
 fn session_error(error: GlueXError) -> PyErr {
-    match error {
-        GlueXError::MissingCapability(_) => PyRuntimeError::new_err(error.to_string()),
-        GlueXError::Configuration { .. } => PyValueError::new_err(error.to_string()),
-    }
+    super::exceptions::map(&error)
 }
 
 /// Sentinel type for explicitly disabling a database; use gluex.DISABLED.
@@ -178,21 +172,16 @@ impl PyGlueX {
         open(py, rcdb, ccdb)
     }
 
-    /// Build a lazy recorded Run Query. Requires RCDB; adds no scientific cuts.
-    fn runs(&self, selection: super::runs::PyRunSelection) -> PyResult<super::runs::PyRunQuery> {
-        self.0
-            .runs(selection.0)
-            .map(super::runs::PyRunQuery)
-            .map_err(session_error)
+    /// Discover and query recorded runs. Attribute access performs no run-value query.
+    #[getter]
+    fn runs(&self) -> super::runs::PyRuns {
+        super::runs::PyRuns(self.0.clone())
     }
 
     /// Immutable catalog of database-defined condition names and types. Requires RCDB.
     #[getter]
     fn conditions(&self) -> PyResult<super::runs::PyConditionCatalog> {
-        self.0
-            .conditions()
-            .map(super::runs::PyConditionCatalog)
-            .map_err(session_error)
+        self.runs().conditions()
     }
 
     /// Inspect source availability without querying database contents.

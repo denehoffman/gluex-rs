@@ -8,7 +8,94 @@ use crate::{
 use pyo3::{
     exceptions::{PyIndexError, PyKeyError, PyTypeError, PyValueError},
     prelude::*,
+    types::{PyAny, PyBool, PyTuple},
 };
+
+/// Discoverable run-domain entry point bound to one GlueX session.
+#[pyclass(name = "Runs", module = "gluex", frozen)]
+pub struct PyRuns(pub(crate) crate::GlueX);
+
+fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelection> {
+    if let Ok(selection) = scope.extract::<PyRunSelection>() {
+        return Ok(selection.0);
+    }
+    if let Ok(period) = scope.extract::<PyRef<'_, PyRunPeriod>>() {
+        return Ok(RunSelection::period(period.0));
+    }
+    if let Ok(name) = scope.extract::<String>() {
+        let period = name
+            .parse::<crate::RunPeriod>()
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        return Ok(RunSelection::period(period));
+    }
+    if scope.get_type().name()?.to_str()? == "range" {
+        let start = scope.getattr("start")?.extract::<RunNumber>()?;
+        let stop = scope.getattr("stop")?.extract::<RunNumber>()?;
+        let step = scope.getattr("step")?.extract::<RunNumber>()?;
+        if step != 1 {
+            return scope
+                .try_iter()?
+                .map(|value| value?.extract::<RunNumber>())
+                .collect::<PyResult<Vec<_>>>()
+                .map(RunSelection::runs);
+        }
+        if start >= stop {
+            return Ok(RunSelection::runs([]));
+        }
+        return Ok(RunSelection::range(start, stop.saturating_sub(1)));
+    }
+    if !scope.is_instance_of::<PyBool>()
+        && let Ok(run) = scope.extract::<RunNumber>()
+    {
+        return Ok(RunSelection::runs([run]));
+    }
+    if let Ok(runs) = scope.extract::<Vec<RunNumber>>() {
+        return Ok(RunSelection::runs(runs));
+    }
+    Err(PyTypeError::new_err(
+        "run scope must be an integer, integer sequence, range, RunPeriod, period short name, RunSelection, or RunQuery",
+    ))
+}
+
+#[pymethods]
+impl PyRuns {
+    /// Inspect condition definitions without issuing a run-value query.
+    #[getter]
+    pub(crate) fn conditions(&self) -> PyResult<PyConditionCatalog> {
+        self.0
+            .conditions()
+            .map(PyConditionCatalog)
+            .map_err(|error| super::exceptions::map(&error))
+    }
+
+    /// Build a lazy Run Query from a common Python run scope.
+    fn select(&self, scope: &Bound<'_, PyAny>) -> PyResult<PyRunQuery> {
+        if let Ok(query) = scope.extract::<PyRef<'_, PyRunQuery>>() {
+            return Ok(query.clone());
+        }
+        self.0
+            .runs(coerce_run_scope(scope)?)
+            .map(PyRunQuery)
+            .map_err(|error| super::exceptions::map(&error))
+    }
+
+    /// Build a lazy Run Query over inclusive numeric bounds.
+    fn between(&self, start: RunNumber, end: RunNumber) -> PyResult<PyRunQuery> {
+        self.0
+            .runs(RunSelection::range(start, end))
+            .map(PyRunQuery)
+            .map_err(|error| super::exceptions::map(&error))
+    }
+
+    /// Compatibility call form; prefer `runs.select(scope)`.
+    fn __call__(&self, scope: &Bound<'_, PyAny>) -> PyResult<PyRunQuery> {
+        self.select(scope)
+    }
+
+    fn __repr__(&self) -> &'static str {
+        "Runs(select=available, conditions=available)"
+    }
+}
 
 /// Immutable validated database source identity.
 #[pyclass(name = "SourceIdentity", module = "gluex", frozen)]
@@ -161,6 +248,15 @@ impl PyRunQuery {
             .select(fields)
             .map(PyConditionQuery)
             .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Project named condition columns without retrieving their values.
+    #[pyo3(signature = (*fields))]
+    fn columns(&self, fields: &Bound<'_, PyTuple>) -> PyResult<PyConditionQuery> {
+        self.0
+            .select(fields.extract::<Vec<String>>()?)
+            .map(PyConditionQuery)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
     /// Return a new query with an additional predicate; no data is retrieved.
