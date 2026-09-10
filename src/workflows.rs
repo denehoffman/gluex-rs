@@ -138,25 +138,16 @@ impl LuminosityQuery {
         query
     }
 
-    #[cfg(feature = "python")]
-    pub(crate) fn with_interrupt_check(
-        &self,
-        check: impl Fn() -> bool + Send + Sync + 'static,
-    ) -> Self {
-        let mut query = self.clone();
-        query.execution = query.execution.with_interrupt_check(check);
-        query
-    }
-
     /// Evaluate the request, returning histograms, a run report and reproducibility provenance.
     ///
     /// # Errors
     /// Fails for missing capabilities, incomplete reconstruction mappings, cancellation,
     /// malformed inputs, or missing scientific inputs under the default strict policy.
     pub fn collect(&self) -> Result<LuminosityResult, WorkflowError> {
-        if self.execution.interrupted() {
-            return Err(WorkflowError::Interrupted);
-        }
+        crate::execution::execute_terminal(self, Self::collect_inner)
+    }
+
+    fn collect_inner(&self) -> Result<LuminosityResult, WorkflowError> {
         let rcdb = self.sources.rcdb()?.clone();
         let ccdb = self.sources.ccdb()?.clone();
         let rcdb_source = rcdb.connection_path().to_owned();
@@ -251,6 +242,25 @@ impl LuminosityQuery {
             provenance,
             report,
         })
+    }
+}
+
+impl crate::execution::TerminalQuery for LuminosityQuery {
+    type Error = WorkflowError;
+
+    fn execution_options(&self) -> &ExecutionOptions {
+        &self.execution
+    }
+
+    #[cfg(feature = "python")]
+    fn with_execution_options(&self, options: ExecutionOptions) -> Self {
+        let mut query = self.clone();
+        query.execution = options;
+        query
+    }
+
+    fn interruption_error(&self) -> Self::Error {
+        WorkflowError::Interrupted
     }
 }
 

@@ -477,14 +477,6 @@ impl CalibrationQuery {
         query
     }
 
-    #[cfg(feature = "python")]
-    pub(crate) fn with_interrupt_check(
-        &self,
-        check: impl Fn() -> bool + Send + Sync + 'static,
-    ) -> Self {
-        self.with_execution(self.execution.clone().with_interrupt_check(check))
-    }
-
     /// Return a new query requesting an explicit variation. Validated during collection.
     #[must_use]
     pub fn with_variation(&self, variation: impl Into<String>) -> Self {
@@ -538,7 +530,7 @@ impl CalibrationQuery {
     /// # Errors
     /// Database, metadata and payload decoding failures are errors, not missing assignments.
     pub fn collect(&self) -> DatabaseResult<CalibrationSeries> {
-        self.collect_inner()
+        crate::execution::execute_terminal(self, Self::collect_inner)
             .map_err(|source| crate::DatabaseError::with_context(self.error_context(), source))
     }
     fn collect_inner(&self) -> DatabaseResult<CalibrationSeries> {
@@ -567,7 +559,7 @@ impl CalibrationQuery {
     /// # Errors
     /// Rejects zero-sized chunks, selector conflicts, and invalid composed inputs.
     pub fn stream(&self, chunk_size: usize) -> DatabaseResult<CalibrationStream> {
-        self.stream_inner(chunk_size)
+        crate::execution::execute_terminal(self, |query| query.stream_inner(chunk_size))
             .map_err(|source| crate::DatabaseError::with_context(self.error_context(), source))
     }
 
@@ -579,9 +571,6 @@ impl CalibrationQuery {
     }
 
     fn stream_inner(&self, chunk_size: usize) -> DatabaseResult<CalibrationStream> {
-        if self.execution.interrupted() {
-            return Err(CCDBError::from(crate::execution::interrupted_error()).into());
-        }
         if chunk_size == 0 {
             return Err(
                 CCDBError::InvalidPathError("stream chunk size must be positive".into()).into(),
@@ -624,7 +613,7 @@ impl CalibrationQuery {
     /// # Errors
     /// Returns a contextual calibration or composed RCDB evaluation error.
     pub fn first(&self) -> DatabaseResult<Option<CalibrationSeries>> {
-        self.stream(1)?.next().transpose()
+        crate::execution::execute_terminal(self, |query| query.stream(1)?.next().transpose())
     }
 
     /// Count resolved assignments without retaining a complete series.
@@ -632,8 +621,11 @@ impl CalibrationQuery {
     /// # Errors
     /// Returns a contextual calibration or composed RCDB evaluation error.
     pub fn count(&self) -> DatabaseResult<usize> {
-        self.stream(1024)?
-            .try_fold(0usize, |count, chunk| Ok(count + chunk?.entries.len()))
+        crate::execution::execute_terminal(self, |query| {
+            query
+                .stream(1024)?
+                .try_fold(0usize, |count, chunk| Ok(count + chunk?.entries.len()))
+        })
     }
 
     /// Return exactly one resolved assignment, rejecting any other cardinality.
@@ -641,12 +633,31 @@ impl CalibrationQuery {
     /// # Errors
     /// Returns a cardinality or contextual calibration evaluation error.
     pub fn one(&self) -> DatabaseResult<CalibrationSeries> {
-        let result = self.collect()?;
-        if result.entries.len() == 1 {
-            Ok(result)
-        } else {
-            Err(CCDBError::InvalidCardinality(result.entries.len()).into())
-        }
+        crate::execution::execute_terminal(self, |query| {
+            let result = query.collect()?;
+            if result.entries.len() == 1 {
+                Ok(result)
+            } else {
+                Err(CCDBError::InvalidCardinality(result.entries.len()).into())
+            }
+        })
+    }
+}
+
+impl crate::execution::TerminalQuery for CalibrationQuery {
+    type Error = crate::DatabaseError;
+
+    fn execution_options(&self) -> &crate::ExecutionOptions {
+        &self.execution
+    }
+
+    #[cfg(feature = "python")]
+    fn with_execution_options(&self, options: crate::ExecutionOptions) -> Self {
+        self.with_execution(options)
+    }
+
+    fn interruption_error(&self) -> Self::Error {
+        CCDBError::from(crate::execution::interrupted_error()).into()
     }
 }
 
@@ -923,14 +934,9 @@ impl Iterator for CalibrationStream {
         if self.failed {
             return None;
         }
-        if self.query.execution.interrupted() {
-            self.failed = true;
-            return Some(Err(crate::DatabaseError::with_context(
-                self.query.error_context(),
-                CCDBError::from(crate::execution::interrupted_error()).into(),
-            )));
-        }
-        match self.next_runs() {
+        let query = self.query.clone();
+        let step = crate::execution::execute_terminal(&query, |_| self.next_runs());
+        match step {
             Ok(Some(chunk)) => {
                 if let Some(report) = chunk.report {
                     if let Some(combined) = &mut self.run_report {

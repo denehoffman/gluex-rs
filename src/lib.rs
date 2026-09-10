@@ -39,9 +39,11 @@ pub mod rcdb;
 /// Shared numeric scope and recorded membership queries.
 pub mod runs;
 pub use runs::{
-    ConditionCatalog, ConditionDefinition, ConditionProvenance, ConditionQuery, ConditionReport,
-    ConditionResults, ConditionStream, ConditionValue, ConditionValueType, MissingDataPolicy,
-    RunPredicate, RunProvenance, RunQuery, RunReport, RunSelection, RunSet, RunStream,
+    CalibrationPath, ConditionCatalog, ConditionDefinition, ConditionOmission, ConditionProvenance,
+    ConditionQuery, ConditionReport, ConditionResults, ConditionStream, ConditionValue,
+    ConditionValueType, MissingDataConfig, MissingDataPolicy, ProcedureStatus, RunAccounting,
+    RunOmission, RunOmissionReason, RunPredicate, RunProvenance, RunQuery, RunReport, RunSelection,
+    RunSet, RunStream, SourceIdentity, Variation,
 };
 
 /// Enforced read-only raw rows and parameters.

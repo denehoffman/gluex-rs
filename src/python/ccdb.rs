@@ -483,14 +483,14 @@ pub(crate) mod ccdb {
             timeout: Option<f64>,
         ) -> PyResult<crate::python::raw::PyRawResults> {
             let parameters = crate::python::raw::parameters(py, parameters)?;
-            let signals = crate::python::execution::PythonExecution::new();
-            let mut options =
-                crate::ExecutionOptions::default().with_interrupt_check(signals.checker());
+            let mut options = crate::ExecutionOptions::default();
             if let Some(seconds) = timeout {
                 options = options.with_timeout(crate::python::execution::timeout(seconds)?);
             }
-            let result = py.detach(|| self.0.raw_with_options(sql, &parameters, &options));
-            signals.finish(result).map(crate::python::raw::PyRawResults)
+            crate::python::execution::PythonExecution::execute_options(py, options, |options| {
+                self.0.raw_with_options(sql, &parameters, &options)
+            })
+            .map(crate::python::raw::PyRawResults)
         }
 
         #[new]

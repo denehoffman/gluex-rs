@@ -22,6 +22,11 @@ def test_recorded_membership_and_catalog(rcdb_path: Path) -> None:
     assert tuple(result) == (2, 3, 5)
     assert result.numbers == (2, 3, 5)
     assert result.provenance.source == str(rcdb_path.resolve())
+    assert result.provenance.source_identity.value == result.provenance.source
+    assert str(result.provenance.source_identity) == result.provenance.source
+    assert result.report.accounting.complete
+    assert result.report.accounting.evaluated_runs == (2, 3, 5)
+    assert result.report.accounting.omissions == ()
     assert repr(result.provenance.selection) == repr(selection)
     assert 3 in result
     assert 1 not in result

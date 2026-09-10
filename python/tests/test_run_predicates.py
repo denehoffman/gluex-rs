@@ -11,6 +11,10 @@ def test_predicates_preserve_unknown_and_original_query(rcdb_path):
     result = base.where(~(valid.eq(value=True))).collect()
     assert result.numbers == (2,)
     assert result.report.unknown_runs == (3,)
+    omission = result.report.accounting.omissions[0]
+    assert omission.run == 3
+    assert omission.reason == gluex.RunOmissionReason.UnknownPredicate
+    assert 'RunOmission' in repr(omission)
     assert base.collect().numbers == (2, 3, 4)
     assert base.where(valid.is_missing()).collect().numbers == (3,)
     assert base.where((valid.eq(value=True)) | valid.is_missing()).collect().numbers == (3, 4)

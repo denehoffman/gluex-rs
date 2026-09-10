@@ -124,19 +124,21 @@ pub(crate) fn interrupted_error() -> rusqlite::Error {
 /// result types while the mechanics around cancellation and binding adapters
 /// remain uniform.
 pub(crate) trait TerminalQuery: Clone {
+    type Error;
+
     fn execution_options(&self) -> &ExecutionOptions;
 
     #[cfg(feature = "python")]
     fn with_execution_options(&self, options: ExecutionOptions) -> Self;
 
-    fn interruption_error(&self) -> crate::DatabaseError;
+    fn interruption_error(&self) -> Self::Error;
 }
 
 /// Execute one active terminal step through the shared interruption boundary.
 pub(crate) fn execute_terminal<Q, T>(
     query: &Q,
-    execute: impl FnOnce(&Q) -> crate::DatabaseResult<T>,
-) -> crate::DatabaseResult<T>
+    execute: impl FnOnce(&Q) -> Result<T, Q::Error>,
+) -> Result<T, Q::Error>
 where
     Q: TerminalQuery,
 {

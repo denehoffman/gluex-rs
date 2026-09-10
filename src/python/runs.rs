@@ -10,6 +10,23 @@ use pyo3::{
     prelude::*,
 };
 
+/// Immutable validated database source identity.
+#[pyclass(name = "SourceIdentity", module = "gluex", frozen)]
+pub struct PySourceIdentity(crate::SourceIdentity);
+#[pymethods]
+impl PySourceIdentity {
+    #[getter]
+    fn value(&self) -> &str {
+        self.0.as_str()
+    }
+    fn __str__(&self) -> &str {
+        self.0.as_str()
+    }
+    fn __repr__(&self) -> String {
+        format!("SourceIdentity({:?})", self.0.as_str())
+    }
+}
+
 /// Numeric scope only; construction performs no I/O or approval selection.
 #[pyclass(name = "RunSelection", module = "gluex", frozen, from_py_object)]
 #[derive(Clone)]
@@ -58,6 +75,11 @@ impl PyRunProvenance {
     #[getter]
     fn source(&self) -> &str {
         self.0.source()
+    }
+    /// Validated source identity.
+    #[getter]
+    fn source_identity(&self) -> PySourceIdentity {
+        PySourceIdentity(self.0.source_identity().clone())
     }
     /// Numeric scope requested before membership resolution.
     #[getter]
@@ -372,8 +394,87 @@ impl PyRunReport {
     fn complete(&self) -> bool {
         self.0.complete()
     }
+    /// Structured evaluated-run, omission and completion accounting.
+    #[getter]
+    fn accounting(&self) -> PyRunAccounting {
+        PyRunAccounting(self.0.accounting())
+    }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
+    }
+}
+
+#[pyclass(name = "RunAccounting", module = "gluex", frozen)]
+pub struct PyRunAccounting(crate::RunAccounting);
+#[pymethods]
+impl PyRunAccounting {
+    #[getter]
+    fn evaluated_runs(&self) -> TypedTuple<RunNumber> {
+        TypedTuple(self.0.evaluated_runs().to_vec())
+    }
+    #[getter]
+    fn omissions(&self) -> TypedTuple<PyRunOmission> {
+        TypedTuple(
+            self.0
+                .omissions()
+                .iter()
+                .copied()
+                .map(PyRunOmission)
+                .collect(),
+        )
+    }
+    #[getter]
+    fn complete(&self) -> bool {
+        self.0.complete()
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "RunAccounting(evaluated_runs={}, omissions={}, complete={})",
+            self.0.evaluated_runs().len(),
+            self.0.omissions().len(),
+            self.0.complete()
+        )
+    }
+}
+
+#[pyclass(name = "RunOmission", module = "gluex", frozen)]
+pub struct PyRunOmission(crate::RunOmission);
+#[pymethods]
+impl PyRunOmission {
+    #[getter]
+    fn run(&self) -> RunNumber {
+        self.0.run()
+    }
+    #[getter]
+    fn reason(&self) -> PyRunOmissionReason {
+        self.0.reason().into()
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "RunOmission(run={}, reason={:?})",
+            self.0.run(),
+            self.0.reason()
+        )
+    }
+}
+
+#[pyclass(
+    name = "RunOmissionReason",
+    module = "gluex",
+    frozen,
+    eq,
+    eq_int,
+    skip_from_py_object
+)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PyRunOmissionReason {
+    UnknownPredicate = 0,
+}
+impl From<crate::RunOmissionReason> for PyRunOmissionReason {
+    fn from(value: crate::RunOmissionReason) -> Self {
+        match value {
+            crate::RunOmissionReason::UnknownPredicate => Self::UnknownPredicate,
+        }
     }
 }
 
@@ -513,8 +614,34 @@ impl PyConditionProvenance {
     fn fallback_fields(&self) -> TypedTuple<String> {
         TypedTuple(self.0.fallback_fields().to_vec())
     }
+    /// Immutable structured Missing Data Policy configuration.
+    #[getter]
+    fn missing_data(&self) -> PyMissingDataConfig {
+        PyMissingDataConfig(self.0.missing_data())
+    }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
+    }
+}
+
+#[pyclass(name = "MissingDataConfig", module = "gluex", frozen)]
+pub struct PyMissingDataConfig(crate::MissingDataConfig);
+#[pymethods]
+impl PyMissingDataConfig {
+    #[getter]
+    fn policy(&self) -> &'static str {
+        self.0.policy().as_str()
+    }
+    #[getter]
+    fn fallback_fields(&self) -> TypedTuple<String> {
+        TypedTuple(self.0.fallback_fields().to_vec())
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "MissingDataConfig(policy={:?}, fallback_fields={:?})",
+            self.0.policy().as_str(),
+            self.0.fallback_fields()
+        )
     }
 }
 
@@ -532,8 +659,40 @@ impl PyConditionReport {
     fn substitutions(&self) -> TypedTuple<(RunNumber, String)> {
         TypedTuple(self.0.substitutions().to_vec())
     }
+    /// Structured missing cells.
+    #[getter]
+    fn omissions(&self) -> TypedTuple<PyConditionOmission> {
+        TypedTuple(
+            self.0
+                .omissions()
+                .into_iter()
+                .map(PyConditionOmission)
+                .collect(),
+        )
+    }
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
+    }
+}
+
+#[pyclass(name = "ConditionOmission", module = "gluex", frozen)]
+pub struct PyConditionOmission(crate::ConditionOmission);
+#[pymethods]
+impl PyConditionOmission {
+    #[getter]
+    fn run(&self) -> RunNumber {
+        self.0.run()
+    }
+    #[getter]
+    fn condition(&self) -> &str {
+        self.0.condition()
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "ConditionOmission(run={}, condition={:?})",
+            self.0.run(),
+            self.0.condition()
+        )
     }
 }
 
