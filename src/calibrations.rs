@@ -559,7 +559,7 @@ impl CalibrationQuery {
     /// # Errors
     /// Rejects zero-sized chunks, selector conflicts, and invalid composed inputs.
     pub fn stream(&self, chunk_size: usize) -> DatabaseResult<CalibrationStream> {
-        crate::execution::execute_terminal(self, |query| query.stream_inner(chunk_size))
+        self.stream_inner(chunk_size)
             .map_err(|source| crate::DatabaseError::with_context(self.error_context(), source))
     }
 
@@ -599,6 +599,7 @@ impl CalibrationQuery {
             ),
         };
         Ok(CalibrationStream {
+            budget: crate::execution::StreamBudget::new(&self.execution),
             query: self.clone(),
             input,
             payloads: BTreeMap::new(),
@@ -651,13 +652,12 @@ impl crate::execution::TerminalQuery for CalibrationQuery {
         &self.execution
     }
 
-    #[cfg(feature = "python")]
     fn with_execution_options(&self, options: crate::ExecutionOptions) -> Self {
         self.with_execution(options)
     }
 
-    fn interruption_error(&self) -> Self::Error {
-        CCDBError::from(crate::execution::interrupted_error()).into()
+    fn interruption_error(&self, failure: crate::ExecutionError) -> Self::Error {
+        CCDBError::from(failure).into()
     }
 }
 
@@ -723,6 +723,7 @@ enum CalibrationRunStream {
 /// Bounded iterator over calibration series chunks.
 pub struct CalibrationStream {
     query: CalibrationQuery,
+    budget: crate::execution::StreamBudget,
     input: CalibrationRunStream,
     payloads: BTreeMap<Id, Arc<CalibrationPayload>>,
     resolved_reconstruction: BTreeMap<RunPeriod, RESTVersionContext>,
@@ -935,7 +936,19 @@ impl Iterator for CalibrationStream {
             return None;
         }
         let query = self.query.clone();
-        let step = crate::execution::execute_terminal(&query, |_| self.next_runs());
+        let original_options = self.query.execution.clone();
+        let mut budget = std::mem::take(&mut self.budget);
+        let step = budget.execute(&query, |active| {
+            self.query = active.clone();
+            if let CalibrationRunStream::Query(runs) = &mut self.input {
+                runs.set_execution(active.execution.clone());
+            }
+            self.next_runs()
+        });
+        self.budget = budget;
+        if let CalibrationRunStream::Query(runs) = &mut self.input {
+            runs.set_execution(original_options.clone());
+        }
         match step {
             Ok(Some(chunk)) => {
                 if let Some(report) = chunk.report {
@@ -945,7 +958,14 @@ impl Iterator for CalibrationStream {
                         self.run_report = Some(report);
                     }
                 }
-                let result = self.evaluate(chunk.runs, chunk.complete);
+                self.query.execution = original_options.clone();
+                let mut budget = std::mem::take(&mut self.budget);
+                let result = budget.execute(&query, |active| {
+                    self.query = active.clone();
+                    self.evaluate(chunk.runs, chunk.complete)
+                });
+                self.budget = budget;
+                self.query.execution = original_options;
                 if result.is_err() {
                     self.failed = true;
                 }
@@ -953,8 +973,12 @@ impl Iterator for CalibrationStream {
                     crate::DatabaseError::with_context(self.query.error_context(), source)
                 }))
             }
-            Ok(None) => None,
+            Ok(None) => {
+                self.query.execution = original_options;
+                None
+            }
             Err(source) => {
+                self.query.execution = original_options;
                 self.failed = true;
                 Some(Err(crate::DatabaseError::with_context(
                     self.query.error_context(),

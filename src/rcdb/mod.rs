@@ -22,6 +22,9 @@ pub type RCDBResult<T> = Result<T, RCDBError>;
 /// Errors that can occur while interacting with RCDB metadata or payloads.
 #[derive(Error, Debug)]
 pub enum RCDBError {
+    /// Typed cancellation, timeout, or host interruption.
+    #[error(transparent)]
+    Execution(#[from] crate::ExecutionError),
     /// An encoded value is not valid for its declared type.
     #[error("invalid condition value: {0}")]
     InvalidValue(String),

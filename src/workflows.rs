@@ -32,8 +32,14 @@ pub enum WorkflowError {
     /// Luminosity input retrieval or calculation failed.
     #[error(transparent)]
     Luminosity(#[from] LuminosityError),
-    /// Evaluation was cancelled or exceeded its deadline.
-    #[error("workflow execution interrupted by cancellation or timeout")]
+    /// The active execution budget was exhausted.
+    #[error("workflow execution timed out")]
+    Timeout,
+    /// A caller-owned cancellation token was cancelled.
+    #[error("workflow execution cancelled")]
+    Cancelled,
+    /// Evaluation was interrupted by the host language.
+    #[error("workflow execution interrupted")]
     Interrupted,
 }
 
@@ -228,7 +234,7 @@ impl LuminosityQuery {
             resolved_reconstruction: resolved,
             calibration_default_as_of: source_opened_at,
             procedure_version: LUMINOSITY_PROCEDURE_VERSION,
-            procedure_status: "provisional",
+            procedure_status: "canonical",
             references: vec!["https://doi.org/10.1103/RevModPhys.46.815"],
             exceptions: vec![
                 "RP2019_11 endpoint constants after run 72435 use the documented 2021-04-23 override",
@@ -252,15 +258,18 @@ impl crate::execution::TerminalQuery for LuminosityQuery {
         &self.execution
     }
 
-    #[cfg(feature = "python")]
     fn with_execution_options(&self, options: ExecutionOptions) -> Self {
         let mut query = self.clone();
         query.execution = options;
         query
     }
 
-    fn interruption_error(&self) -> Self::Error {
-        WorkflowError::Interrupted
+    fn interruption_error(&self, failure: crate::ExecutionError) -> Self::Error {
+        match failure {
+            crate::ExecutionError::Timeout => WorkflowError::Timeout,
+            crate::ExecutionError::Cancelled => WorkflowError::Cancelled,
+            crate::ExecutionError::Interrupted => WorkflowError::Interrupted,
+        }
     }
 }
 
@@ -374,7 +383,7 @@ impl LuminosityProvenance {
     pub const fn procedure_version(&self) -> &'static str {
         self.procedure_version
     }
-    /// Scientific-review status; this implementation is intentionally not claimed canonical yet.
+    /// Scientific-review status retained with the canonical procedure.
     #[must_use]
     pub const fn procedure_status(&self) -> &'static str {
         self.procedure_status

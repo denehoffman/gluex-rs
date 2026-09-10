@@ -359,14 +359,19 @@ impl RCDB {
         ));
         params.push(SqlValue::Integer(i64::try_from(offset).unwrap_or(i64::MAX)));
         let connection = self.connection();
-        let raw = crate::execution::with_sqlite_progress(&connection, options, || {
-            let mut stmt = connection.prepare(&sql)?;
-            let param_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
-            stmt.query_map(params_from_iter(param_refs), |row| {
-                row.get::<_, RunNumber>(0)
-            })?
-            .collect::<Result<Vec<_>, _>>()
-        })?;
+        let raw = crate::execution::with_sqlite_progress(
+            &connection,
+            options,
+            || -> RCDBResult<Vec<RunNumber>> {
+                let mut stmt = connection.prepare(&sql)?;
+                let param_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
+                Ok(stmt
+                    .query_map(params_from_iter(param_refs), |row| {
+                        row.get::<_, RunNumber>(0)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?)
+            },
+        )?;
         let complete = raw.len() <= limit;
         let consumed = raw.len().min(limit);
         let requested = match context.selection() {

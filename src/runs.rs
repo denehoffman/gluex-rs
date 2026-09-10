@@ -5,6 +5,10 @@ use crate::{
     rcdb::{RCDB, RCDBContext},
 };
 
+mod catalog;
+mod evaluation;
+mod results;
+
 macro_rules! validated_text {
     ($name:ident, $description:literal) => {
         #[doc = $description]
@@ -455,28 +459,8 @@ impl RunQuery {
         candidates: Vec<RunNumber>,
         complete: bool,
     ) -> DatabaseResult<RunSet> {
-        if self.execution.interrupted() {
-            return Err(crate::rcdb::RCDBError::from(crate::execution::interrupted_error()).into());
-        }
-        let predicate = crate::rcdb::conditions::all(
-            self.predicates.iter().map(|predicate| predicate.0.clone()),
-        );
-        let selection = RunSelection::runs(candidates.iter().copied());
-        let context = RCDBContext::from_selection(selection.clone()).filter(predicate.clone());
-        let unknown_context = RCDBContext::from_selection(selection).filter(predicate.unknown());
-        Ok(RunSet {
-            numbers: self
-                .reader
-                .fetch_runs_with_options(&context, &self.execution)?,
-            provenance: self.provenance(),
-            report: RunReport {
-                unknown_runs: self
-                    .reader
-                    .fetch_runs_with_options(&unknown_context, &self.execution)?,
-                evaluated_runs: candidates,
-                complete,
-            },
-        })
+        evaluation::evaluate_runs(self, candidates, complete)
+            .map(|evaluated| results::run_set(self.provenance(), evaluated))
     }
 
     /// Iterate bounded chunks of recorded candidates. Dropping the iterator releases its reader.
@@ -491,6 +475,7 @@ impl RunQuery {
             .into());
         }
         Ok(RunStream {
+            budget: crate::execution::StreamBudget::new(&self.execution),
             query: self.clone(),
             chunk_size,
             offset: 0,
@@ -558,19 +543,19 @@ impl crate::execution::TerminalQuery for RunQuery {
         &self.execution
     }
 
-    #[cfg(feature = "python")]
     fn with_execution_options(&self, options: crate::ExecutionOptions) -> Self {
         self.with_execution(options)
     }
 
-    fn interruption_error(&self) -> crate::DatabaseError {
-        crate::rcdb::RCDBError::from(crate::execution::interrupted_error()).into()
+    fn interruption_error(&self, failure: crate::ExecutionError) -> crate::DatabaseError {
+        crate::rcdb::RCDBError::from(failure).into()
     }
 }
 
 /// Bounded iterator over completed portions of a Run Query.
 pub struct RunStream {
     query: RunQuery,
+    budget: crate::execution::StreamBudget,
     chunk_size: usize,
     offset: usize,
     complete: bool,
@@ -582,7 +567,9 @@ impl Iterator for RunStream {
             return None;
         }
         let query = self.query.clone();
-        let result = crate::execution::execute_terminal(&query, |_| self.next_inner());
+        let mut budget = std::mem::take(&mut self.budget);
+        let result = budget.execute(&query, |active| self.next_inner(active));
+        self.budget = budget;
         if result.is_err() {
             self.complete = true;
         }
@@ -591,14 +578,18 @@ impl Iterator for RunStream {
 }
 
 impl RunStream {
-    fn next_inner(&mut self) -> DatabaseResult<Option<RunSet>> {
+    pub(crate) fn set_execution(&mut self, execution: crate::ExecutionOptions) {
+        self.query.execution = execution;
+    }
+
+    fn next_inner(&mut self, query: &RunQuery) -> DatabaseResult<Option<RunSet>> {
         while !self.complete {
-            let context = RCDBContext::from_selection(self.query.selection.clone());
-            let page = self.query.reader.fetch_run_page_with_options(
+            let context = RCDBContext::from_selection(query.selection.clone());
+            let page = query.reader.fetch_run_page_with_options(
                 &context,
                 self.chunk_size,
                 self.offset,
-                &self.query.execution,
+                &query.execution,
             );
             let (candidates, consumed, complete) = match page {
                 Ok(page) => page,
@@ -611,14 +602,11 @@ impl RunStream {
             self.complete = complete;
             if candidates.is_empty() {
                 if complete {
-                    return self.query.evaluate_candidates(Vec::new(), true).map(Some);
+                    return query.evaluate_candidates(Vec::new(), true).map(Some);
                 }
                 continue;
             }
-            return self
-                .query
-                .evaluate_candidates(candidates, complete)
-                .map(Some);
+            return query.evaluate_candidates(candidates, complete).map(Some);
         }
         Ok(None)
     }
@@ -892,12 +880,7 @@ impl ConditionCatalog {
     pub(crate) fn new(
         definitions: impl IntoIterator<Item = (String, crate::rcdb::models::ConditionTypeMeta)>,
     ) -> Self {
-        Self(
-            definitions
-                .into_iter()
-                .map(|(name, definition)| (name, ConditionDefinition(definition)))
-                .collect(),
-        )
+        Self(catalog::definitions(definitions))
     }
 
     /// Look up a definition, returning `None` for an unknown name.
@@ -1050,50 +1033,8 @@ impl ConditionQuery {
     }
 
     fn collect_for_runs(&self, runs: RunSet) -> DatabaseResult<ConditionResults> {
-        let rows = self.query.reader.fetch_with_options(
-            &self.fields,
-            &RCDBContext::from_selection(RunSelection::runs(runs.numbers().iter().copied())),
-            &self.query.execution,
-        )?;
-        let mut columns = std::collections::BTreeMap::new();
-        let mut missing_values = Vec::new();
-        let mut substitutions = Vec::new();
-        for name in &self.fields {
-            let column = runs
-                .numbers()
-                .iter()
-                .map(|run| {
-                    let mut value = rows
-                        .get(run)
-                        .and_then(|row| row.get(name))
-                        .cloned()
-                        .map(ConditionValue);
-                    if value.is_none() {
-                        missing_values.push((*run, name.clone()));
-                        if let Some(fallback) = self.fallbacks.get(name) {
-                            value = Some(fallback.clone());
-                            substitutions.push((*run, name.clone()));
-                        }
-                    }
-                    value
-                })
-                .collect();
-            columns.insert(name.clone(), column);
-        }
-        missing_values.sort();
-        substitutions.sort();
-        if self.policy == MissingDataPolicy::Strict && !missing_values.is_empty() {
-            return Err(crate::rcdb::RCDBError::MissingData(missing_values.len()).into());
-        }
-        Ok(ConditionResults {
-            runs,
-            columns,
-            provenance: self.provenance(),
-            report: ConditionReport {
-                missing_values,
-                substitutions,
-            },
-        })
+        evaluation::collect_conditions(self, &runs)
+            .map(|evaluated| results::condition_results(runs, self.provenance(), evaluated))
     }
 
     /// Return a strict query that rejects missing projected values.
@@ -1128,6 +1069,7 @@ impl ConditionQuery {
     /// Rejects a zero chunk size.
     pub fn stream(&self, chunk_size: usize) -> DatabaseResult<ConditionStream> {
         Ok(ConditionStream {
+            budget: crate::execution::StreamBudget::new(&self.query.execution),
             query: self.clone(),
             runs: self.query.stream(chunk_size)?,
         })
@@ -1178,15 +1120,14 @@ impl crate::execution::TerminalQuery for ConditionQuery {
         &self.query.execution
     }
 
-    #[cfg(feature = "python")]
     fn with_execution_options(&self, options: crate::ExecutionOptions) -> Self {
         let mut query = self.clone();
         query.query = query.query.with_execution(options);
         query
     }
 
-    fn interruption_error(&self) -> crate::DatabaseError {
-        crate::rcdb::RCDBError::from(crate::execution::interrupted_error()).into()
+    fn interruption_error(&self, failure: crate::ExecutionError) -> crate::DatabaseError {
+        crate::rcdb::RCDBError::from(failure).into()
     }
 }
 
@@ -1194,6 +1135,7 @@ impl crate::execution::TerminalQuery for ConditionQuery {
 pub struct ConditionStream {
     query: ConditionQuery,
     runs: RunStream,
+    budget: crate::execution::StreamBudget,
 }
 impl Iterator for ConditionStream {
     type Item = DatabaseResult<ConditionResults>;
@@ -1202,13 +1144,16 @@ impl Iterator for ConditionStream {
             return None;
         }
         let query = self.query.clone();
-        let result = crate::execution::execute_terminal(&query, |_| {
+        let original_run_options = self.runs.query.execution.clone();
+        let result = self.budget.execute(&query, |active| {
+            self.runs.query.execution = active.query.execution.clone();
             self.runs
                 .next()
                 .transpose()?
-                .map(|runs| self.query.collect_for_runs(runs))
+                .map(|runs| active.collect_for_runs(runs))
                 .transpose()
         });
+        self.runs.query.execution = original_run_options;
         if result.is_err() {
             self.runs.complete = true;
         }
@@ -1297,23 +1242,7 @@ pub struct ConditionResults {
 }
 impl ConditionResults {
     fn extend(&mut self, other: Self) {
-        self.runs.numbers.extend(other.runs.numbers);
-        self.runs
-            .report
-            .unknown_runs
-            .extend(other.runs.report.unknown_runs);
-        self.runs
-            .report
-            .evaluated_runs
-            .extend(other.runs.report.evaluated_runs);
-        self.runs.report.complete = other.runs.report.complete;
-        for (name, values) in other.columns {
-            self.columns.entry(name).or_default().extend(values);
-        }
-        self.report
-            .missing_values
-            .extend(other.report.missing_values);
-        self.report.substitutions.extend(other.report.substitutions);
+        results::extend_conditions(self, other);
     }
     /// Recorded runs in column order, with predicate-exclusion diagnostics.
     #[must_use]

@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use pyo3::{
-    exceptions::{PyKeyboardInterrupt, PyRuntimeError, PyValueError},
+    exceptions::{PyKeyboardInterrupt, PyRuntimeError, PyTimeoutError, PyValueError},
     prelude::*,
 };
 
@@ -40,7 +40,14 @@ impl PythonExecution {
                 "database execution interrupted",
             ))
         } else {
-            result.map_err(|error| PyRuntimeError::new_err(error.to_string()))
+            result.map_err(|error| {
+                let message = error.to_string();
+                if message.contains("execution timed out") {
+                    PyTimeoutError::new_err(message)
+                } else {
+                    PyRuntimeError::new_err(message)
+                }
+            })
         }
     }
 
