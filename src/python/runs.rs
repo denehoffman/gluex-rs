@@ -10,7 +10,7 @@ use polars::prelude::{Column, DataFrame, DataType, TimeUnit, TimeZone};
 use pyo3::{
     exceptions::{PyIndexError, PyKeyError, PyStopIteration, PyTypeError, PyValueError},
     prelude::*,
-    types::{PyAny, PyBool, PyTuple},
+    types::{PyAny, PyBool, PyList, PyTuple},
 };
 use pyo3_polars::PyDataFrame;
 
@@ -118,12 +118,10 @@ impl PyRunAliases {
         run_predicate(crate::rcdb::conditions::aliases::status_reject())
     }
 
-    /// Return the explicit approved-production cut for one run period.
-    fn approved_production(&self, period: &Bound<'_, PyAny>) -> PyResult<PyRunPredicate> {
-        let period = super::core::parse_run_period_object(period)?;
-        crate::approved_production(period)
-            .map(PyRunPredicate)
-            .map_err(|error| PyValueError::new_err(error.to_string()))
+    /// Match approved production using each run's numeric run period.
+    #[getter]
+    fn approved_production(&self) -> PyRunPredicate {
+        PyRunPredicate(crate::approved_production())
     }
 
     fn __repr__(&self) -> &'static str {
@@ -137,6 +135,9 @@ pub(crate) fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelectio
     }
     if let Ok(selection) = scope.extract::<PyRunSelection>() {
         return Ok(selection.0);
+    }
+    if let Ok(query) = scope.extract::<PyRef<'_, PyRunQuery>>() {
+        return Ok(query.0.selection().clone());
     }
     if let Ok(period) = scope.extract::<PyRef<'_, PyRunPeriod>>() {
         return Ok(RunSelection::period(period.0));
@@ -176,25 +177,25 @@ pub(crate) fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelectio
     {
         return Ok(RunSelection::runs([run]));
     }
-    if let Ok(runs) = scope.extract::<Vec<RunNumber>>() {
-        return Ok(RunSelection::runs(runs));
+    if scope.is_instance_of::<PyList>() || scope.is_instance_of::<PyTuple>() {
+        let selections = scope
+            .try_iter()?
+            .map(|item| coerce_run_scope(&item?))
+            .collect::<PyResult<Vec<_>>>()?;
+        return combine_run_selections(selections);
     }
     Err(PyTypeError::new_err(
-        "run scope must be an integer, integer sequence, range, RunPeriod, period short name, RunSelection, or RunQuery",
+        "run scope must be an integer, sequence of run scopes, range, RunPeriod, period short name, RunSelection, or RunQuery",
     ))
 }
 
-pub(crate) fn coerce_run_scopes(scopes: &Bound<'_, PyTuple>) -> PyResult<RunSelection> {
-    if scopes.is_empty() {
-        return Err(PyTypeError::new_err("at least one run scope is required"));
-    }
-    if scopes.len() == 1 {
-        return coerce_run_scope(&scopes.get_item(0)?);
-    }
+fn combine_run_selections(
+    selections: impl IntoIterator<Item = RunSelection>,
+) -> PyResult<RunSelection> {
     let mut runs = std::collections::BTreeSet::new();
     let mut requested = 0_u64;
-    for scope in scopes {
-        match coerce_run_scope(&scope)? {
+    for selection in selections {
+        match selection {
             RunSelection::All => return Ok(RunSelection::All),
             RunSelection::Runs(selected) => {
                 requested = requested.saturating_add(selected.len() as u64);
@@ -224,6 +225,57 @@ pub(crate) fn coerce_run_scopes(scopes: &Bound<'_, PyTuple>) -> PyResult<RunSele
     Ok(RunSelection::runs(runs))
 }
 
+pub(crate) fn coerce_run_scopes(scopes: &Bound<'_, PyTuple>) -> PyResult<RunSelection> {
+    if scopes.is_empty() {
+        return Err(PyTypeError::new_err("at least one run scope is required"));
+    }
+    if scopes.len() == 1 {
+        return coerce_run_scope(&scopes.get_item(0)?);
+    }
+    combine_run_selections(
+        scopes
+            .iter()
+            .map(|scope| coerce_run_scope(&scope))
+            .collect::<PyResult<Vec<_>>>()?,
+    )
+}
+
+fn collect_calibration_scopes(
+    scope: &Bound<'_, PyAny>,
+    output: &mut Vec<crate::runs::RunCalibrationScope>,
+) -> PyResult<()> {
+    if let Ok(selection) =
+        scope.extract::<PyRef<'_, super::calibrations::PyCalibratedRunSelection>>()
+    {
+        output.push(selection.run_scope()?);
+        return Ok(());
+    }
+    if let Ok(period) = scope.extract::<PyRef<'_, PyCalibratedRunPeriod>>() {
+        output.push(crate::runs::RunCalibrationScope {
+            selection: RunSelection::period(period.0.period()),
+            context: crate::runs::RunCalibrationContext::Reconstruction(
+                period.0.period(),
+                period.0.reconstruction().clone(),
+            ),
+        });
+        return Ok(());
+    }
+    if let Ok(query) = scope.extract::<PyRef<'_, PyRunQuery>>() {
+        output.extend_from_slice(query.0.calibration_scopes());
+        return Ok(());
+    }
+    if let Ok(runs) = scope.extract::<PyRunSet>() {
+        output.extend_from_slice(runs.0.provenance().calibration_scopes());
+        return Ok(());
+    }
+    if scope.is_instance_of::<PyList>() || scope.is_instance_of::<PyTuple>() {
+        for item in scope.try_iter()? {
+            collect_calibration_scopes(&item?, output)?;
+        }
+    }
+    Ok(())
+}
+
 #[pymethods]
 impl PyRuns {
     /// Discover named scientific predicates in one typed namespace.
@@ -242,16 +294,21 @@ impl PyRuns {
     }
 
     /// Build a lazy Run Query from a common Python run scope.
-    #[pyo3(signature = (*scopes: "int | Sequence[int] | range | RunPeriod | CalibratedRunPeriod | str | RunSelection | RunQuery | RunSet"))]
+    #[pyo3(signature = (*scopes: "int | range | RunPeriod | CalibratedRunPeriod | str | RunSelection | RunQuery | RunSet | Sequence[int | RunPeriod | CalibratedRunPeriod | str | RunSelection | RunQuery | RunSet]"))]
     fn select(&self, scopes: &Bound<'_, PyTuple>) -> PyResult<PyRunQuery> {
         if scopes.len() == 1
             && let Ok(query) = scopes.get_item(0)?.extract::<PyRef<'_, PyRunQuery>>()
         {
             return Ok(query.clone());
         }
+        let selection = coerce_run_scopes(scopes)?;
+        let mut calibration_scopes = Vec::new();
+        for scope in scopes {
+            collect_calibration_scopes(&scope, &mut calibration_scopes)?;
+        }
         self.0
-            .runs(coerce_run_scopes(scopes)?)
-            .map(PyRunQuery)
+            .runs(selection)
+            .map(|query| PyRunQuery(query.with_calibration_scopes(calibration_scopes)))
             .map_err(|error| super::exceptions::map(&error))
     }
 
@@ -448,6 +505,41 @@ impl PyRunQuery {
             self.0
                 .with_timeout(crate::python::execution::timeout(seconds)?),
         ))
+    }
+    /// Attach one calibration timestamp and variation to this query's numeric scope.
+    #[pyo3(signature = (calibration_time, *, variation=None))]
+    fn at(
+        &self,
+        calibration_time: chrono::DateTime<chrono::Utc>,
+        variation: Option<String>,
+    ) -> Self {
+        let mut scopes = self.0.calibration_scopes().to_vec();
+        scopes.push(crate::runs::RunCalibrationScope {
+            selection: self.0.selection().clone(),
+            context: crate::runs::RunCalibrationContext::Direct {
+                variation: variation.unwrap_or_else(|| "default".to_owned()),
+                as_of: calibration_time,
+            },
+        });
+        Self(self.0.with_calibration_scopes(scopes))
+    }
+    /// Attach a REST context when this query's scope belongs to one run period.
+    #[pyo3(signature = (version, *, variation=None))]
+    fn rest(&self, version: crate::RESTVersion, variation: Option<String>) -> PyResult<Self> {
+        let period = super::calibrations::selection_period(self.0.selection())?;
+        let reconstruction = crate::RESTVersionSelection::try_new(period, version)
+            .map(crate::ReconstructionPeriod::new)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        let reconstruction = match variation {
+            Some(variation) => reconstruction.with_variation(variation),
+            None => reconstruction,
+        };
+        let mut scopes = self.0.calibration_scopes().to_vec();
+        scopes.push(crate::runs::RunCalibrationScope {
+            selection: self.0.selection().clone(),
+            context: crate::runs::RunCalibrationContext::Reconstruction(period, reconstruction),
+        });
+        Ok(Self(self.0.with_calibration_scopes(scopes)))
     }
     /// Project named condition columns without retrieving their values.
     #[pyo3(signature = (*fields))]

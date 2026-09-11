@@ -133,8 +133,10 @@ def test_explicit_fallback_substitutes_and_reports_selected_run(
     ccdb = shutil.copy2(ccdb_path, tmp_path / 'ccdb.sqlite')
     with sqlite3.connect(ccdb) as connection:
         connection.execute('UPDATE runRanges SET runMax = 50685 WHERE id = 2')
+    with sqlite3.connect(rcdb) as connection:
+        connection.execute('INSERT INTO runs(number) VALUES (50680)')
     gx = gluex.open(rcdb=str(rcdb), ccdb=str(ccdb))
-    runs = gx.runs.select(50697).collect()
+    runs = gx.runs.select(50680).collect()
     reconstruction = gluex.ReconstructionSelection.periods(
         {RunPeriod.RP2018_08: RESTVersionSelection.version(RunPeriod.RP2018_08, 2)}
     )
@@ -145,9 +147,9 @@ def test_explicit_fallback_substitutes_and_reports_selected_run(
         .compute()
     )
 
-    assert result.report.selected_runs == (50697,)
-    assert result.report.used_runs == (50697,)
-    assert result.report.substitutions == ((50697, 50685),)
+    assert result.report.selected_runs == (50680,)
+    assert result.report.used_runs == (50680,)
+    assert result.report.substitutions == ((50680, 50685),)
     assert result.histograms.tagged_flux.counts[1] == pytest.approx(TAGGED_FLUX)
     assert result.provenance.missing_policy == 'fallback'
 

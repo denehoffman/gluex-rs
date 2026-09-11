@@ -86,10 +86,9 @@ pub use rcdb::conditions::ConditionOperand;
 ///
 /// # Errors
 /// Rejects periods without a documented approved-production definition.
-pub fn approved_production(period: RunPeriod) -> DatabaseResult<RunPredicate> {
-    rcdb::conditions::aliases::approved_production(period)
-        .map(RunPredicate)
-        .map_err(Into::into)
+#[must_use]
+pub fn approved_production() -> RunPredicate {
+    RunPredicate(rcdb::conditions::aliases::approved_production())
 }
 
 /// Calibration catalogs and explicit numeric queries.

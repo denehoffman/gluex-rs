@@ -8,6 +8,7 @@ fn evaluated_runs_are_assembled_without_changing_order_or_accounting() {
             source: SourceIdentity::trusted("fixture".into()),
             selection: RunSelection::range(2, 4),
             predicates: Vec::new(),
+            calibration_scopes: Vec::new(),
         },
         EvaluatedRuns {
             numbers: vec![2, 4],

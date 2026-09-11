@@ -270,6 +270,25 @@ pub struct RunProvenance {
     source: SourceIdentity,
     selection: RunSelection,
     predicates: Vec<crate::RunPredicate>,
+    #[cfg_attr(not(feature = "python"), allow(dead_code))]
+    calibration_scopes: Vec<RunCalibrationScope>,
+}
+
+#[cfg_attr(not(feature = "python"), allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RunCalibrationContext {
+    Reconstruction(crate::RunPeriod, crate::ReconstructionPeriod),
+    Direct {
+        variation: String,
+        as_of: chrono::DateTime<chrono::Utc>,
+    },
+}
+
+#[cfg_attr(not(feature = "python"), allow(dead_code))]
+#[derive(Debug, Clone)]
+pub(crate) struct RunCalibrationScope {
+    pub(crate) selection: RunSelection,
+    pub(crate) context: RunCalibrationContext,
 }
 
 impl RunProvenance {
@@ -295,6 +314,11 @@ impl RunProvenance {
     #[must_use]
     pub const fn selection(&self) -> &RunSelection {
         &self.selection
+    }
+
+    #[cfg_attr(not(feature = "python"), allow(dead_code))]
+    pub(crate) fn calibration_scopes(&self) -> &[RunCalibrationScope] {
+        &self.calibration_scopes
     }
 }
 
@@ -324,6 +348,15 @@ impl RunSet {
     pub const fn provenance(&self) -> &RunProvenance {
         &self.provenance
     }
+
+    #[cfg_attr(not(feature = "python"), allow(dead_code))]
+    pub(crate) fn subset(&self, numbers: Vec<RunNumber>) -> Self {
+        Self {
+            numbers,
+            provenance: self.provenance.clone(),
+            report: self.report.clone(),
+        }
+    }
 }
 
 /// Reusable lazy recorded-membership query bound to its original source.
@@ -332,6 +365,7 @@ pub struct RunQuery {
     reader: RCDB,
     selection: RunSelection,
     predicates: Vec<crate::RunPredicate>,
+    calibration_scopes: Vec<RunCalibrationScope>,
     execution: crate::ExecutionOptions,
 }
 
@@ -383,8 +417,21 @@ impl RunQuery {
             reader,
             selection,
             predicates: Vec::new(),
+            calibration_scopes: Vec::new(),
             execution: crate::ExecutionOptions::default(),
         }
+    }
+
+    #[cfg_attr(not(feature = "python"), allow(dead_code))]
+    pub(crate) fn with_calibration_scopes(&self, scopes: Vec<RunCalibrationScope>) -> Self {
+        let mut query = self.clone();
+        query.calibration_scopes = scopes;
+        query
+    }
+
+    #[cfg_attr(not(feature = "python"), allow(dead_code))]
+    pub(crate) fn calibration_scopes(&self) -> &[RunCalibrationScope] {
+        &self.calibration_scopes
     }
 
     /// Return a query that stops once `duration` has elapsed during evaluation.
@@ -422,6 +469,7 @@ impl RunQuery {
             source: SourceIdentity::trusted(self.reader.connection_path().to_owned()),
             selection: self.selection.clone(),
             predicates: self.predicates.clone(),
+            calibration_scopes: self.calibration_scopes.clone(),
         }
     }
 
@@ -618,6 +666,7 @@ impl std::fmt::Debug for RunQuery {
             .field("source", &self.reader.connection_path())
             .field("selection", &self.selection)
             .field("predicates", &self.predicates)
+            .field("calibration_scopes", &self.calibration_scopes)
             .field("execution", &self.execution)
             .finish()
     }

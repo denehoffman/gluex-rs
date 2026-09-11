@@ -12,8 +12,15 @@ pub struct Expr(Arc<ExprInner>);
 #[derive(Debug, Clone)]
 enum ExprInner {
     True,
+    RunRange {
+        min: crate::RunNumber,
+        max: crate::RunNumber,
+    },
     Comparison(Comparison),
-    Group { kind: GroupKind, clauses: Vec<Expr> },
+    Group {
+        kind: GroupKind,
+        clauses: Vec<Expr>,
+    },
     Not(Expr),
     Unknown(Expr),
 }
@@ -68,7 +75,7 @@ impl Expr {
 
     pub(crate) fn referenced_conditions(&self, out: &mut Vec<String>) {
         match self.0.as_ref() {
-            ExprInner::True => {}
+            ExprInner::True | ExprInner::RunRange { .. } => {}
             ExprInner::Comparison(cmp) => out.push(cmp.field.clone()),
             ExprInner::Group { clauses, .. } => {
                 for clause in clauses {
@@ -86,6 +93,11 @@ impl Expr {
     ) -> Result<String, RCDBError> {
         match self.0.as_ref() {
             ExprInner::True => Ok("1 = 1".to_string()),
+            ExprInner::RunRange { min, max } => {
+                params.push(Value::Integer(*min));
+                params.push(Value::Integer(*max));
+                Ok("runs.number BETWEEN ? AND ?".to_owned())
+            }
             ExprInner::Comparison(cmp) => cmp.to_sql(alias_lookup, params),
             ExprInner::Group { kind, clauses } => {
                 let mut rendered: Vec<String> = Vec::new();
@@ -121,6 +133,7 @@ impl Expr {
     fn fmt_with(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0.as_ref() {
             ExprInner::True => write!(f, "TRUE"),
+            ExprInner::RunRange { min, max } => write!(f, "run_number BETWEEN {min} AND {max}"),
             ExprInner::Comparison(cmp) => write!(f, "{cmp}"),
             ExprInner::Group { kind, clauses } => {
                 let joiner = match kind {
@@ -340,6 +353,13 @@ pub fn bool_cond(name: impl Into<String>) -> BoolField {
 /// Begins constructing a timestamp comparison against the named condition.
 pub fn time_cond(name: impl Into<String>) -> TimeField {
     TimeField { field: name.into() }
+}
+
+fn run_period(period: crate::RunPeriod) -> Expr {
+    Expr::new(ExprInner::RunRange {
+        min: period.min_run(),
+        max: period.max_run(),
+    })
 }
 
 /// Combines the supplied expressions with logical AND semantics.
@@ -662,7 +682,7 @@ impl IntoExprList for &Vec<Expr> {
 pub mod aliases {
     use crate::core::run_periods::RunPeriod;
 
-    use super::{Expr, all, float_cond, int_cond, string_cond};
+    use super::{Expr, all, any, float_cond, int_cond, run_period, string_cond};
     use crate::rcdb::{RCDBError, RCDBResult};
 
     /// Returns the reusable expression for the `is_production` alias.
@@ -821,12 +841,12 @@ pub mod aliases {
         int_cond("status").eq(0)
     }
 
-    /// Returns an expression which matches approved production runs for the given [`RunPeriod`].
+    /// Returns the approved-production expression for one explicitly selected period.
     ///
     /// # Errors
     /// Returns [`RCDBError::UnsupportedApprovedProductionRunPeriod`] when no
-    /// approved-production alias has been defined for the requested period.
-    pub fn approved_production(run_period: RunPeriod) -> RCDBResult<Expr> {
+    /// approved-production definition exists for the period.
+    pub fn approved_production_for_period(run_period: RunPeriod) -> RCDBResult<Expr> {
         Ok(match run_period {
             RunPeriod::RP2016_02 | RunPeriod::RP2017_01 => {
                 all([is_production(), status_approved()])
@@ -844,6 +864,26 @@ pub mod aliases {
                 ));
             }
         })
+    }
+
+    /// Matches approved production using each run's numeric run period.
+    #[must_use]
+    pub fn approved_production() -> Expr {
+        any([
+            RunPeriod::RP2016_02,
+            RunPeriod::RP2017_01,
+            RunPeriod::RP2018_01,
+            RunPeriod::RP2018_08,
+            RunPeriod::RP2019_11,
+            RunPeriod::RP2023_01,
+            RunPeriod::RP2025_01,
+        ]
+        .into_iter()
+        .filter_map(|period| {
+            approved_production_for_period(period)
+                .ok()
+                .map(|approved| all([run_period(period), approved]))
+        }))
     }
 }
 

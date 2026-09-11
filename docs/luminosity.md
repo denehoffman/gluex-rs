@@ -5,7 +5,7 @@ The luminosity workflow combines a resolved RCDB `RunSet` with CCDB constants an
 ```python
 period = gluex.RunPeriod("2018-08")
 runs = gx.runs.select(period).collect()
-reconstruction = gluex.ReconstructionSelection.periods({period: period.rest(2)})
+reconstruction = period.rest(2)
 
 result = gx.workflows.luminosity(
     runs,

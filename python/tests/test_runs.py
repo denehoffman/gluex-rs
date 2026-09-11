@@ -122,11 +122,29 @@ def test_calibrated_run_period_supports_immutable_variation_and_timestamp_select
 def test_run_aliases_have_one_typed_discoverable_home() -> None:
     gx = gluex.open()
     aliases = gx.runs.aliases
-    query = gx.runs.select('F18').where(aliases.approved_production('F18') & aliases.is_coherent_beam)
+    query = gx.runs.select(['S16', 'F18']).where(aliases.approved_production)
     assert isinstance(aliases.is_coherent_beam, gluex.RunPredicate)
     assert isinstance(query, gluex.RunQuery)
+    assert query.collect().numbers == (50685, 50697)
     assert 'aliases=available' in repr(gx.runs)
     assert not hasattr(gluex, 'approved_production')
+
+
+def test_select_accepts_sequences_of_run_periods(rcdb_path: Path) -> None:
+    gx = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED)
+
+    periods = [gluex.RunPeriod('2016-02'), gluex.RunPeriod('2018_08')]
+    assert gx.runs.select(periods).collect().numbers == (10204, 50685, 50697)
+    assert gx.runs.select(['2016_02', '2018-08']).collect().numbers == (10204, 50685, 50697)
+
+
+def test_session_aliases_compose_with_dynamic_conditions(rcdb_path: Path) -> None:
+    gx = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED)
+    current = gx.runs.conditions['beam_current']
+
+    runs = gx.runs.select('2018-08').where(gx.runs.aliases.is_field_on & (current > 10.0)).collect()
+
+    assert isinstance(runs, gluex.RunSet)
 
 
 def test_run_query_timeout_is_immutable() -> None:

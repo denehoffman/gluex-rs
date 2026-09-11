@@ -22,8 +22,8 @@ import gluex
 gx = gluex.connect(rcdb="rcdb.sqlite", ccdb="ccdb.sqlite")
 beam_current = gx.runs.conditions["beam_current"]
 runs = (
-    gx.runs.select("2018-08")
-    .where(beam_current > 10.0)
+    gx.runs.select([gluex.RunPeriod("2018-01"), gluex.RunPeriod("2018-08")])
+    .where(gx.runs.aliases.is_coherent_beam & (beam_current > 10.0))
     .collect()
 )
 print(runs.numbers)

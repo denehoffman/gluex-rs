@@ -109,7 +109,8 @@ fn explicit_historical_selectors_are_immutable_and_include_boundaries() {
     let old = historical.collect().unwrap();
     assert_eq!(old.get(0).unwrap().assignment_id(), 76);
     assert_eq!(old.get(2_147_483_647).unwrap().variation(), "default");
-    assert_eq!(old.report().missing_runs(), &[-1, 2_147_483_648]);
+    assert_eq!(old.report().missing_runs(), &[-1]);
+    assert_eq!(old.get(2_147_483_648).unwrap().assignment_id(), 76);
     assert_eq!(historical.provenance().variation(), "mc");
     assert_eq!(query.provenance().variation(), "default");
     let current = historical.as_of(boundary).collect().unwrap();
@@ -207,7 +208,9 @@ fn assignment_oracles_cover_intervals_cutoffs_and_lower_level_equivalence() {
     assert_eq!(series.get(21).unwrap().assignment_id(), 300_002);
     assert_eq!(series.get(25).unwrap().assignment_id(), 300_002);
     assert_eq!(series.get(30).unwrap().assignment_id(), 300_004);
-    assert_eq!(series.report().missing_runs(), &[9, 26, 31]);
+    assert_eq!(series.get(26).unwrap().assignment_id(), 300_002);
+    assert_eq!(series.get(31).unwrap().assignment_id(), 300_004);
+    assert_eq!(series.report().missing_runs(), &[9]);
 
     let lower = CCDB::open(fixture.path())
         .unwrap()
@@ -242,7 +245,8 @@ fn assignment_oracles_cover_intervals_cutoffs_and_lower_level_equivalence() {
     assert_eq!(before.get(10).unwrap().assignment_id(), 300_000);
     assert_eq!(before.get(15).unwrap().assignment_id(), 300_000);
     assert_eq!(before.get(20).unwrap().assignment_id(), 300_000);
-    assert_eq!(before.report().missing_runs(), &[21]);
+    assert_eq!(before.get(21).unwrap().assignment_id(), 300_000);
+    assert!(before.report().missing_runs().is_empty());
 }
 
 #[test]

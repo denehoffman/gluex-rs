@@ -66,7 +66,7 @@ def test_operand_types_and_explicit_approval(rcdb_path):
     with pytest.raises(ValueError):
         _ = d['beam_current'] > float('nan')  # noqa: PLW0177
     assert gx.runs.between(50000, 59999).where(
-        gx.runs.aliases.approved_production(gluex.RunPeriod('s18'))
+        gx.runs.aliases.approved_production
     ).collect().numbers == (50685, 50697)
 
 
