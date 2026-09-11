@@ -133,6 +133,46 @@ fn resolve_candidates_with_stats(
     Ok((best, inspected))
 }
 
+/// Carry the latest eligible preceding assignment into otherwise unresolved runs.
+pub fn resolve_preceding_candidates(
+    runs: &HashSet<RunNumber>,
+    candidates: &[AssignmentCandidate],
+    variation: &str,
+    timestamp: DateTime<Utc>,
+    options: &ExecutionOptions,
+) -> CCDBResult<BTreeMap<RunNumber, ResolvedAssignment>> {
+    let mut resolved = BTreeMap::new();
+    let mut constant_set_cache: HashMap<Id, Arc<ConstantSetMeta>> = HashMap::new();
+    for &run in runs {
+        if options.interrupted() {
+            return Err(crate::execution::interrupted_error().into());
+        }
+        let Some(candidate) = candidates
+            .iter()
+            .filter(|candidate| candidate.created <= timestamp && candidate.run_max < run)
+            .max_by_key(|candidate| (candidate.run_max, candidate.id))
+        else {
+            continue;
+        };
+        let constant_set = constant_set_cache
+            .entry(candidate.constant_set.id)
+            .or_insert_with(|| Arc::new(candidate.constant_set.clone()))
+            .clone();
+        resolved.insert(
+            run,
+            ResolvedAssignment {
+                constant_set,
+                id: candidate.id,
+                created: candidate.created,
+                variation: variation.to_owned(),
+                run_min: candidate.run_min,
+                run_max: candidate.run_max,
+            },
+        );
+    }
+    Ok(resolved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,5 +212,23 @@ mod tests {
             assert_eq!(inspected, runs.len() + candidates.len());
             assert!(inspected < runs.len() * candidates.len());
         }
+    }
+
+    #[test]
+    fn carries_the_latest_preceding_assignment_across_a_gap() {
+        let cutoff = crate::core::parsers::parse_database_timestamp("2021-01-01 00:00:00").unwrap();
+        let runs = std::iter::once(25).collect();
+        let candidates = vec![candidate(1, 10, 20), candidate(2, 30, 40)];
+
+        let resolved = resolve_preceding_candidates(
+            &runs,
+            &candidates,
+            "default",
+            cutoff,
+            &ExecutionOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(resolved[&25].id, 1);
     }
 }

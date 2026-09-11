@@ -22,7 +22,13 @@ pub(super) fn assemble(
         .iter()
         .filter_map(|run| decoded.get(run).cloned().map(|entry| (*run, entry)))
         .collect();
-    let mut substitutions = Vec::new();
+    let mut substitutions = entries
+        .iter()
+        .filter_map(|(&run, entry)| {
+            let (_, run_max) = entry.run_range();
+            (run > run_max).then_some((run, run_max))
+        })
+        .collect::<Vec<_>>();
     if let Some(fallback) = query.provenance.fallback_run {
         let entry = decoded
             .get(&fallback)

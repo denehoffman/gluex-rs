@@ -398,7 +398,7 @@ pub(crate) mod rcdb {
 
         fn approved_production(&self, run_period: Bound<'_, PyAny>) -> PyResult<PyExpr> {
             let run_period = parse_run_period_object(&run_period)?;
-            conditions::aliases::approved_production(run_period)
+            conditions::aliases::approved_production_for_period(run_period)
                 .map(PyExpr)
                 .map_err(py_rcdb_error)
         }

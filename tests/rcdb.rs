@@ -144,7 +144,7 @@ fn fetch_runs_with_alias() -> RCDBResult<()> {
 
 #[test]
 fn approved_production_rejects_unsupported_run_periods() {
-    let error = conditions::aliases::approved_production(RunPeriod::RP2019_01)
+    let error = conditions::aliases::approved_production_for_period(RunPeriod::RP2019_01)
         .expect_err("unsupported periods must return an error");
     assert!(matches!(
         error,

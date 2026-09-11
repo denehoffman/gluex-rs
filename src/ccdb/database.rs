@@ -803,11 +803,9 @@ impl TypeTableHandle {
         if runs.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let min_run = *runs.iter().min().expect("this is a bug, please report it!");
-        let max_run = *runs.iter().max().expect("this is a bug, please report it!");
         let mut final_assignments: BTreeMap<RunNumber, ResolvedAssignment> = BTreeMap::new();
         let mut unresolved: HashSet<RunNumber> = runs.iter().copied().collect();
-        for var_meta in var_chain {
+        for var_meta in &var_chain {
             if options.interrupted() {
                 return Err(crate::execution::interrupted_error().into());
             }
@@ -816,10 +814,25 @@ impl TypeTableHandle {
             }
             let partial = self.resolve_assignments_for_variation(
                 &unresolved,
-                &var_meta,
+                var_meta,
                 timestamp,
-                min_run,
-                max_run,
+                false,
+                options,
+            )?;
+            for (run, meta) in partial {
+                final_assignments.insert(run, meta);
+                unresolved.remove(&run);
+            }
+        }
+        for var_meta in &var_chain {
+            if unresolved.is_empty() {
+                break;
+            }
+            let partial = self.resolve_assignments_for_variation(
+                &unresolved,
+                var_meta,
+                timestamp,
+                true,
                 options,
             )?;
             for (run, meta) in partial {
@@ -834,10 +847,11 @@ impl TypeTableHandle {
         runs: &HashSet<RunNumber>,
         var_meta: &VariationMeta,
         timestamp: DateTime<Utc>,
-        min_run: RunNumber,
-        max_run: RunNumber,
+        carry_forward: bool,
         options: &crate::ExecutionOptions,
     ) -> CCDBResult<BTreeMap<RunNumber, ResolvedAssignment>> {
+        let min_run = *runs.iter().min().expect("runs were checked as non-empty");
+        let max_run = *runs.iter().max().expect("runs were checked as non-empty");
         let connection = self.db.connection();
         crate::execution::with_sqlite_progress(&connection, options, || -> CCDBResult<_> {
             let mut stmt = connection.prepare_cached(
@@ -851,24 +865,37 @@ impl TypeTableHandle {
              WHERE cs.constantTypeId = ?
                AND a.variationId = ?
                AND (rr.id IS NULL
-                    OR (rr.runMin <= rr.runMax AND rr.runMax >= ? AND rr.runMin <= ?))",
+                    OR (rr.runMin <= rr.runMax
+                        AND ((? = 1 AND rr.runMin <= ?)
+                             OR (? = 0 AND rr.runMax >= ? AND rr.runMin <= ?))))",
             )?;
             let raw_candidates = stmt
-                .query_map((self.meta.id, var_meta.id, min_run, max_run), |row| {
-                    let id: Id = row.get(0)?;
-                    let created: String = row.get(1)?;
-                    let constant_set_id: Id = row.get(2)?;
-                    let constant_set = ConstantSetMeta {
-                        id: row.get(3)?,
-                        created: row.get(4)?,
-                        modified: row.get(5)?,
-                        vault: row.get(6)?,
-                        constant_type_id: row.get(7)?,
-                    };
-                    let run_min: RunNumber = row.get(8)?;
-                    let run_max: RunNumber = row.get(9)?;
-                    Ok((id, created, constant_set_id, constant_set, run_min, run_max))
-                })?
+                .query_map(
+                    (
+                        self.meta.id,
+                        var_meta.id,
+                        carry_forward,
+                        max_run,
+                        carry_forward,
+                        min_run,
+                        max_run,
+                    ),
+                    |row| {
+                        let id: Id = row.get(0)?;
+                        let created: String = row.get(1)?;
+                        let constant_set_id: Id = row.get(2)?;
+                        let constant_set = ConstantSetMeta {
+                            id: row.get(3)?,
+                            created: row.get(4)?,
+                            modified: row.get(5)?,
+                            vault: row.get(6)?,
+                            constant_type_id: row.get(7)?,
+                        };
+                        let run_min: RunNumber = row.get(8)?;
+                        let run_max: RunNumber = row.get(9)?;
+                        Ok((id, created, constant_set_id, constant_set, run_min, run_max))
+                    },
+                )?
                 .collect::<Result<Vec<_>, _>>()?;
             let candidates = raw_candidates
                 .into_iter()
@@ -883,7 +910,17 @@ impl TypeTableHandle {
                     },
                 )
                 .collect::<CCDBResult<Vec<_>>>()?;
-            resolve_candidates(runs, &candidates, &var_meta.name, timestamp, options)
+            if carry_forward {
+                super::assignment::resolve_preceding_candidates(
+                    runs,
+                    &candidates,
+                    &var_meta.name,
+                    timestamp,
+                    options,
+                )
+            } else {
+                resolve_candidates(runs, &candidates, &var_meta.name, timestamp, options)
+            }
         })
     }
     fn load_vaults_with_options(

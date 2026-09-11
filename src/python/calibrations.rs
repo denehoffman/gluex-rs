@@ -93,6 +93,31 @@ impl PyCalibratedRunSelection {
             excluded: std::collections::BTreeSet::new(),
         }
     }
+
+    pub(crate) fn run_scope(&self) -> PyResult<crate::runs::RunCalibrationScope> {
+        let mut runs = selection_numbers(&self.selection)?;
+        runs.retain(|run| !self.excluded.contains(run));
+        let context = match &self.context {
+            ScopedCalibrationContext::Default => {
+                return Err(PyValueError::new_err(
+                    "a calibrated run selection must have an explicit calibration context",
+                ));
+            }
+            ScopedCalibrationContext::Reconstruction(period, reconstruction) => {
+                crate::runs::RunCalibrationContext::Reconstruction(*period, reconstruction.clone())
+            }
+            ScopedCalibrationContext::Direct { variation, as_of } => {
+                crate::runs::RunCalibrationContext::Direct {
+                    variation: variation.clone(),
+                    as_of: *as_of,
+                }
+            }
+        };
+        Ok(crate::runs::RunCalibrationScope {
+            selection: crate::RunSelection::runs(runs),
+            context,
+        })
+    }
 }
 
 #[pymethods]
@@ -288,6 +313,74 @@ impl CalibrationRunInput {
     }
 }
 
+fn scoped_context(context: &crate::runs::RunCalibrationContext) -> ScopedCalibrationContext {
+    match context {
+        crate::runs::RunCalibrationContext::Reconstruction(period, reconstruction) => {
+            ScopedCalibrationContext::Reconstruction(*period, reconstruction.clone())
+        }
+        crate::runs::RunCalibrationContext::Direct { variation, as_of } => {
+            ScopedCalibrationContext::Direct {
+                variation: variation.clone(),
+                as_of: *as_of,
+            }
+        }
+    }
+}
+
+fn calibrated_run_set_inputs(
+    runs: &crate::RunSet,
+) -> PyResult<Vec<(CalibrationRunInput, ScopedCalibrationContext)>> {
+    let selected = runs
+        .numbers()
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut owners =
+        std::collections::BTreeMap::<RunNumber, crate::runs::RunCalibrationContext>::new();
+    let mut inputs = Vec::new();
+    for scope in runs.provenance().calibration_scopes() {
+        let context = scope.context.clone();
+        let mut unique = Vec::new();
+        let mut conflicts = Vec::new();
+        for run in selection_numbers(&scope.selection)? {
+            if !selected.contains(&run) {
+                continue;
+            }
+            match owners.get(&run) {
+                Some(existing) if existing != &context => conflicts.push(run),
+                Some(_) => {}
+                None => {
+                    owners.insert(run, context.clone());
+                    unique.push(run);
+                }
+            }
+        }
+        if !conflicts.is_empty() {
+            return Err(PyValueError::new_err(format!(
+                "runs [{}] have conflicting calibration contexts inherited from run selection",
+                format_run_list(&conflicts)
+            )));
+        }
+        if !unique.is_empty() {
+            inputs.push((
+                CalibrationRunInput::Set(runs.subset(unique)),
+                scoped_context(&context),
+            ));
+        }
+    }
+    let unscoped = selected
+        .into_iter()
+        .filter(|run| !owners.contains_key(run))
+        .collect::<Vec<_>>();
+    if !unscoped.is_empty() {
+        inputs.push((
+            CalibrationRunInput::Set(runs.subset(unscoped)),
+            ScopedCalibrationContext::Default,
+        ));
+    }
+    Ok(inputs)
+}
+
 fn calibration_selection(
     catalog: CalibrationCatalog,
     scopes: &Bound<'_, PyTuple>,
@@ -368,11 +461,18 @@ fn calibration_selection(
     if scopes.len() == 1
         && let Ok(runs) = scopes.get_item(0)?.extract::<PyRunSet>()
     {
+        let inherited = calibrated_run_set_inputs(&runs.0)?;
+        if inherited
+            .iter()
+            .any(|(_, context)| *context != ScopedCalibrationContext::Default)
+            && (variation.is_some() || as_of.is_some())
+        {
+            return Err(PyValueError::new_err(
+                "variation and as_of cannot override calibration contexts inherited from the RunSet",
+            ));
+        }
         return Ok(PyCalibrationSelection {
-            scopes: vec![(
-                CalibrationRunInput::Set(runs.0),
-                ScopedCalibrationContext::Default,
-            )],
+            scopes: inherited,
             variation,
             as_of,
             catalog,
@@ -621,6 +721,47 @@ fn payload_series(name: &str, values: &CalibrationColumnValues) -> Series {
     }
 }
 
+fn payload_column_for_run<'a>(
+    series: &'a [CalibrationSeries],
+    run: RunNumber,
+    name: &str,
+) -> Option<CalibrationColumnValues<'a>> {
+    series
+        .iter()
+        .find_map(|series| series.get(run))
+        .and_then(|entry| entry.payload().column(name))
+}
+
+fn scalar_payload_field(
+    name: &str,
+    kind: CalibrationColumnValues<'_>,
+    series: &[CalibrationSeries],
+    runs: &[RunNumber],
+) -> Series {
+    macro_rules! scalar_values {
+        ($variant:ident) => {{
+            let values = runs
+                .iter()
+                .map(|run| match payload_column_for_run(series, *run, name) {
+                    Some(CalibrationColumnValues::$variant(values)) => values.first().cloned(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            Series::new(name.into(), values)
+        }};
+    }
+
+    match kind {
+        CalibrationColumnValues::Int(_) => scalar_values!(Int),
+        CalibrationColumnValues::UInt(_) => scalar_values!(UInt),
+        CalibrationColumnValues::Long(_) => scalar_values!(Long),
+        CalibrationColumnValues::ULong(_) => scalar_values!(ULong),
+        CalibrationColumnValues::Double(_) => scalar_values!(Double),
+        CalibrationColumnValues::String(_) => scalar_values!(String),
+        CalibrationColumnValues::Bool(_) => scalar_values!(Bool),
+    }
+}
+
 fn nested_table_column(
     path: &str,
     series: &[CalibrationSeries],
@@ -629,15 +770,24 @@ fn nested_table_column(
     let Some((_, first)) = series.iter().find_map(|series| series.items().next()) else {
         return Ok(Column::full_null(path.into(), runs.len(), &DataType::Null));
     };
+    let scalar = series
+        .iter()
+        .flat_map(CalibrationSeries::items)
+        .all(|(_, entry)| entry.payload().n_rows() == 1);
     let mut fields = Vec::new();
     for name in first.payload().column_names() {
+        if scalar {
+            let kind = first
+                .payload()
+                .column(name)
+                .expect("column name came from this payload");
+            fields.push(scalar_payload_field(name, kind, series, runs));
+            continue;
+        }
         let lists: ListChunked = runs
             .iter()
             .map(|run| {
-                series
-                    .iter()
-                    .find_map(|series| series.get(*run))
-                    .and_then(|entry| entry.payload().column(name))
+                payload_column_for_run(series, *run, name)
                     .map(|values| payload_series(name, &values))
             })
             .collect();
@@ -679,7 +829,7 @@ impl PyCalibrationResults {
             .ok_or_else(|| PyKeyError::new_err(path.to_owned()))
     }
 
-    /// Convert to one row per run with one collision-safe struct-of-lists column per table.
+    /// Convert to one row per run with one collision-safe struct column per table.
     fn to_polars(&self) -> PyResult<PolarsDataFrame> {
         let runs = self.runs().0;
         let run_numbers = runs

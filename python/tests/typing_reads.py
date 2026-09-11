@@ -37,8 +37,13 @@ def typed_discovery(gx: gluex.GlueX) -> None:
     assert_type(period.rest(5, variation='recon'), gluex.CalibratedRunPeriod)
     assert_type(period.at(datetime.now().astimezone()), gluex.CalibratedRunPeriod)
     assert_type(gx.runs.aliases, gluex.RunAliases)
-    assert_type(gx.runs.aliases.approved_production('S17'), gluex.RunPredicate)
+    assert_type(gx.runs.aliases.approved_production, gluex.RunPredicate)
     assert_type(gx.runs.aliases.is_coherent_beam, gluex.RunPredicate)
+    assert_type(gx.runs.select([50685]).rest(2), gluex.RunQuery)
+    assert_type(
+        gx.runs.select([50685]).at(datetime.now().astimezone(), variation='default'),
+        gluex.RunQuery,
+    )
 
 
 def typed_reads(gx: gluex.GlueX) -> None:  # noqa: PLR0915

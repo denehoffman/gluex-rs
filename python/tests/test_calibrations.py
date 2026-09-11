@@ -50,6 +50,44 @@ def test_metadata_is_lazy_and_payload_errors_are_not_omissions(ccdb_path, tmp_pa
         _ = gluex.open(rcdb=gluex.DISABLED, ccdb=gluex.DISABLED).calibrations
 
 
+def test_latest_preceding_calibration_carries_across_run_gaps(ccdb_path, tmp_path):
+    path = tmp_path / 'sparse.sqlite'
+    shutil.copyfile(ccdb_path, path)
+    with sqlite3.connect(path) as connection:
+        connection.execute('UPDATE runRanges SET runMax = 50685 WHERE id = 2')
+
+    gx = gluex.open(rcdb=gluex.DISABLED, ccdb=path)
+    result = gx.calibrations['/TARGET/density'].for_runs([50685, 50697]).collect()
+
+    assert result.runs == (50685, 50697)
+    assert result.report.missing_runs == ()
+    assert result[50697].assignment_id == result[50685].assignment_id
+    assert result[50697].payload.column('density') == (70.92,)
+
+
+def test_collected_runs_preserve_per_run_calibration_contexts(rcdb_path, ccdb_path):
+    gx = gluex.open(rcdb=rcdb_path, ccdb=ccdb_path)
+    old = datetime(2019, 1, 1, tzinfo=timezone.utc)
+    current = datetime(2021, 1, 1, tzinfo=timezone.utc)
+    old_run = gx.runs.select(50685).at(old, variation='default')
+    current_run = gx.runs.select(50697).at(current, variation='default')
+
+    runs = gx.runs.select([old_run, current_run]).collect()
+    result = gx.calibrations.select(runs).tables('/test/demo/mytable').collect()
+
+    assert result['/test/demo/mytable'][50685].assignment_id == 76
+    assert result['/test/demo/mytable'][50697].assignment_id == 230266
+
+    conflicting = gx.runs.select(
+        [
+            gx.runs.select(50685).at(old),
+            gx.runs.select(50685).at(current),
+        ]
+    ).collect()
+    with pytest.raises(ValueError, match='conflicting calibration contexts'):
+        gx.calibrations.select(conflicting)
+
+
 def test_historical_query_selectors(ccdb_path):
 
     gx = gluex.open(rcdb=gluex.DISABLED, ccdb=ccdb_path)
@@ -212,15 +250,19 @@ def test_calibration_series_converts_directly_to_polars(ccdb_path):
 
 def test_selector_first_multi_table_results_convert_to_nested_polars(ccdb_path):
     gx = gluex.connect(rcdb=gluex.DISABLED, ccdb=ccdb_path)
-    result = gx.calibrations.select([2, 3]).tables('/test/demo/mytable', '/TARGET/density').collect()
+    result = gx.calibrations.select([50685, 50697]).tables('/test/demo/mytable', '/TARGET/density').collect()
 
     assert result.tables == ('/test/demo/mytable', '/TARGET/density')
-    assert result.runs == (2, 3)
-    assert result['/test/demo/mytable'].runs == (2, 3)
+    assert result.runs == (50685, 50697)
+    assert result['/test/demo/mytable'].runs == (50685, 50697)
     frame = result.to_polars()
     assert frame.schema['run_number'] == pl.UInt32
     assert isinstance(frame.schema['/test/demo/mytable'], pl.Struct)
     assert frame['/test/demo/mytable'].struct.field('x').to_list() == [[1.0, 4.0], [1.0, 4.0]]
+    assert frame.schema['/TARGET/density'] == pl.Struct(
+        {'density': pl.Float64, 'densityErr': pl.Float64}
+    )
+    assert frame['/TARGET/density'].struct.field('density').to_list() == [70.92, 70.92]
 
 
 def test_selector_first_context_has_one_configuration_site(ccdb_path):

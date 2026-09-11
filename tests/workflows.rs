@@ -415,13 +415,17 @@ fn explicit_luminosity_fallback_is_applied_and_reported() {
         .unwrap()
         .execute("UPDATE runRanges SET runMax = 50685 WHERE id = 2", [])
         .unwrap();
+    rusqlite::Connection::open(rcdb.path())
+        .unwrap()
+        .execute("INSERT INTO runs(number) VALUES (50680)", [])
+        .unwrap();
     let gx = GlueX::open(
         SourceConfig::sqlite(rcdb.path()),
         SourceConfig::sqlite(ccdb.path()),
     )
     .unwrap();
     let runs = gx
-        .runs(RunSelection::runs([50_697]))
+        .runs(RunSelection::runs([50_680]))
         .unwrap()
         .collect()
         .unwrap();
@@ -433,9 +437,9 @@ fn explicit_luminosity_fallback_is_applied_and_reported() {
         .collect()
         .unwrap();
 
-    assert_eq!(result.report().selected_runs(), &[50_697]);
-    assert_eq!(result.report().used_runs(), &[50_697]);
-    assert_eq!(result.report().substitutions(), &[(50_697, 50_685)]);
+    assert_eq!(result.report().selected_runs(), &[50_680]);
+    assert_eq!(result.report().used_runs(), &[50_680]);
+    assert_eq!(result.report().substitutions(), &[(50_680, 50_685)]);
     assert_relative_eq!(result.histograms().tagged_flux.counts()[1], TAGGED_FLUX);
     assert_eq!(result.provenance().missing_policy().as_str(), "fallback");
 }

@@ -23,7 +23,7 @@ fn bench_polarimeter_fetch(c: &mut Criterion) {
     let end_run = start_run + 500;
     let context = RCDBContext::default()
         .with_run_range(start_run..=end_run)
-        .filter(approved_production(run_period).expect("supported production run period"));
+        .filter(approved_production());
 
     c.bench_function("rcdb_fetch/polarimeter_converter_rp2018_08", |b| {
         let rcdb = rcdb.clone();
