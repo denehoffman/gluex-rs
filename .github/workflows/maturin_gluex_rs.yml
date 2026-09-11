@@ -33,7 +33,6 @@ jobs:
           . .venv/bin/activate
           echo PATH=$PATH >> $GITHUB_ENV
           uvx maturin develop --uv --generate-stubs
-          .venv/bin/python scripts/finalize_generated_stubs.py
       - run: uv pip install pytest
       - run: uvx ruff check .yamloom.py python
       - run: uvx ty check python/tests
@@ -341,7 +340,6 @@ jobs:
         uses: actions/download-artifact@v7
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
-      - run: python scripts/finalize_generated_stubs.py wheels-*/*.whl
       - run: uv publish --trusted-publishing always wheels-*/*
   release_rust:
     name: Release (Rust)

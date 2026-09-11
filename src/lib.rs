@@ -95,8 +95,8 @@ pub fn approved_production(period: RunPeriod) -> DatabaseResult<RunPredicate> {
 /// Calibration catalogs and explicit numeric queries.
 pub mod calibrations;
 pub use calibrations::{
-    CalibrationCatalog, CalibrationColumn, CalibrationColumnValues, CalibrationDirectory,
+    CalibratedRunPeriod, CalibrationCatalog, CalibrationColumn, CalibrationColumnValues, CalibrationDirectory,
     CalibrationEntry, CalibrationPayload, CalibrationProvenance, CalibrationQuery,
     CalibrationReport, CalibrationSeries, CalibrationStream, CalibrationTable,
-    CalibrationTableMetadata, CalibrationValueType, ReconstructionSelection,
+    CalibrationTableMetadata, CalibrationValueType, ReconstructionPeriod, ReconstructionSelection,
 };

@@ -1,20 +1,85 @@
 use super::{
-    runs::{PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet},
+    runs::{PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet, coerce_run_scope},
     tuple::{TypedIterator, TypedTuple},
 };
 use crate::calibrations::*;
-use crate::{Id, RunNumber};
-use pyo3::{exceptions::PyKeyError, prelude::*, types::PyDict};
-
-#[derive(FromPyObject)]
-enum PyCalibrationInput {
-    Selection(PyRunSelection),
-    Set(PyRunSet),
-    Query(PyRunQuery),
-}
+use crate::{Id, RESTVersionSelection, RunNumber};
+use pyo3::{
+    exceptions::{PyKeyError, PyStopIteration, PyValueError},
+    prelude::*,
+    types::{PyAny, PyDict, PyTuple},
+};
 
 fn error(error: crate::DatabaseError) -> PyErr {
     super::exceptions::map(&error)
+}
+
+fn reconstruction_from_dict(selections: &Bound<'_, PyDict>) -> PyResult<ReconstructionSelection> {
+    let mut native = std::collections::BTreeMap::new();
+    for (key, value) in selections.iter() {
+        let period = super::core::parse_run_period_object(&key)?;
+        let selection = if let Ok(selection) =
+            value.extract::<PyRef<'_, super::core::PyRESTVersionSelection>>()
+        {
+            if selection
+                .1
+                .is_some_and(|selected_period| selected_period != period)
+            {
+                return Err(PyValueError::new_err(format!(
+                    "REST version selection conflicts with mapping key {}",
+                    period.short_name()
+                )));
+            }
+            let mut requested = ReconstructionPeriod::new(selection.0);
+            if let Some(variation) = &selection.2 {
+                requested = requested.with_variation(variation);
+            }
+            requested
+        } else {
+            let version = value.extract()?;
+            ReconstructionPeriod::new(
+                crate::RESTVersionSelection::try_new(period, version)
+                    .map_err(|error| PyValueError::new_err(error.to_string()))?,
+            )
+        };
+        if native.insert(period, selection).is_some() {
+            return Err(PyValueError::new_err(format!(
+                "duplicate reconstruction meaning for run period {}",
+                period.short_name()
+            )));
+        }
+    }
+    Ok(ReconstructionSelection::periods(native))
+}
+
+pub(crate) fn parse_reconstruction(value: &Bound<'_, PyAny>) -> PyResult<ReconstructionSelection> {
+    if let Ok(selection) = value.extract::<PyReconstructionSelection>() {
+        return Ok(selection.0);
+    }
+    if let Ok(selections) = value.cast::<PyDict>() {
+        return reconstruction_from_dict(selections);
+    }
+    if let Ok(period) = value.extract::<PyRef<'_, super::core::PyCalibratedRunPeriod>>() {
+        return Ok(ReconstructionSelection::periods([(
+            period.0.period(),
+            period.0.reconstruction().clone(),
+        )]));
+    }
+    if let Ok(selection) = value.extract::<PyRef<'_, super::core::PyRESTVersionSelection>>() {
+        let period = selection.1.ok_or_else(|| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "a direct REST selection must be created by RunPeriod.rest(...) so its period is known",
+            )
+        })?;
+        let mut requested = ReconstructionPeriod::new(selection.0);
+        if let Some(variation) = &selection.2 {
+            requested = requested.with_variation(variation);
+        }
+        return Ok(ReconstructionSelection::periods([(period, requested)]));
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "reconstruction must be a RunPeriod.rest(...) selection, ReconstructionSelection, or period-to-version mapping",
+    ))
 }
 
 /// Immutable full-path mapping of calibration definitions; discovery does not fetch constants.
@@ -119,19 +184,90 @@ impl PyCalibrationTable {
             .map(|c| TypedTuple(c.into_iter().map(PyCalibrationColumn).collect()))
             .map_err(error)
     }
-    /// Build a lazy numeric query using captured opening defaults; no RCDB membership check.
-    fn for_runs(&self, selection: PyCalibrationInput) -> PyResult<PyCalibrationQuery> {
-        match selection {
-            PyCalibrationInput::Selection(selection) => self.0.for_runs(selection.0),
-            PyCalibrationInput::Set(runs) => self.0.for_run_set(&runs.0),
-            PyCalibrationInput::Query(query) => self.0.for_query(&query.0),
+    /// Build a lazy query from a Python run scope, with optional keyword selectors.
+    #[pyo3(signature = (
+        run_scope: "int | Sequence[int] | range | RunPeriod | str | RunSelection | RunQuery | RunSet",
+        *,
+        variation=None,
+        as_of=None,
+        reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | Mapping[RunPeriod | str, int | RESTVersionSelection] | None"=None,
+        missing_policy: "Literal['report', 'strict', 'fallback']"="report",
+        fallback_run=None
+    ))]
+    fn for_runs(
+        &self,
+        run_scope: &Bound<'_, PyAny>,
+        variation: Option<String>,
+        as_of: Option<chrono::DateTime<chrono::Utc>>,
+        reconstruction: Option<&Bound<'_, PyAny>>,
+        missing_policy: &str,
+        fallback_run: Option<RunNumber>,
+    ) -> PyResult<PyCalibrationQuery> {
+        let period_reconstruction = run_scope
+            .extract::<PyRef<'_, super::core::PyCalibratedRunPeriod>>()
+            .ok()
+            .map(|period| {
+                ReconstructionSelection::periods([(
+                    period.0.period(),
+                    period.0.reconstruction().clone(),
+                )])
+            });
+        if (reconstruction.is_some() || period_reconstruction.is_some())
+            && (variation.is_some() || as_of.is_some())
+        {
+            return Err(PyValueError::new_err(
+                "reconstruction conflicts with direct variation or as_of selectors",
+            ));
         }
-        .map(PyCalibrationQuery)
-        .map_err(error)
+        if reconstruction.is_some() && period_reconstruction.is_some() {
+            return Err(PyValueError::new_err(
+                "a configured RunPeriod already supplies reconstruction; do not repeat it",
+            ));
+        }
+        let mut query = if let Ok(runs) = run_scope.extract::<PyRunSet>() {
+            self.0.for_run_set(&runs.0)
+        } else if let Ok(query) = run_scope.extract::<PyRunQuery>() {
+            self.0.for_query(&query.0)
+        } else {
+            self.0.for_runs(coerce_run_scope(run_scope)?)
+        }
+        .map_err(error)?;
+        if let Some(variation) = variation {
+            query = query.with_variation(variation);
+        }
+        if let Some(as_of) = as_of {
+            query = query.as_of(as_of);
+        }
+        if let Some(reconstruction) = reconstruction {
+            query = query.with_reconstruction(parse_reconstruction(reconstruction)?);
+        } else if let Some(reconstruction) = period_reconstruction {
+            query = query.with_reconstruction(reconstruction);
+        }
+        query = match (missing_policy, fallback_run) {
+            ("report", None) => query,
+            ("strict", None) => query.strict(),
+            ("fallback", Some(run)) => query.fallback_to(run),
+            ("fallback", None) => {
+                return Err(PyValueError::new_err(
+                    "missing_policy='fallback' requires fallback_run",
+                ));
+            }
+            (_, Some(_)) => {
+                return Err(PyValueError::new_err(
+                    "fallback_run requires missing_policy='fallback'",
+                ));
+            }
+            (policy, None) => {
+                return Err(PyValueError::new_err(format!(
+                    "missing_policy must be 'report', 'strict', or 'fallback', got {policy:?}"
+                )));
+            }
+        };
+        Ok(PyCalibrationQuery(query))
     }
     fn __repr__(&self) -> String {
         format!(
-            "CalibrationTable(path={:?}, rows={})",
+            "CalibrationTable(path={:?}, rows={}, query=for_runs(run_scope, *, selectors))",
             self.path(),
             self.n_rows()
         )
@@ -154,17 +290,80 @@ impl PyReconstructionSelection {
         Self(ReconstructionSelection::latest())
     }
     #[staticmethod]
-    fn periods(selections: &Bound<'_, PyDict>) -> PyResult<Self> {
-        let mut native = Vec::with_capacity(selections.len());
-        for (key, value) in selections.iter() {
-            let period = key.extract::<PyRef<'_, super::core::PyRunPeriod>>()?;
+    #[pyo3(signature = (*selections: "CalibratedRunPeriod | RESTVersionSelection | Mapping[RunPeriod | str, int | RESTVersionSelection]"))]
+    fn periods(selections: &Bound<'_, PyTuple>) -> PyResult<Self> {
+        if selections.len() == 1
+            && let Ok(mapping) = selections.get_item(0)?.cast::<PyDict>()
+        {
+            return reconstruction_from_dict(mapping).map(Self);
+        }
+        let mut native = std::collections::BTreeMap::new();
+        for value in selections.iter() {
+            if let Ok(period) = value.extract::<PyRef<'_, super::core::PyCalibratedRunPeriod>>() {
+                if native
+                    .insert(period.0.period(), period.0.reconstruction().clone())
+                    .is_some()
+                {
+                    return Err(PyValueError::new_err(format!(
+                        "duplicate reconstruction meaning for run period {}",
+                        period.0.period().short_name()
+                    )));
+                }
+                continue;
+            }
             let selection = value.extract::<PyRef<'_, super::core::PyRESTVersionSelection>>()?;
-            native.push((period.0, selection.0));
+            let period = selection.1.ok_or_else(|| {
+                pyo3::exceptions::PyTypeError::new_err(
+                    "period selections must be created by RunPeriod.rest(...) so their periods are known",
+                )
+            })?;
+            let mut requested = ReconstructionPeriod::new(selection.0);
+            if let Some(variation) = &selection.2 {
+                requested = requested.with_variation(variation);
+            }
+            if native.insert(period, requested).is_some() {
+                return Err(PyValueError::new_err(format!(
+                    "duplicate reconstruction meaning for run period {}",
+                    period.short_name()
+                )));
+            }
         }
         Ok(Self(ReconstructionSelection::periods(native)))
     }
+    /// Resolve a period to the exact CCDB variation and effective timestamp.
+    #[pyo3(signature = (period: "RunPeriod | str"))]
+    fn resolve(&self, period: &Bound<'_, PyAny>) -> PyResult<(String, String)> {
+        let period = super::core::parse_run_period_object(period)?;
+        let selection = match &self.0 {
+            ReconstructionSelection::Latest => {
+                ReconstructionPeriod::new(RESTVersionSelection::Current)
+            }
+            ReconstructionSelection::Periods(selections) => selections
+                .get(&period)
+                .ok_or_else(|| {
+                    PyKeyError::new_err(format!(
+                        "no reconstruction selection for {}",
+                        period.short_name()
+                    ))
+                })?
+                .clone(),
+        };
+        let context = selection
+            .resolve(period)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        Ok((context.variation, context.timestamp.to_rfc3339()))
+    }
     fn __repr__(&self) -> String {
-        format!("{:?}", self.0)
+        match &self.0 {
+            ReconstructionSelection::Latest => "ReconstructionSelection.latest()".to_owned(),
+            ReconstructionSelection::Periods(periods) => format!(
+                "ReconstructionSelection.periods(periods={:?})",
+                periods
+                    .keys()
+                    .map(crate::RunPeriod::short_name)
+                    .collect::<Vec<_>>()
+            ),
+        }
     }
 }
 
@@ -328,11 +527,11 @@ impl PyCalibrationStream {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyCalibrationSeries>> {
-        Ok(self
-            .1
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<PyCalibrationSeries> {
+        self.1
             .finish(py.detach(|| self.0.next().transpose()))?
-            .map(PyCalibrationSeries))
+            .map(PyCalibrationSeries)
+            .ok_or_else(|| PyStopIteration::new_err(()))
     }
 }
 
@@ -475,6 +674,9 @@ impl PyCalibrationPayload {
                 .map(|v| CalibrationScalar::Text(v.clone()))
                 .collect(),
         }))
+    }
+    fn __getitem__(&self, name: &str) -> PyResult<TypedTuple<CalibrationScalar>> {
+        self.column(name)
     }
     fn __repr__(&self) -> String {
         format!(

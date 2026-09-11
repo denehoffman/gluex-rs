@@ -13,7 +13,7 @@ def test_ccdb_only_catalog_and_series(ccdb_path):
     assert catalog.directories['/TARGET'].tables['density'].path == '/TARGET/density'
     table = catalog['/test/demo/mytable']
     assert [column.name for column in table.columns] == ['x', 'y', 'z']
-    query = table.for_runs(gluex.RunSelection.range(2, 3))
+    query = table.for_runs(gluex.RunSelection.between(2, 3))
     assert query.provenance.variation == 'default'
     assert query.provenance.as_of == gx.sources.ccdb.opened_at
     del gx
@@ -39,12 +39,12 @@ def test_metadata_is_lazy_and_payload_errors_are_not_omissions(ccdb_path, tmp_pa
     gx = gluex.open(rcdb=gluex.DISABLED, ccdb=path)
     table = gx.calibrations['/test/demo/mytable']
     assert len(table.columns) == 3
-    query = table.for_runs(gluex.RunSelection.range(-(2**63), 2**63 - 1))
+    query = table.for_runs(gluex.RunSelection.between(-(2**63), 2**63 - 1))
     assert query.provenance.table == table.path
     assert 'CalibrationQuery' in repr(query)
     with pytest.raises(gluex.DecodeError):
         table.for_runs(gluex.RunSelection.runs([2])).collect()
-    assert len(table.for_runs(gluex.RunSelection.range(4, 2)).collect()) == 0
+    assert len(table.for_runs(gluex.RunSelection.between(4, 2)).collect()) == 0
     with pytest.raises(RuntimeError, match='CCDB'):
         _ = gluex.open(rcdb=gluex.DISABLED, ccdb=gluex.DISABLED).calibrations
 
@@ -52,7 +52,7 @@ def test_metadata_is_lazy_and_payload_errors_are_not_omissions(ccdb_path, tmp_pa
 def test_historical_query_selectors(ccdb_path):
 
     gx = gluex.open(rcdb=gluex.DISABLED, ccdb=ccdb_path)
-    query = gx.calibrations['/test/demo/mytable'].for_runs(gluex.RunSelection.range(2, 3))
+    query = gx.calibrations['/test/demo/mytable'].for_runs(gluex.RunSelection.between(2, 3))
     old = query.with_variation('mc').as_of(datetime(2013, 2, 22, 13, 40, 35, tzinfo=timezone.utc))
     result = old.collect()
     assert result[2].assignment_id == 76
@@ -63,6 +63,68 @@ def test_historical_query_selectors(ccdb_path):
     assert query.collect()[2].assignment_id == 230266
     with pytest.raises((TypeError, ValueError)):
         query.as_of(datetime(2020, 1, 1))  # noqa: DTZ001 — naive dates must be rejected
+
+
+def test_concise_calibration_query_forms(rcdb_path, ccdb_path):
+    gx = gluex.open(rcdb=rcdb_path, ccdb=ccdb_path)
+    table = gx.calibrations['/test/demo/mytable']
+    cutoff = datetime(2013, 2, 22, 13, 40, 35, tzinfo=timezone.utc)
+
+    concise = table.for_runs([2, 3], variation='mc', as_of=cutoff)
+    fluent = table.for_runs(gluex.RunSelection.runs([2, 3])).with_variation('mc').as_of(cutoff)
+    assert concise.collect().runs == fluent.collect().runs
+    assert concise.collect()[2].assignment_id == fluent.collect()[2].assignment_id
+    assert table.for_runs(2).collect().runs == (2,)
+    assert table.for_runs(range(2, 4)).collect().runs == (2, 3)
+    assert table.for_runs(gx.runs.select([2, 3])).collect().runs == (2, 3)
+    assert table.for_runs(gx.runs.select([2, 3]).collect()).collect().runs == (2, 3)
+
+    strict = gx.calibrations['/TARGET/density'].for_runs([2, 50685], missing_policy='strict')
+    with pytest.raises(gluex.MissingDataError):
+        strict.collect()
+    filled = (
+        gx.calibrations['/TARGET/density'].for_runs([2, 50685], missing_policy='fallback', fallback_run=50685).collect()
+    )
+    assert filled.report.substitutions == ((2, 50685),)
+
+    with pytest.raises(ValueError, match='fallback_run'):
+        table.for_runs([2], missing_policy='fallback')
+    with pytest.raises(ValueError, match='conflict'):
+        table.for_runs([2], variation='default', reconstruction=gluex.ReconstructionSelection.latest())
+
+
+def test_concise_reconstruction_mappings_and_payload_indexing(rcdb_path, ccdb_path):
+    gx = gluex.open(rcdb=rcdb_path, ccdb=ccdb_path)
+    explicit = gluex.ReconstructionSelection.periods(
+        {gluex.RunPeriod.RP2018_08: gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2)}
+    )
+    concise = gluex.ReconstructionSelection.periods({'F18': 2})
+    table = gx.calibrations['/TARGET/density']
+    assert table.for_runs(50685, reconstruction={'F18': 2}).collect()[50685].assignment_id == (
+        table.for_runs(50685, reconstruction=explicit).collect()[50685].assignment_id
+    )
+    assert table.for_runs(50685, reconstruction=concise).collect()[50685].assignment_id == (
+        table.for_runs(50685, reconstruction=explicit).collect()[50685].assignment_id
+    )
+    configured_period = gluex.RunPeriod('f18').rest(2)
+    configured = table.for_runs(configured_period).collect()
+    assert (
+        configured[50685].assignment_id == table.for_runs(50685, reconstruction=explicit).collect()[50685].assignment_id
+    )
+    assert next(iter(configured.provenance.resolved_reconstruction.values()))[0] == 'default'
+    with pytest.raises(ValueError, match='duplicate reconstruction'):
+        gluex.ReconstructionSelection.periods({'F18': 2, gluex.RunPeriod.RP2018_08: 2})
+    with pytest.raises(ValueError, match='conflicts with mapping key'):
+        gluex.ReconstructionSelection.periods({'F18': gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2019_01, 1)})
+    with pytest.raises(ValueError, match='REST'):
+        gluex.ReconstructionSelection.periods({'F18': 999})
+    assert 'periods' in repr(concise)
+    assert 'run_scope' in repr(table)
+
+    payload = gx.calibrations['/test/demo/mytable'].for_runs(2).collect()[2].payload
+    assert payload['x'] == payload.column('x') == (1.0, 4.0)
+    with pytest.raises(KeyError):
+        _ = payload['unknown']
 
 
 @pytest.mark.parametrize(
@@ -108,7 +170,7 @@ def test_nested_variations_use_assignment_order(ccdb_path, tmp_path):
     gx = gluex.open(rcdb=gluex.DISABLED, ccdb=fixture)
     series = (
         gx.calibrations['/test/demo/mytable']
-        .for_runs(gluex.RunSelection.range(1, 4))
+        .for_runs(gluex.RunSelection.between(1, 4))
         .with_variation('nested')
         .collect()
     )
@@ -133,7 +195,7 @@ def test_fractional_cutoff_is_inclusive(ccdb_path, tmp_path):
 
 def test_composed_streaming_reconstruction_and_missing_policies(rcdb_path, ccdb_path):
     gx = gluex.open(rcdb=rcdb_path, ccdb=ccdb_path)
-    runs = gx.runs(gluex.RunSelection.range(50685, 50697))
+    runs = gx.runs.between(50685, 50697)
     reconstruction = gluex.ReconstructionSelection.periods(
         {gluex.RunPeriod.RP2018_08: gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2)}
     )
@@ -147,7 +209,7 @@ def test_composed_streaming_reconstruction_and_missing_policies(rcdb_path, ccdb_
     with pytest.raises(RuntimeError, match='conflict'):
         query.with_variation('default').collect()
 
-    shared = gx.calibrations['/test/demo/mytable'].for_runs(gluex.RunSelection.range(1, 4))
+    shared = gx.calibrations['/test/demo/mytable'].for_runs(gluex.RunSelection.between(1, 4))
     chunks = [chunk for chunk in shared.stream(chunk_size=2) if chunk is not None]
     assert tuple(run for chunk in chunks for run in chunk) == shared.collect().runs
     assert chunks[-1].report.complete is True

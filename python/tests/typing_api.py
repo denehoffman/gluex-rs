@@ -40,11 +40,11 @@ def typed_api_surface(
     )
     run_numbers: list[int] = RCDB(rcdb_path).fetch_runs(filters=filter_expression)
     gx = gluex.open(rcdb=rcdb_path, ccdb=ccdb_path)
-    runs = gx.runs(gluex.RunSelection.runs(run_numbers)).collect()
+    runs = gx.runs.select(run_numbers).collect()
     reconstruction = gluex.ReconstructionSelection.periods({period: selection})
-    flux: FluxHistograms = gx.workflows.luminosity(
-        runs, reconstruction=reconstruction, edges=histogram.edges
-    ).collect().histograms
+    flux: FluxHistograms = (
+        gx.workflows.luminosity(runs, reconstruction=reconstruction, edges=histogram.edges).compute().histograms
+    )
     writer: generation.GlueXHddmWriter = generation.GlueXHddmWriter(generation.GlueXHddmConfig(channel))
     writer.write(dataset, 'events.hddm')
 

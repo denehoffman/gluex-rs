@@ -12,7 +12,7 @@ def print_luminosity(gx: gluex.GlueX, run_query: gluex.RunQuery) -> None:
         resolved_runs,
         reconstruction=gluex.ReconstructionSelection.latest(),
         edges=[8.0, 8.5, 9.0],
-    ).collect()
+    ).compute()
     print('Tagged luminosity (1/pb):', luminosity.histograms.tagged_luminosity.counts)
     print('Luminosity run report:', luminosity.report)
     print('Luminosity procedure:', luminosity.provenance.procedure_version)
@@ -39,8 +39,6 @@ def main() -> None:
         minimum_current = 10.0
         run_query = gx.runs.select(selection).where(current > minimum_current)
         for chunk in run_query.stream(chunk_size=128):
-            if chunk is None:
-                continue
             print('Selected chunk:', chunk.numbers, 'complete:', chunk.report.complete)
         runs = run_query.collect()
         print('Selected:', runs.numbers)
