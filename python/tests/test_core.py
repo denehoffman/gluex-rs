@@ -17,12 +17,14 @@ def test_histogram_validates_data() -> None:
         gluex.Histogram([1.0], [0.0, 1.0, 2.0])
 
 
-def test_run_period_and_rest_selection_are_shared_root_types() -> None:
+def test_run_period_and_rest_selection_are_shared_root_types(ccdb_path) -> None:
     assert gluex.RunPeriod('f18') == gluex.RunPeriod.RP2018_08
     assert gluex.RunPeriod.from_run(50000) == gluex.RunPeriod.RP2018_08
     assert gluex.RunPeriod.RP2018_08.short_name == 'F18'
     assert gluex.RunPeriod.RP2018_08.contains(50000)
-    assert gluex.RunPeriod.RP2018_08.coherent_peak() == (8.2, 8.8)
+    assert gluex.ccdb.CCDB(str(ccdb_path)).coherent_peak(50000) == (8.2, 8.8)
+    assert gluex.RunPeriod('2018_08') == gluex.RunPeriod.RP2018_08
+    assert gluex.RunPeriod('RunPeriod_2026_03') == gluex.RunPeriod.RP2026_03
 
     selection = gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2)
     assert selection.resolve_timestamp(gluex.RunPeriod.RP2018_08) == dt.datetime(

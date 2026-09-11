@@ -88,9 +88,9 @@ fn root_workflow_uses_the_supplied_run_set_without_hidden_approval() {
     assert!(
         result
             .provenance()
-            .validation_gaps()
+            .references()
             .iter()
-            .any(|gap| { gap.contains("coherent-peak") && gap.contains("CCDB") })
+            .any(|reference| reference.contains("/PHOTON_BEAM/coherent_energy"))
     );
     assert!(
         result

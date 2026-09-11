@@ -32,7 +32,7 @@ mod gluex {
     #[pymodule_export]
     use super::core::{
         PyCalibratedRunPeriod, PyCharge, PyDetectorSystem, PyHistogram, PyParticle, PyPolarization,
-        PyRESTVersionSelection, PyRunPeriod, coherent_peak, parse_timestamp,
+        PyRESTVersionSelection, PyRunPeriod, parse_timestamp,
     };
     #[pymodule_export]
     use super::exceptions::{

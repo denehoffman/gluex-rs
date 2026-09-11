@@ -97,6 +97,7 @@ INSERT INTO directories (id, name, parentId) VALUES
 
 INSERT INTO typeTables (id, directoryId, name, nRows, nColumns, nAssignments) VALUES
     (81, 20, 'mytable', 2, 3, 2),
+    (9339, 29, 'coherent_energy', 1, 2, 2),
     (217, 29, 'endpoint_energy', 1, 1, 1),
     (231, 34, 'scaled_energy_range', 1, 3, 1),
     (232, 30, 'scaled_energy_range', 1, 3, 1),
@@ -111,6 +112,8 @@ INSERT INTO columns (id, name, typeId, columnType, "order") VALUES
     (641, 'x', 81, 'double', 0),
     (642, 'y', 81, 'double', 1),
     (643, 'z', 81, 'double', 2),
+    (1039, 'cohmin_energy', 9339, 'double', 0),
+    (1040, 'cohmax_energy', 9339, 'double', 1),
     (1001, 'PHOTON_BEAM_ENDPOINT_ENERGY', 217, 'double', 0),
     (1002, 'counter', 231, 'double', 0),
     (1003, 'xlow', 231, 'double', 1),
@@ -139,11 +142,14 @@ INSERT INTO variations (id, name, parentId) VALUES
 
 INSERT INTO runRanges (id, name, runMin, runMax) VALUES
     (1, 'all runs', 0, 2147483647),
-    (2, '2018 fixture runs', 50685, 50697);
+    (2, '2018 fixture runs', 50685, 50697),
+    (1003, '2026 low-energy runs', 140000, 149999);
 
 INSERT INTO constantSets (id, vault, constantTypeId) VALUES
     (76, '0|1|2|3|4|5', 81),
     (230302, '1|2|3|4|5|6', 81),
+    (900009, '8.2|8.8', 9339),
+    (900010, '1.0|1.2', 9339),
     (10001, '11.6300025', 217),
     (10002, '124|0.770565|0.772153', 231),
     (10003, '1|0.76508430013|0.765866632806', 232),
@@ -156,6 +162,8 @@ INSERT INTO constantSets (id, vault, constantTypeId) VALUES
 INSERT INTO assignments (id, created, variationId, runRangeId, constantSetId) VALUES
     (76, '2013-02-22 13:40:35', 1, 1, 76),
     (230266, '2020-01-15 13:08:18', 1, 1, 230302),
+    (900009, '2019-01-01 00:00:00', 1, 1, 900009),
+    (900010, '2026-05-04 14:52:18', 1, 1003, 900010),
     -- Lumi values are sampled from the local full CCDB snapshot. Their fixture
     -- effective date is normalized so REST-version tests remain deterministic.
     (10001, '2019-01-01 00:00:00', 1, 2, 10001),

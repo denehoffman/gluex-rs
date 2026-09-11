@@ -64,6 +64,47 @@ pub struct CCDB {
 }
 
 impl CCDB {
+    /// Resolve the coherent-photon energy window for `run` from CCDB.
+    ///
+    /// The table is discovered by its canonical path instead of its database-local numeric ID.
+    ///
+    /// # Errors
+    /// Returns an error when the table has no assignment for `run` or its payload is malformed.
+    pub fn coherent_peak(&self, run: RunNumber) -> CCDBResult<(f64, f64)> {
+        let mut peaks = self.coherent_peaks_with_options(
+            &[run],
+            &self.default_context([run]),
+            &crate::ExecutionOptions::default(),
+        )?;
+        peaks.remove(&run).ok_or(CCDBError::MissingData(1))
+    }
+
+    pub(crate) fn coherent_peaks_with_options(
+        &self,
+        runs: &[RunNumber],
+        context: &CCDBContext,
+        options: &crate::ExecutionOptions,
+    ) -> CCDBResult<BTreeMap<RunNumber, (f64, f64)>> {
+        const PATH: &str = "/PHOTON_BEAM/coherent_energy";
+        let context = context.clone().with_runs(runs.iter().copied());
+        self.fetch_with_options(PATH, &context, options)?
+            .into_iter()
+            .map(|(run, data)| {
+                let low = data.double(0, 0).ok_or_else(|| {
+                    CCDBError::InvalidMetadata(format!("{PATH}: missing cohmin_energy"))
+                })?;
+                let high = data.double(1, 0).ok_or_else(|| {
+                    CCDBError::InvalidMetadata(format!("{PATH}: missing cohmax_energy"))
+                })?;
+                if !low.is_finite() || !high.is_finite() || low > high {
+                    return Err(CCDBError::InvalidMetadata(format!(
+                        "{PATH}: invalid coherent-energy window {low}..{high} for run {run}"
+                    )));
+                }
+                Ok((run, (low, high)))
+            })
+            .collect()
+    }
     pub(crate) fn catalog_tables(&self) -> Vec<TypeTableHandle> {
         self.table_meta
             .iter()

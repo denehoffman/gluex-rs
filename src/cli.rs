@@ -6,7 +6,7 @@ use std::{
 
 use crate::core::{
     GlueXCoreError, RunNumber,
-    run_periods::{RunPeriod, coherent_peak, parse_rest_version_selection, rest_version_info_for},
+    run_periods::{RunPeriod, parse_rest_version_selection, rest_version_info_for},
 };
 use crate::generation::{
     GenerationRunOptions,
@@ -126,7 +126,7 @@ struct InfoArgs {
 enum InfoCommand {
     /// List known REST versions, optionally limited to one run period.
     Rest { run_period: Option<RunPeriod> },
-    /// List run periods, ranges, and coherent-peak bounds.
+    /// List run periods and numeric ranges.
     Runs { run_period: Option<RunPeriod> },
 }
 
@@ -230,9 +230,8 @@ fn print_rest_versions(run_period: RunPeriod) {
 }
 
 fn print_run_period(run_period: RunPeriod) {
-    let (coherent_min, coherent_max) = coherent_peak(run_period.min_run());
     println!(
-        "{run_period:?} ({})\n  runs: {}-{}\n  coherent peak: {coherent_min:.1}-{coherent_max:.1} GeV",
+        "{run_period:?} ({})\n  runs: {}-{}",
         run_period.short_name(),
         run_period.min_run(),
         run_period.max_run()

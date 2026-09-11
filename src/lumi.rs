@@ -227,6 +227,8 @@ pub struct FluxCache {
     pub photon_endpoint_calibration: Option<f64>,
     /// Number of target scattering centers and uncertainty `(value, error)`.
     pub target_scattering_centers: (f64, f64),
+    /// Coherent-photon energy window `(minimum, maximum)` in `GeV`, when requested.
+    pub coherent_energy: Option<(f64, f64)>,
 }
 
 pub(crate) struct LuminosityBatch {
@@ -237,6 +239,12 @@ pub(crate) struct LuminosityBatch {
 struct FluxCacheBatch {
     entries: HashMap<RunNumber, FluxCache>,
     missing: HashMap<RunNumber, &'static str>,
+}
+
+#[derive(Clone, Copy)]
+struct FluxSelection {
+    polarized: bool,
+    coherent_peak: bool,
 }
 
 fn invalid_schema(path: &str, detail: &str) -> CCDBError {
@@ -333,7 +341,7 @@ fn fetch_two_double_rows(
 fn get_flux_cache(
     run_period: RunPeriod,
     runs: &[RunNumber],
-    polarized: bool,
+    selection: FluxSelection,
     rest_context: &crate::core::RESTVersionContext,
     rcdb: &RCDB,
     ccdb: &CCDB,
@@ -346,7 +354,7 @@ fn get_flux_cache(
         });
     }
     let run_context = RCDBContext::default().with_runs(runs.iter().copied());
-    let run_context = if polarized {
+    let run_context = if selection.polarized {
         run_context.filter(crate::rcdb::conditions::aliases::is_coherent_beam())
     } else {
         run_context
@@ -380,6 +388,11 @@ fn get_flux_cache(
         .with_variation(&rest_context.variation)
         .with_timestamp(rest_context.timestamp);
     let catalog = CalibrationCatalog::new(ccdb);
+    let coherent_energies = if selection.coherent_peak {
+        ccdb.coherent_peaks_with_options(runs, &ccdb_context, options)?
+    } else {
+        std::collections::BTreeMap::new()
+    };
     let livetime_series = collect_calibration(
         &catalog,
         "/PHOTON_BEAM/pair_spectrometer/lumi/trig_live",
@@ -497,6 +510,15 @@ fn get_flux_cache(
             missing.insert(run, "TAGH scaled energy range");
             continue;
         };
+        let coherent_energy = if selection.coherent_peak {
+            let Some(&window) = coherent_energies.get(&run) else {
+                missing.insert(run, "coherent-energy window");
+                continue;
+            };
+            Some(window)
+        } else {
+            None
+        };
         cache.insert(
             run,
             FluxCache {
@@ -509,6 +531,7 @@ fn get_flux_cache(
                 tagh_scaled_energy_range: hodoscope_energy_rows,
                 photon_endpoint_calibration,
                 target_scattering_centers,
+                coherent_energy,
             },
         );
     }
@@ -690,7 +713,12 @@ fn flux_histograms_for_run(
     {
         let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1)).mul_add(0.5, delta_e);
         if coherent_peak {
-            let (low, high) = crate::core::run_periods::coherent_peak(run);
+            let (low, high) = data.coherent_energy.ok_or_else(|| {
+                invalid_schema(
+                    "/PHOTON_BEAM/coherent_energy",
+                    &format!("missing resolved window for run {run}"),
+                )
+            })?;
             if energy < low || energy > high {
                 continue;
             }
@@ -715,7 +743,12 @@ fn flux_histograms_for_run(
     {
         let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1)).mul_add(0.5, delta_e);
         if coherent_peak {
-            let (low, high) = crate::core::run_periods::coherent_peak(run);
+            let (low, high) = data.coherent_energy.ok_or_else(|| {
+                invalid_schema(
+                    "/PHOTON_BEAM/coherent_energy",
+                    &format!("missing resolved window for run {run}"),
+                )
+            })?;
             if energy < low || energy > high {
                 continue;
             }
@@ -794,7 +827,10 @@ impl Luminosity {
             let batch = get_flux_cache(
                 period,
                 &runs,
-                ctx.polarized(),
+                FluxSelection {
+                    polarized: ctx.polarized(),
+                    coherent_peak: ctx.coherent_peak(),
+                },
                 rest_context,
                 &readers.rcdb,
                 &readers.ccdb,

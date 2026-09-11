@@ -18,12 +18,13 @@ use thiserror::Error;
 pub const LUMINOSITY_PROCEDURE_VERSION: &str = "gluex-luminosity-v1";
 const LUMINOSITY_REFERENCES: &[&str] = &[
     "pair production and converter radiation-length scaling: https://doi.org/10.1103/RevModPhys.46.815 (section IV.B-D)",
+    "coherent-energy windows: CCDB /PHOTON_BEAM/coherent_energy",
 ];
 const LUMINOSITY_ASSUMPTIONS: &[&str] = &[
     "nominal liquid-hydrogen target length is 29.5 cm",
     "CCDB /TARGET/density is expressed in mg/cm^3 and its uncertainty has the same unit",
     "photon-energy bin edges are expressed in GeV and tagged luminosity is reported in inverse picobarns",
-    "coherent-peak filtering uses the run-period bounds published by gluex-rs",
+    "coherent-peak filtering uses the default-variation CCDB /PHOTON_BEAM/coherent_energy assignment resolved for each run",
     "REST selection supplies the variation and effective timestamp for reconstruction-dependent endpoint constants",
 ];
 const LUMINOSITY_EXCEPTIONS: &[&str] = &[
@@ -34,7 +35,6 @@ const LUMINOSITY_EXCEPTIONS: &[&str] = &[
 const LUMINOSITY_VALIDATION_GAPS: &[&str] = &[
     "target length 29.5 cm: authoritative experiment reference is not yet recorded",
     "beryllium radiation length 35.28 cm: authoritative material-data reference is not yet recorded",
-    "coherent-peak run-period bounds: authoritative source beyond the CCDB-derived project table is not yet recorded",
     "endpoint energy and endpoint-calibration handling: authoritative procedure reference is not yet recorded",
     "REST selection and reconstruction mapping: authoritative procedure reference is not yet recorded",
     "RP2019_11 run-72436 override and 2021-04-23T00:00:01Z cutoff: authoritative logbook or calibration reference is not yet recorded",
