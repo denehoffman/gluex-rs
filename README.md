@@ -31,12 +31,12 @@ import gluex
 period = gluex.RunPeriod("f18")
 print(period.min_run, period.max_run)
 
-gx = gluex.open()
+gx = gluex.connect()
 print(gx)
 print(gx.capabilities)
 ```
 
-`gluex.open()` opens a session using `RCDB_CONNECTION` and `CCDB_CONNECTION`
+`gluex.connect()` creates a session using `RCDB_CONNECTION` and `CCDB_CONNECTION`
 independently. Either, both, or neither can be configured. Database-independent
 reference types such as `RunPeriod` and `Particle` remain available in all cases.
 
@@ -47,7 +47,7 @@ or `pathlib.Path` objects:
 from pathlib import Path
 import gluex
 
-gx = gluex.open(rcdb=Path("rcdb.sqlite"), ccdb=gluex.DISABLED)
+gx = gluex.connect(rcdb=Path("rcdb.sqlite"), ccdb=gluex.DISABLED)
 conditions = gx.sources.rcdb.fetch(["event_count"], runs=[50685])
 print(conditions)
 ```
@@ -64,7 +64,8 @@ and metadata caches. Accessing an unavailable reader raises `RuntimeError` with
 configuration instructions. A configured path that is empty, missing, invalid,
 or has an incompatible schema raises `ValueError` during opening. Connection
 URLs and live databases are unsupported; pass local SQLite filesystem paths.
-`gluex.GlueX(...)` accepts the same keyword arguments as `gluex.open(...)`.
+`gluex.GlueX(...)` accepts the same keyword arguments as `gluex.connect(...)`.
+`gluex.open(...)` remains as a compatibility alias.
 
 CCDB readers capture `opened_at` once. Omitted timestamps on `CCDB.fetch` and
 table `fetch` calls use that UTC time; omitted variation uses `default`. Explicit

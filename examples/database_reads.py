@@ -9,17 +9,20 @@ import gluex
 
 
 def main() -> None:
-    gx = gluex.open(ccdb=gluex.DISABLED)
+    gx = gluex.connect(ccdb=gluex.DISABLED)
     catalog = gx.runs.conditions
     print(f'{len(catalog)} condition definitions')
     for name, definition in catalog.items()[:5]:
         print(name, definition.value_type, definition.description)
 
-    query = gx.runs.select(gluex.RunPeriod.RP2018_08)
+    query = gx.runs.select(gluex.RunPeriod('f18'))
     print(query)  # Does not retrieve runs.
     result = query.collect()
     print('Recorded runs:', result.numbers)
     print('Resolution inputs:', result.provenance)
+
+    frame = query.columns('event_count', 'polarization_angle').collect().to_polars()
+    print(frame)
 
     rows = gx.sources.rcdb.raw(
         'SELECT number FROM runs WHERE number BETWEEN ? AND ? ORDER BY number',

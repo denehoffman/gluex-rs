@@ -9,7 +9,7 @@ provenance.
 Replace `gluex.lumi.Luminosity(...).fetch(edges, runs=..., rest_version=...)` with:
 
 ```python
-gx = gluex.open(rcdb="rcdb.sqlite", ccdb="ccdb.sqlite")
+gx = gluex.connect(rcdb="rcdb.sqlite", ccdb="ccdb.sqlite")
 runs = gx.runs.select(50685).collect()
 f18 = gluex.RunPeriod("f18")
 result = gx.luminosity(
@@ -66,29 +66,29 @@ catalog/query APIs for routine analysis.
 The direct replacement for the common S17/S18/F18/S20 setup is:
 
 ```python
+import polars as pl
+
 PERIODS = tuple(gluex.RunPeriod(name) for name in ("s17", "s18", "f18", "s20"))
 # Keep this analysis-owned choice explicit; these are examples, not defaults.
 REST_VERSIONS = {"S17": 5, "S18": 2, "F18": 2, "S20": 1}
-reconstruction = gluex.ReconstructionSelection.periods(
-    *(period.rest(REST_VERSIONS[period.short_name]) for period in PERIODS)
+calibrated_periods = tuple(
+    period.rest(REST_VERSIONS[period.short_name]) for period in PERIODS
 )
+reconstruction = gluex.ReconstructionSelection.periods(*calibrated_periods)
 
 # This confirms the important non-default REST-v05 context before doing I/O.
 assert reconstruction.resolve("S17")[0] == "recon_2017_01_ver05"
 
-rf = gx.calibrations["/ANALYSIS/accidental_scaling_factor"]
-rf_rows = []
-for period in PERIODS:
-    rest = period.rest(REST_VERSIONS[period.short_name])
-    for run, entry in rf.for_runs(period, reconstruction=rest).collect().items():
-        rf_rows.append({
-            "run_number": run,
-            "hodoscope_hi": entry.payload["HODOSCOPE_HI_FACTOR"][0],
-            "hodoscope_lo": entry.payload["HODOSCOPE_LO_FACTOR"][0],
-            "microscope": entry.payload["MICROSCOPE_FACTOR"][0],
-            "microscope_energy_hi": entry.payload["MICROSCOPE_ENERGY_HI"][0],
-            "microscope_energy_lo": entry.payload["MICROSCOPE_ENERGY_LO"][0],
-        })
+calibrations = gx.calibrations.select(*calibrated_periods).tables(
+    "/ANALYSIS/accidental_scaling_factor",
+).collect()
+rf = calibrations["/ANALYSIS/accidental_scaling_factor"].to_polars().rename({
+    "HODOSCOPE_HI_FACTOR": "hodoscope_hi",
+    "HODOSCOPE_LO_FACTOR": "hodoscope_lo",
+    "MICROSCOPE_FACTOR": "microscope",
+    "MICROSCOPE_ENERGY_HI": "microscope_energy_hi",
+    "MICROSCOPE_ENERGY_LO": "microscope_energy_lo",
+})
 
 polarization_rows = []
 for period in PERIODS:
@@ -96,13 +96,10 @@ for period in PERIODS:
         gx.runs.aliases.approved_production(period)
         & gx.runs.aliases.is_coherent_beam
     )
-    values = selected.columns("polarization_angle").collect()
-    polarization_rows.extend(
-        {"run_period": period.short_name, "run_number": run,
-         "polarization_angle": values[run, "polarization_angle"]}
-        for run in values.runs
-        if values[run, "polarization_angle"] is not None
-    )
+    values = selected.columns("polarization_angle").collect().to_polars()
+    polarization_rows.append(values.with_columns(
+        run_period=pl.lit(period.short_name),
+    ))
 
 runs = gx.runs.select(run_numbers).collect()
 result = gx.luminosity(
@@ -118,6 +115,8 @@ variation; callers must not separately guess or duplicate that variation.
 When a deliberate override is required, use
 `gluex.RunPeriod("s17").rest(5, variation="name")`; it retains the REST
 timestamp and replaces only the resolved CCDB variation.
+For calibration work not tied to a REST production, use
+`gluex.RunPeriod("s17").at(timestamp, variation="name")`.
 Calibration queries use numeric period bounds and therefore do not require RCDB.
 Polarization selection does require RCDB because approval, coherent-beam state,
 and `polarization_angle` are recorded conditions. The polarization-magnitude
@@ -131,6 +130,15 @@ the deliberately maintained external catalog. Moving peak bounds behind a data
 source should happen only after identifying the authoritative RCDB/CCDB record;
 silently deriving them from unrelated endpoint constants would change the
 scientific meaning.
+
+`RunPeriod` and `CalibratedRunPeriod` are intentionally separate types. The
+former is only a data-taking/run scope. Calling `.rest(...)` validates the REST
+version and returns the latter, which is accepted wherever reconstruction is
+required. A configured period passed to `gx.calibrations.select(...)` supplies
+both scope and calibration context. For a uniform custom context over numeric
+scopes, use `select(runs, variation="name", as_of=timestamp)`. These keywords
+cannot be combined with a calibrated period, so there is no precedence rule to
+memorize.
 
 ## Rust
 
