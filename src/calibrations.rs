@@ -17,7 +17,7 @@ mod results;
 pub enum ReconstructionSelection {
     /// Use the source-opening defaults explicitly for every run period.
     Latest,
-    /// Resolve the supplied REST selection independently for each run period.
+    /// Resolve supplied REST selections per period; omitted periods use source defaults.
     Periods(BTreeMap<RunPeriod, ReconstructionPeriod>),
 }
 

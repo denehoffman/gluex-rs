@@ -3,6 +3,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 import gluex
+import polars as pl
 import pytest
 
 
@@ -133,7 +134,6 @@ def test_concise_reconstruction_mappings_and_payload_indexing(rcdb_path, ccdb_pa
         "UPDATE assignments SET created = 'not-a-date' WHERE id = 230266",
         "UPDATE assignments SET created = 'garbage 2014 garbage' WHERE id = 230266",
         'UPDATE assignments SET runRangeId = 999 WHERE id = 230266',
-        'UPDATE runRanges SET runMin = 9, runMax = 1 WHERE id = 1',
         "UPDATE variations SET parentId = 999 WHERE name = 'mc'",
         "UPDATE variations SET parentId = 2 WHERE name = 'mc'",
         "UPDATE columns SET columnType = 'invalid' WHERE id = 641",
@@ -177,6 +177,133 @@ def test_nested_variations_use_assignment_order(ccdb_path, tmp_path):
     assert [series[run].assignment_id for run in series] == [300000, 300001, 300001, 300000]
     assert series[2].variation == 'mc'
     assert series[1].variation == 'default'
+
+
+def test_reversed_run_ranges_are_ignored_as_empty_intervals(ccdb_path, tmp_path):
+    fixture = tmp_path / 'reversed.sqlite'
+    shutil.copyfile(ccdb_path, fixture)
+    with sqlite3.connect(fixture) as connection:
+        connection.executescript("""
+            INSERT INTO runRanges (id, runMin, runMax) VALUES (10, 100900, 100899);
+            INSERT INTO assignments (id, created, variationId, runRangeId, constantSetId)
+            VALUES (300000, '2024-10-18 12:27:33', 1, 10, 230302);
+        """)
+    gx = gluex.open(rcdb=gluex.DISABLED, ccdb=fixture)
+    series = gx.calibrations['/test/demo/mytable'].for_runs(2).collect()
+    assert series[2].assignment_id == 230266
+
+
+def test_calibration_series_converts_directly_to_polars(ccdb_path):
+    gx = gluex.connect(rcdb=gluex.DISABLED, ccdb=ccdb_path)
+    frame = gx.calibrations['/test/demo/mytable'].for_runs([2, 3]).collect().to_polars()
+    assert frame.schema == {
+        'run_number': pl.UInt32,
+        'x': pl.Float64,
+        'y': pl.Float64,
+        'z': pl.Float64,
+    }
+    assert frame.to_dict(as_series=False) == {
+        'run_number': [2, 2, 3, 3],
+        'x': [1.0, 4.0, 1.0, 4.0],
+        'y': [2.0, 5.0, 2.0, 5.0],
+        'z': [3.0, 6.0, 3.0, 6.0],
+    }
+
+
+def test_selector_first_multi_table_results_convert_to_nested_polars(ccdb_path):
+    gx = gluex.connect(rcdb=gluex.DISABLED, ccdb=ccdb_path)
+    result = gx.calibrations.select([2, 3]).tables('/test/demo/mytable', '/TARGET/density').collect()
+
+    assert result.tables == ('/test/demo/mytable', '/TARGET/density')
+    assert result.runs == (2, 3)
+    assert result['/test/demo/mytable'].runs == (2, 3)
+    frame = result.to_polars()
+    assert frame.schema['run_number'] == pl.UInt32
+    assert isinstance(frame.schema['/test/demo/mytable'], pl.Struct)
+    assert frame['/test/demo/mytable'].struct.field('x').to_list() == [[1.0, 4.0], [1.0, 4.0]]
+
+
+def test_selector_first_context_has_one_configuration_site(ccdb_path):
+    gx = gluex.connect(rcdb=gluex.DISABLED, ccdb=ccdb_path)
+    query = gx.calibrations.select([2, 3], variation='default').tables('/TARGET/density')
+    assert query.collect().runs == (2, 3)
+    with pytest.raises(ValueError, match='would also overwrite'):
+        gx.calibrations.select(gluex.RunPeriod('s17').rest(5), variation='custom')
+
+
+def test_calibrated_scope_overlap_is_actionable_and_exclusions_enable_override(ccdb_path):
+    gx = gluex.connect(rcdb=gluex.DISABLED, ccdb=ccdb_path)
+    timestamp = datetime(2024, 6, 1, tzinfo=timezone.utc)
+    s17 = gluex.RunPeriod('s17').rest(5)
+    custom = gluex.RunSelection.runs([30274, 30275]).at(timestamp, variation='mc')
+
+    with pytest.raises(ValueError, match=r'runs \[30274, 30275\].*excluding\(30274, 30275\)'):
+        gx.calibrations.select(s17, custom)
+
+    query = gx.calibrations.select(
+        s17.excluding(30274, 30275),
+        custom,
+    ).tables('/TARGET/density')
+    assert isinstance(query, gluex.CalibrationTablesQuery)
+
+    historical = datetime(2013, 2, 22, 13, 40, 35, tzinfo=timezone.utc)
+    result = (
+        gx.calibrations.select(
+            gluex.RunSelection.runs([2]).at(historical, variation='mc'),
+            [3],
+        )
+        .tables('/test/demo/mytable')
+        .collect()
+    )
+    table = result['/test/demo/mytable']
+    assert len(table.contexts) == 2
+    assert {context.variation for context in table.contexts} == {'default', 'mc'}
+    assert table.to_polars()['run_number'].to_list() == [2, 2, 3, 3]
+
+
+def test_explicit_run_selection_can_use_rest_context() -> None:
+    selection = gluex.RunSelection.runs([30274, 30275]).rest(5)
+    assert isinstance(selection, gluex.CalibratedRunSelection)
+    assert 'S17' in repr(selection)
+
+
+def test_multiple_periods_keep_independent_calibration_contexts(ccdb_path, tmp_path):
+    fixture = tmp_path / 'periods.sqlite'
+    shutil.copyfile(ccdb_path, fixture)
+    with sqlite3.connect(fixture) as connection:
+        connection.executescript("""
+            INSERT INTO runRanges (id, runMin, runMax) VALUES
+                (10, 30000, 30000),
+                (11, 40000, 40000);
+            INSERT INTO assignments (id, created, variationId, runRangeId, constantSetId) VALUES
+                (300000, '2017-01-01 00:00:00', 1, 10, 230302),
+                (300001, '2018-01-01 00:00:00', 1, 11, 230302);
+        """)
+    gx = gluex.connect(rcdb=gluex.DISABLED, ccdb=fixture)
+    s17 = gluex.RunPeriod('s17')
+    s18 = gluex.RunPeriod('s18')
+    f18 = gluex.RunPeriod('f18')
+    series = (
+        gx.calibrations['/test/demo/mytable']
+        .for_runs(
+            s17.rest(4),
+            s18,
+            f18.rest(2),
+        )
+        .collect()
+    )
+    assert len(series) == 30_000
+    assert series.runs[0] == 30000
+    assert series.runs[-1] == 59999
+    assert series[30000].assignment_id == 300000
+    assert series[40000].assignment_id == 300001
+    contexts = series.provenance.resolved_reconstruction
+    assert contexts['RunPeriod-2017-01'][1] == s17.rest(4).calibration_time
+    assert contexts['RunPeriod-2018-01'][1] == gx.sources.ccdb.opened_at
+    assert contexts['RunPeriod-2018-08'][1] == f18.rest(2).calibration_time
+
+    with pytest.raises(ValueError, match='conflicting calibration contexts'):
+        gx.calibrations['/test/demo/mytable'].for_runs(s17, s17.rest(4))
 
 
 def test_fractional_cutoff_is_inclusive(ccdb_path, tmp_path):

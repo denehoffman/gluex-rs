@@ -1,15 +1,18 @@
 use super::{
     core::{PyCalibratedRunPeriod, PyRunPeriod},
+    dataframe::PolarsDataFrame,
     tuple::{TypedIterator, TypedTuple},
 };
 use crate::{
     ConditionCatalog, ConditionDefinition, RunNumber, RunProvenance, RunQuery, RunSelection, RunSet,
 };
+use polars::prelude::{Column, DataFrame, DataType, TimeUnit, TimeZone};
 use pyo3::{
     exceptions::{PyIndexError, PyKeyError, PyStopIteration, PyTypeError, PyValueError},
     prelude::*,
     types::{PyAny, PyBool, PyTuple},
 };
+use pyo3_polars::PyDataFrame;
 
 /// Discoverable run-domain entry point bound to one GlueX session.
 #[pyclass(name = "Runs", module = "gluex", frozen)]
@@ -129,6 +132,9 @@ impl PyRunAliases {
 }
 
 pub(crate) fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelection> {
+    if let Ok(runs) = scope.extract::<PyRunSet>() {
+        return Ok(RunSelection::runs(runs.0.numbers().iter().copied()));
+    }
     if let Ok(selection) = scope.extract::<PyRunSelection>() {
         return Ok(selection.0);
     }
@@ -137,6 +143,11 @@ pub(crate) fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelectio
     }
     if let Ok(period) = scope.extract::<PyRef<'_, PyCalibratedRunPeriod>>() {
         return Ok(RunSelection::period(period.0.period()));
+    }
+    if let Ok(selection) =
+        scope.extract::<PyRef<'_, super::calibrations::PyCalibratedRunSelection>>()
+    {
+        return Ok(selection.selection.clone());
     }
     if let Ok(name) = scope.extract::<String>() {
         let period = name
@@ -173,6 +184,46 @@ pub(crate) fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelectio
     ))
 }
 
+pub(crate) fn coerce_run_scopes(scopes: &Bound<'_, PyTuple>) -> PyResult<RunSelection> {
+    if scopes.is_empty() {
+        return Err(PyTypeError::new_err("at least one run scope is required"));
+    }
+    if scopes.len() == 1 {
+        return coerce_run_scope(&scopes.get_item(0)?);
+    }
+    let mut runs = std::collections::BTreeSet::new();
+    let mut requested = 0_u64;
+    for scope in scopes {
+        match coerce_run_scope(&scope)? {
+            RunSelection::All => return Ok(RunSelection::All),
+            RunSelection::Runs(selected) => {
+                requested = requested.saturating_add(selected.len() as u64);
+                runs.extend(selected);
+            }
+            RunSelection::Range { start, end } if start <= end => {
+                let length = end
+                    .checked_sub(start)
+                    .and_then(|span| span.checked_add(1))
+                    .ok_or_else(|| PyValueError::new_err("combined run scope is too large"))?;
+                requested = requested.saturating_add(length as u64);
+                if requested > 10_000_000 {
+                    return Err(PyValueError::new_err(
+                        "combining disjoint scopes is limited to 10,000,000 numeric runs",
+                    ));
+                }
+                runs.extend(start..=end);
+            }
+            RunSelection::Range { .. } => {}
+        }
+        if requested > 10_000_000 {
+            return Err(PyValueError::new_err(
+                "combining disjoint scopes is limited to 10,000,000 numeric runs",
+            ));
+        }
+    }
+    Ok(RunSelection::runs(runs))
+}
+
 #[pymethods]
 impl PyRuns {
     /// Discover named scientific predicates in one typed namespace.
@@ -191,13 +242,15 @@ impl PyRuns {
     }
 
     /// Build a lazy Run Query from a common Python run scope.
-    #[pyo3(signature = (scope: "int | Sequence[int] | range | RunPeriod | str | RunSelection | RunQuery"))]
-    fn select(&self, scope: &Bound<'_, PyAny>) -> PyResult<PyRunQuery> {
-        if let Ok(query) = scope.extract::<PyRef<'_, PyRunQuery>>() {
+    #[pyo3(signature = (*scopes: "int | Sequence[int] | range | RunPeriod | CalibratedRunPeriod | str | RunSelection | RunQuery | RunSet"))]
+    fn select(&self, scopes: &Bound<'_, PyTuple>) -> PyResult<PyRunQuery> {
+        if scopes.len() == 1
+            && let Ok(query) = scopes.get_item(0)?.extract::<PyRef<'_, PyRunQuery>>()
+        {
             return Ok(query.clone());
         }
         self.0
-            .runs(coerce_run_scope(scope)?)
+            .runs(coerce_run_scopes(scopes)?)
             .map(PyRunQuery)
             .map_err(|error| super::exceptions::map(&error))
     }
@@ -253,6 +306,42 @@ impl PyRunSelection {
     #[staticmethod]
     fn period(period: &PyRunPeriod) -> Self {
         Self(RunSelection::period(period.0))
+    }
+    /// Attach one custom calibration timestamp to this numeric selection.
+    #[pyo3(signature = (calibration_time, *, variation=None))]
+    fn at(
+        &self,
+        calibration_time: chrono::DateTime<chrono::Utc>,
+        variation: Option<String>,
+    ) -> super::calibrations::PyCalibratedRunSelection {
+        super::calibrations::PyCalibratedRunSelection::direct(
+            self.0.clone(),
+            calibration_time,
+            variation,
+        )
+    }
+    /// Attach a REST context when every selected run belongs to one run period.
+    #[pyo3(signature = (version, *, variation=None))]
+    fn rest(
+        &self,
+        version: crate::RESTVersion,
+        variation: Option<String>,
+    ) -> PyResult<super::calibrations::PyCalibratedRunSelection> {
+        let period = super::calibrations::selection_period(&self.0)?;
+        let reconstruction = crate::RESTVersionSelection::try_new(period, version)
+            .map(crate::ReconstructionPeriod::new)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        let reconstruction = match variation {
+            Some(variation) => reconstruction.with_variation(variation),
+            None => reconstruction,
+        };
+        Ok(
+            super::calibrations::PyCalibratedRunSelection::reconstruction(
+                self.0.clone(),
+                period,
+                reconstruction,
+            ),
+        )
     }
     fn __repr__(&self) -> String {
         format!("RunSelection({:?})", self.0)
@@ -950,6 +1039,90 @@ impl PyConditionResults {
             .get(key.0, &key.1)
             .map(|v| v.map(Into::into))
             .map_err(|e| PyKeyError::new_err(e.to_string()))
+    }
+    /// Convert to a Polars DataFrame with one row per run and native nullable columns.
+    fn to_polars(&self) -> PyResult<PolarsDataFrame> {
+        let runs = self
+            .0
+            .runs()
+            .numbers()
+            .iter()
+            .map(|run| {
+                u32::try_from(*run).map_err(|_| {
+                    PyValueError::new_err(format!(
+                        "run number {run} cannot be represented as Polars UInt32"
+                    ))
+                })
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        let mut columns = vec![Column::new("run_number".into(), runs)];
+        for name in self.0.provenance().fields() {
+            if name == "run_number" {
+                return Err(PyValueError::new_err(
+                    "condition name 'run_number' is reserved for DataFrame conversion",
+                ));
+            }
+            let values = self
+                .0
+                .column(name)
+                .map_err(|error| super::exceptions::map(&error))?;
+            let column = match self
+                .0
+                .column_type(name)
+                .map_err(|error| super::exceptions::map(&error))?
+            {
+                crate::ConditionValueType::Int => Column::new(
+                    name.clone().into(),
+                    values
+                        .iter()
+                        .map(|v| v.as_ref().and_then(crate::ConditionValue::as_int))
+                        .collect::<Vec<_>>(),
+                ),
+                crate::ConditionValueType::Float => Column::new(
+                    name.clone().into(),
+                    values
+                        .iter()
+                        .map(|v| v.as_ref().and_then(crate::ConditionValue::as_float))
+                        .collect::<Vec<_>>(),
+                ),
+                crate::ConditionValueType::Bool => Column::new(
+                    name.clone().into(),
+                    values
+                        .iter()
+                        .map(|v| v.as_ref().and_then(crate::ConditionValue::as_bool))
+                        .collect::<Vec<_>>(),
+                ),
+                crate::ConditionValueType::Time => Column::new(
+                    name.clone().into(),
+                    values
+                        .iter()
+                        .map(|v| {
+                            v.as_ref()
+                                .and_then(crate::ConditionValue::as_time)
+                                .map(|t| t.timestamp_micros())
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .cast(&DataType::Datetime(
+                    TimeUnit::Microseconds,
+                    Some(TimeZone::UTC),
+                ))
+                .map_err(|error| PyValueError::new_err(error.to_string()))?,
+                crate::ConditionValueType::String
+                | crate::ConditionValueType::Json
+                | crate::ConditionValueType::Blob => Column::new(
+                    name.clone().into(),
+                    values
+                        .iter()
+                        .map(|v| v.as_ref().and_then(crate::ConditionValue::as_string))
+                        .collect::<Vec<_>>(),
+                ),
+            };
+            columns.push(column);
+        }
+        DataFrame::new(self.0.runs().numbers().len(), columns)
+            .map(|frame| PolarsDataFrame(PyDataFrame(frame)))
+            .map_err(|error| PyValueError::new_err(error.to_string()))
     }
     fn __len__(&self) -> usize {
         self.0.runs().numbers().len()

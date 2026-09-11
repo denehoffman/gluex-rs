@@ -809,8 +809,8 @@ impl TypeTableHandle {
              LEFT JOIN runRanges rr ON rr.id = a.runRangeId
              WHERE cs.constantTypeId = ?
                AND a.variationId = ?
-               AND (rr.id IS NULL OR rr.runMin > rr.runMax
-                    OR (rr.runMax >= ? AND rr.runMin <= ?))",
+               AND (rr.id IS NULL
+                    OR (rr.runMin <= rr.runMax AND rr.runMax >= ? AND rr.runMin <= ?))",
             )?;
             let raw_candidates = stmt
                 .query_map((self.meta.id, var_meta.id, min_run, max_run), |row| {

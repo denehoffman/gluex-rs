@@ -1,6 +1,7 @@
 mod calibrations;
 mod ccdb;
 mod core;
+mod dataframe;
 mod exceptions;
 mod execution;
 mod generation;
@@ -46,7 +47,9 @@ mod gluex {
     use super::rcdb::rcdb;
 
     #[pymodule_export]
-    use super::session::{PyCacheInfo, PyCapabilities, PyDisabled, PyGlueX, PySources, open};
+    use super::session::{
+        PyCacheInfo, PyCapabilities, PyDisabled, PyGlueX, PySources, connect, open,
+    };
 
     #[pymodule_export]
     use super::runs::{
@@ -59,9 +62,11 @@ mod gluex {
 
     #[pymodule_export]
     use super::calibrations::{
-        PyCalibrationCatalog, PyCalibrationColumn, PyCalibrationDirectory, PyCalibrationEntry,
-        PyCalibrationPayload, PyCalibrationProvenance, PyCalibrationQuery, PyCalibrationReport,
-        PyCalibrationSeries, PyCalibrationStream, PyCalibrationTable, PyReconstructionSelection,
+        PyCalibratedRunSelection, PyCalibrationCatalog, PyCalibrationColumn,
+        PyCalibrationDirectory, PyCalibrationEntry, PyCalibrationPayload, PyCalibrationProvenance,
+        PyCalibrationQuery, PyCalibrationReport, PyCalibrationResults, PyCalibrationSelection,
+        PyCalibrationSeries, PyCalibrationStream, PyCalibrationTable, PyCalibrationTableResults,
+        PyCalibrationTablesQuery, PyReconstructionSelection,
     };
 
     #[pymodule_export]

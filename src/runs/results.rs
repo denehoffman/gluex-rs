@@ -25,6 +25,7 @@ pub(super) fn condition_results(
     ConditionResults {
         runs,
         columns: evaluated.columns,
+        column_types: evaluated.column_types,
         provenance,
         report: ConditionReport {
             missing_values: evaluated.missing_values,

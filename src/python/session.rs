@@ -146,7 +146,7 @@ impl PyGlueX {
         super::workflows::PyWorkflows(self.0.workflows())
     }
     /// Build the canonical luminosity workflow from explicit inputs.
-    #[pyo3(signature = (runs, *, reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | Mapping[RunPeriod | str, int | RESTVersionSelection]", edges))]
+    #[pyo3(signature = (runs, *, reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | dict[RunPeriod | str, int | RESTVersionSelection]", edges))]
     fn luminosity(
         &self,
         runs: &super::runs::PyRunSet,
@@ -216,7 +216,7 @@ impl PyGlueX {
     }
 }
 
-/// Open a GlueX session from optional local SQLite paths.
+/// Compatibility alias for connect().
 ///
 /// Each omitted/None argument consults its own RCDB_CONNECTION or
 /// CCDB_CONNECTION variable. DISABLED explicitly turns that source off. Missing
@@ -226,6 +226,23 @@ impl PyGlueX {
 #[pyfunction]
 #[pyo3(signature = (*, rcdb=None, ccdb=None))]
 pub fn open(
+    py: Python<'_>,
+    rcdb: Option<SourceArgument>,
+    ccdb: Option<SourceArgument>,
+) -> PyResult<PyGlueX> {
+    connect(py, rcdb, ccdb)
+}
+
+/// Connect to GlueX data sources and return an independent session.
+///
+/// Each omitted/None argument consults its own RCDB_CONNECTION or
+/// CCDB_CONNECTION variable. DISABLED explicitly turns that source off. Missing
+/// variables leave capabilities unavailable; broken configured files raise
+/// ValueError. Strings and pathlib.Path values are accepted. No database is
+/// required for using database-independent reference information.
+#[pyfunction]
+#[pyo3(signature = (*, rcdb=None, ccdb=None))]
+pub fn connect(
     py: Python<'_>,
     rcdb: Option<SourceArgument>,
     ccdb: Option<SourceArgument>,

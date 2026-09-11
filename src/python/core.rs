@@ -112,15 +112,38 @@ impl PyRunPeriod {
 
     /// Select a REST reconstruction for this period.
     #[pyo3(signature = (version, *, variation=None))]
-    fn rest(&self, version: RESTVersion, variation: Option<String>) -> PyResult<PyCalibratedRunPeriod> {
+    fn rest(
+        &self,
+        version: RESTVersion,
+        variation: Option<String>,
+    ) -> PyResult<PyCalibratedRunPeriod> {
         RESTVersionSelection::try_new(self.0, version)
             .map(crate::ReconstructionPeriod::new)
             .map(|selection| match variation {
                 Some(variation) => selection.with_variation(variation),
                 None => selection,
             })
-            .map(|selection| PyCalibratedRunPeriod(crate::CalibratedRunPeriod::new(self.0, selection)))
+            .map(|selection| {
+                PyCalibratedRunPeriod(crate::CalibratedRunPeriod::new(self.0, selection))
+            })
             .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    /// Select an explicit calibration timestamp for this period.
+    #[pyo3(signature = (calibration_time, *, variation=None))]
+    fn at(
+        &self,
+        calibration_time: DateTime<Utc>,
+        variation: Option<String>,
+    ) -> PyCalibratedRunPeriod {
+        let selection = crate::ReconstructionPeriod::new(RESTVersionSelection::from_timestamp(
+            calibration_time,
+        ));
+        let selection = match variation {
+            Some(variation) => selection.with_variation(variation),
+            None => selection,
+        };
+        PyCalibratedRunPeriod(crate::CalibratedRunPeriod::new(self.0, selection))
     }
 
     #[getter]
@@ -156,12 +179,32 @@ impl PyRunPeriod {
 }
 
 /// A run period paired with a validated REST calibration context.
-#[pyclass(name = "CalibratedRunPeriod", module = "gluex", frozen, eq, hash)]
+#[pyclass(
+    name = "CalibratedRunPeriod",
+    module = "gluex",
+    frozen,
+    eq,
+    hash,
+    skip_from_py_object
+)]
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub struct PyCalibratedRunPeriod(pub(crate) crate::CalibratedRunPeriod);
 
 #[pymethods]
 impl PyCalibratedRunPeriod {
+    /// Return this calibrated period with explicit run numbers omitted.
+    #[pyo3(signature = (*runs))]
+    fn excluding(
+        &self,
+        runs: Vec<crate::RunNumber>,
+    ) -> crate::python::calibrations::PyCalibratedRunSelection {
+        let selection = crate::python::calibrations::PyCalibratedRunSelection::reconstruction(
+            crate::RunSelection::period(self.0.period()),
+            self.0.period(),
+            self.0.reconstruction().clone(),
+        );
+        selection.excluding(runs)
+    }
     #[getter]
     fn period(&self) -> PyRunPeriod {
         PyRunPeriod(self.0.period())
@@ -187,8 +230,8 @@ impl PyCalibratedRunPeriod {
             .map(|context| context.timestamp)
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
-    fn __str__(&self) -> &str {
-        self.0.period().short_name()
+    fn __str__(&self) -> String {
+        self.0.period().short_name().to_owned()
     }
     fn __repr__(&self) -> String {
         format!(

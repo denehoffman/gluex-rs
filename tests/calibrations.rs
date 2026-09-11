@@ -279,7 +279,6 @@ fn malformed_historical_data_is_never_reported_as_missing() {
         "UPDATE assignments SET created = 'not-a-date' WHERE id = 230266",
         "UPDATE assignments SET created = 'garbage 2014 garbage' WHERE id = 230266",
         "UPDATE assignments SET runRangeId = 999 WHERE id = 230266",
-        "UPDATE runRanges SET runMin = 9, runMax = 1 WHERE id = 1",
         "UPDATE variations SET parentId = 999 WHERE name = 'mc'",
         "UPDATE variations SET parentId = 2 WHERE name = 'mc'",
         "UPDATE constantSets SET vault = 'broken' WHERE id = 230302",
@@ -312,6 +311,32 @@ fn malformed_historical_data_is_never_reported_as_missing() {
                 .is_err()
         );
     }
+}
+
+#[test]
+fn reversed_run_ranges_are_ignored_as_empty_intervals() {
+    let fixture = fixtures::ccdb();
+    rusqlite::Connection::open(fixture.path())
+        .unwrap()
+        .execute_batch(
+            "
+        INSERT INTO runRanges (id, runMin, runMax) VALUES (10, 100900, 100899);
+        INSERT INTO assignments (id, created, variationId, runRangeId, constantSetId)
+        VALUES (300000, '2024-10-18 12:27:33', 1, 10, 230302);
+    ",
+        )
+        .unwrap();
+    let gx = GlueX::open(SourceConfig::Disabled, SourceConfig::sqlite(fixture.path())).unwrap();
+    let series = gx
+        .calibrations()
+        .unwrap()
+        .get("/test/demo/mytable")
+        .unwrap()
+        .for_runs(RunSelection::runs([2]))
+        .unwrap()
+        .collect()
+        .unwrap();
+    assert_eq!(series.get(2).unwrap().assignment_id(), 230_266);
 }
 
 #[test]

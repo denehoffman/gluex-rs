@@ -1,17 +1,149 @@
+use super::dataframe::PolarsDataFrame;
 use super::{
-    runs::{PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet, coerce_run_scope},
+    runs::{PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet, coerce_run_scopes},
     tuple::{TypedIterator, TypedTuple},
 };
 use crate::calibrations::*;
 use crate::{Id, RESTVersionSelection, RunNumber};
+use polars::prelude::{
+    Column, DataFrame, DataType, IntoColumn, IntoSeries, ListChunked, NamedFrom, Series,
+    SortMultipleOptions, StructChunked,
+};
 use pyo3::{
     exceptions::{PyKeyError, PyStopIteration, PyValueError},
     prelude::*,
-    types::{PyAny, PyDict, PyTuple},
+    types::{PyDict, PyTuple},
 };
+use pyo3_polars::PyDataFrame;
 
 fn error(error: crate::DatabaseError) -> PyErr {
     super::exceptions::map(&error)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ScopedCalibrationContext {
+    Default,
+    Reconstruction(crate::RunPeriod, ReconstructionPeriod),
+    Direct {
+        variation: String,
+        as_of: chrono::DateTime<chrono::Utc>,
+    },
+}
+
+impl ScopedCalibrationContext {
+    fn description(&self) -> String {
+        match self {
+            Self::Default => "the session default calibration context".to_owned(),
+            Self::Reconstruction(period, reconstruction) => reconstruction
+                .resolve(*period)
+                .map(|context| {
+                    format!(
+                        "{} ({}, as of {})",
+                        period.short_name(),
+                        context.variation,
+                        context.timestamp
+                    )
+                })
+                .unwrap_or_else(|_| format!("{} REST calibration", period.short_name())),
+            Self::Direct { variation, as_of } => {
+                format!("variation {variation:?}, as of {as_of}")
+            }
+        }
+    }
+}
+
+/// Numeric run selection carrying exactly one calibration context.
+#[pyclass(
+    name = "CalibratedRunSelection",
+    module = "gluex",
+    frozen,
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub struct PyCalibratedRunSelection {
+    pub(crate) selection: crate::RunSelection,
+    pub(crate) context: ScopedCalibrationContext,
+    excluded: std::collections::BTreeSet<RunNumber>,
+}
+
+impl PyCalibratedRunSelection {
+    pub(crate) fn direct(
+        selection: crate::RunSelection,
+        as_of: chrono::DateTime<chrono::Utc>,
+        variation: Option<String>,
+    ) -> Self {
+        Self {
+            selection,
+            context: ScopedCalibrationContext::Direct {
+                variation: variation.unwrap_or_else(|| "default".to_owned()),
+                as_of,
+            },
+            excluded: std::collections::BTreeSet::new(),
+        }
+    }
+
+    pub(crate) fn reconstruction(
+        selection: crate::RunSelection,
+        period: crate::RunPeriod,
+        reconstruction: ReconstructionPeriod,
+    ) -> Self {
+        Self {
+            selection,
+            context: ScopedCalibrationContext::Reconstruction(period, reconstruction),
+            excluded: std::collections::BTreeSet::new(),
+        }
+    }
+}
+
+#[pymethods]
+impl PyCalibratedRunSelection {
+    /// Return a copy that omits explicit run numbers before overlap validation.
+    #[pyo3(signature = (*runs))]
+    pub(crate) fn excluding(&self, runs: Vec<RunNumber>) -> Self {
+        let mut selected = self.clone();
+        selected.excluded.extend(runs);
+        selected
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CalibratedRunSelection(context={}, excluded={})",
+            self.context.description(),
+            self.excluded.len()
+        )
+    }
+}
+
+pub(crate) fn selection_period(selection: &crate::RunSelection) -> PyResult<crate::RunPeriod> {
+    let periods = match selection {
+        crate::RunSelection::Runs(runs) if !runs.is_empty() => runs
+            .iter()
+            .map(|run| crate::RunPeriod::try_from(*run))
+            .collect::<Result<std::collections::BTreeSet<_>, _>>(),
+        crate::RunSelection::Range { start, end } if start <= end => [
+            crate::RunPeriod::try_from(*start),
+            crate::RunPeriod::try_from(*end),
+        ]
+        .into_iter()
+        .collect::<Result<std::collections::BTreeSet<_>, _>>(),
+        crate::RunSelection::Runs(_) | crate::RunSelection::Range { .. } => {
+            return Err(PyValueError::new_err(
+                "an empty run selection cannot choose a REST version",
+            ));
+        }
+        crate::RunSelection::All => {
+            return Err(PyValueError::new_err(
+                "an all-runs selection cannot choose one REST version",
+            ));
+        }
+    }
+    .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    if periods.len() != 1 {
+        return Err(PyValueError::new_err(
+            "rest(version) requires runs from exactly one run period; split the selection by period",
+        ));
+    }
+    Ok(*periods.first().expect("one period was validated"))
 }
 
 fn reconstruction_from_dict(selections: &Bound<'_, PyDict>) -> PyResult<ReconstructionSelection> {
@@ -87,6 +219,16 @@ pub(crate) fn parse_reconstruction(value: &Bound<'_, PyAny>) -> PyResult<Reconst
 pub struct PyCalibrationCatalog(pub(crate) CalibrationCatalog);
 #[pymethods]
 impl PyCalibrationCatalog {
+    /// Select run scopes for one or more calibration tables without retrieving data.
+    #[pyo3(signature = (*run_scopes: "int | Sequence[int] | range | RunPeriod | CalibratedRunPeriod | CalibratedRunSelection | str | RunSelection | RunQuery | RunSet", variation=None, as_of=None))]
+    fn select(
+        &self,
+        run_scopes: &Bound<'_, PyTuple>,
+        variation: Option<String>,
+        as_of: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> PyResult<PyCalibrationSelection> {
+        calibration_selection(self.0.clone(), run_scopes, variation, as_of)
+    }
     fn keys(&self) -> TypedTuple<String> {
         TypedTuple(self.0.keys().cloned().collect())
     }
@@ -125,6 +267,572 @@ impl PyCalibrationCatalog {
     }
     fn __repr__(&self) -> String {
         format!("CalibrationCatalog(tables={})", self.__len__())
+    }
+}
+
+#[derive(Clone)]
+enum CalibrationRunInput {
+    Selection(crate::RunSelection),
+    Query(crate::RunQuery),
+    Set(crate::RunSet),
+}
+
+impl CalibrationRunInput {
+    fn query(&self, table: &CalibrationTable) -> PyResult<CalibrationQuery> {
+        match self {
+            Self::Selection(selection) => table.for_runs(selection.clone()),
+            Self::Query(query) => table.for_query(query),
+            Self::Set(runs) => table.for_run_set(runs),
+        }
+        .map_err(error)
+    }
+}
+
+fn calibration_selection(
+    catalog: CalibrationCatalog,
+    scopes: &Bound<'_, PyTuple>,
+    variation: Option<String>,
+    as_of: Option<chrono::DateTime<chrono::Utc>>,
+) -> PyResult<PyCalibrationSelection> {
+    let mut scoped = Vec::new();
+    for scope in scopes {
+        if let Ok(selection) = scope.extract::<PyRef<'_, PyCalibratedRunSelection>>() {
+            scoped.push((
+                selection.selection.clone(),
+                selection.context.clone(),
+                selection.excluded.clone(),
+            ));
+        } else if let Ok(period) = scope.extract::<PyRef<'_, super::core::PyCalibratedRunPeriod>>()
+        {
+            scoped.push((
+                crate::RunSelection::period(period.0.period()),
+                ScopedCalibrationContext::Reconstruction(
+                    period.0.period(),
+                    period.0.reconstruction().clone(),
+                ),
+                std::collections::BTreeSet::new(),
+            ));
+        } else {
+            scoped.push((
+                super::runs::coerce_run_scope(&scope)?,
+                ScopedCalibrationContext::Default,
+                std::collections::BTreeSet::new(),
+            ));
+        }
+    }
+    let calibrated = scoped
+        .iter()
+        .any(|(_, context, _)| *context != ScopedCalibrationContext::Default);
+    if calibrated && (variation.is_some() || as_of.is_some()) {
+        let period = scopes
+            .iter()
+            .find_map(|scope| {
+                scope
+                    .extract::<PyRef<'_, super::core::PyCalibratedRunPeriod>>()
+                    .ok()
+                    .map(|period| period.0.period().short_name().to_ascii_lowercase())
+            })
+            .unwrap_or_else(|| "the calibrated scope".to_owned());
+        let calibrated_runs = scoped
+            .iter()
+            .filter(|(_, context, _)| *context != ScopedCalibrationContext::Default)
+            .flat_map(|(selection, _, excluded)| {
+                selection_numbers(selection)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|run| !excluded.contains(run))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let plain_runs = scoped
+            .iter()
+            .filter(|(_, context, _)| *context == ScopedCalibrationContext::Default)
+            .flat_map(|(selection, _, _)| selection_numbers(selection).unwrap_or_default())
+            .collect::<std::collections::BTreeSet<_>>();
+        let overlap = calibrated_runs
+            .intersection(&plain_runs)
+            .copied()
+            .collect::<Vec<_>>();
+        let guidance = if overlap.is_empty() {
+            "remove the global selectors and attach .at(timestamp, variation=...) to the specific RunSelection that needs them".to_owned()
+        } else {
+            let runs = format_run_list(&overlap);
+            format!(
+                "the likely override is RunPeriod({period:?}).rest(...).excluding({runs}) together with RunSelection.runs([{runs}]).at(timestamp, variation='mc')"
+            )
+        };
+        return Err(PyValueError::new_err(format!(
+            "variation and as_of would also overwrite {period}'s calibrated context; {guidance}"
+        )));
+    }
+    if scopes.len() == 1
+        && let Ok(runs) = scopes.get_item(0)?.extract::<PyRunSet>()
+    {
+        return Ok(PyCalibrationSelection {
+            scopes: vec![(
+                CalibrationRunInput::Set(runs.0),
+                ScopedCalibrationContext::Default,
+            )],
+            variation,
+            as_of,
+            catalog,
+        });
+    } else if scopes.len() == 1
+        && let Ok(query) = scopes.get_item(0)?.extract::<PyRunQuery>()
+    {
+        return Ok(PyCalibrationSelection {
+            scopes: vec![(
+                CalibrationRunInput::Query(query.0),
+                ScopedCalibrationContext::Default,
+            )],
+            variation,
+            as_of,
+            catalog,
+        });
+    }
+    let mut owners = std::collections::BTreeMap::<RunNumber, ScopedCalibrationContext>::new();
+    let mut normalized = Vec::new();
+    for (selection, context, excluded) in scoped {
+        let mut runs = selection_numbers(&selection)?;
+        runs.retain(|run| !excluded.contains(run));
+        let conflicts = runs
+            .iter()
+            .filter(|run| owners.get(run).is_some_and(|existing| existing != &context))
+            .copied()
+            .collect::<Vec<_>>();
+        if let Some(run) = conflicts.first()
+            && let Some(existing) = owners.get(run)
+        {
+            let displayed = format_run_list(&conflicts);
+            return Err(PyValueError::new_err(format!(
+                "runs [{displayed}] have conflicting calibration contexts: {} and {}. If the custom runs should override a period, exclude them first: period.rest(...).excluding({displayed}), RunSelection.runs([{displayed}]).at(timestamp, variation='...')",
+                existing.description(),
+                context.description(),
+            )));
+        }
+        let mut unique = Vec::new();
+        for run in runs {
+            if let Some(existing) = owners.get(&run) {
+                debug_assert_eq!(existing, &context);
+            } else {
+                owners.insert(run, context.clone());
+                unique.push(run);
+            }
+        }
+        if !unique.is_empty() {
+            normalized.push((
+                CalibrationRunInput::Selection(crate::RunSelection::runs(unique)),
+                context,
+            ));
+        }
+    }
+    Ok(PyCalibrationSelection {
+        catalog,
+        scopes: normalized,
+        variation,
+        as_of,
+    })
+}
+
+fn format_run_list(runs: &[RunNumber]) -> String {
+    let shown = runs
+        .iter()
+        .take(8)
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    if runs.len() > 8 {
+        format!("{shown}, ...")
+    } else {
+        shown
+    }
+}
+
+fn selection_numbers(selection: &crate::RunSelection) -> PyResult<Vec<RunNumber>> {
+    match selection {
+        crate::RunSelection::Runs(runs) => Ok(runs.clone()),
+        crate::RunSelection::Range { start, end } if start <= end => {
+            let length = end.saturating_sub(*start) as u64 + 1;
+            if length > 10_000_000 {
+                return Err(PyValueError::new_err(
+                    "combined calibrated scopes are limited to 10,000,000 runs",
+                ));
+            }
+            Ok((*start..=*end).collect())
+        }
+        crate::RunSelection::Range { .. } => Ok(Vec::new()),
+        crate::RunSelection::All => Err(PyValueError::new_err(
+            "all-runs selection is not supported for calibrations",
+        )),
+    }
+}
+
+/// Lazy calibration run selection; project tables with ``tables``.
+#[pyclass(name = "CalibrationSelection", module = "gluex", frozen)]
+pub struct PyCalibrationSelection {
+    catalog: CalibrationCatalog,
+    scopes: Vec<(CalibrationRunInput, ScopedCalibrationContext)>,
+    variation: Option<String>,
+    as_of: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[pymethods]
+impl PyCalibrationSelection {
+    /// Project exact absolute table paths; each path becomes an independent result column.
+    #[pyo3(signature = (*paths))]
+    fn tables(&self, paths: &Bound<'_, PyTuple>) -> PyResult<PyCalibrationTablesQuery> {
+        let paths = paths.extract::<Vec<String>>()?;
+        if paths.is_empty() {
+            return Err(PyValueError::new_err(
+                "at least one calibration table is required",
+            ));
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        let mut queries = Vec::with_capacity(paths.len());
+        for path in paths {
+            if !seen.insert(path.clone()) {
+                return Err(PyValueError::new_err(format!(
+                    "duplicate calibration table {path:?}"
+                )));
+            }
+            let table = self
+                .catalog
+                .get(&path)
+                .ok_or_else(|| PyKeyError::new_err(path.clone()))?;
+            let mut table_queries = Vec::with_capacity(self.scopes.len());
+            for (input, context) in &self.scopes {
+                let mut query = input.query(table)?;
+                match context {
+                    ScopedCalibrationContext::Default => {}
+                    ScopedCalibrationContext::Reconstruction(period, reconstruction) => {
+                        query = query.with_reconstruction(ReconstructionSelection::periods([(
+                            *period,
+                            reconstruction.clone(),
+                        )]));
+                    }
+                    ScopedCalibrationContext::Direct { variation, as_of } => {
+                        query = query.with_variation(variation.clone()).as_of(*as_of);
+                    }
+                }
+                if let Some(variation) = &self.variation {
+                    query = query.with_variation(variation.clone());
+                }
+                if let Some(as_of) = self.as_of {
+                    query = query.as_of(as_of);
+                }
+                table_queries.push(query);
+            }
+            queries.push((path, table_queries));
+        }
+        Ok(PyCalibrationTablesQuery { queries })
+    }
+
+    fn __repr__(&self) -> &'static str {
+        "CalibrationSelection(project=tables(*paths))"
+    }
+}
+
+/// Lazy multi-table calibration request.
+#[pyclass(
+    name = "CalibrationTablesQuery",
+    module = "gluex",
+    frozen,
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub struct PyCalibrationTablesQuery {
+    queries: Vec<(String, Vec<CalibrationQuery>)>,
+}
+
+#[pymethods]
+impl PyCalibrationTablesQuery {
+    /// Require every requested run/table pair to have an assignment.
+    fn strict(&self) -> Self {
+        Self {
+            queries: self
+                .queries
+                .iter()
+                .map(|(path, queries)| {
+                    (
+                        path.clone(),
+                        queries.iter().map(CalibrationQuery::strict).collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    /// Use one run's assignment when a requested run/table pair is missing.
+    fn fallback_to(&self, run: RunNumber) -> Self {
+        Self {
+            queries: self
+                .queries
+                .iter()
+                .map(|(path, queries)| {
+                    (
+                        path.clone(),
+                        queries.iter().map(|query| query.fallback_to(run)).collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    /// Collect every projected table into one keyed result.
+    fn collect(&self, py: Python<'_>) -> PyResult<PyCalibrationResults> {
+        let mut series = Vec::with_capacity(self.queries.len());
+        for (path, queries) in &self.queries {
+            let mut table_series = Vec::with_capacity(queries.len());
+            for query in queries {
+                table_series.push(crate::python::execution::PythonExecution::execute(
+                    py,
+                    query,
+                    CalibrationQuery::collect,
+                )?);
+            }
+            series.push((path.clone(), table_series));
+        }
+        Ok(PyCalibrationResults { series })
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CalibrationTablesQuery(tables={:?})",
+            self.queries.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        )
+    }
+}
+
+/// Collected calibration tables keyed by exact absolute path.
+#[pyclass(name = "CalibrationResults", module = "gluex", frozen)]
+pub struct PyCalibrationResults {
+    series: Vec<(String, Vec<CalibrationSeries>)>,
+}
+
+fn payload_series(name: &str, values: &CalibrationColumnValues) -> Series {
+    match values {
+        CalibrationColumnValues::Int(v) => Series::new(name.into(), *v),
+        CalibrationColumnValues::UInt(v) => Series::new(name.into(), *v),
+        CalibrationColumnValues::Long(v) => Series::new(name.into(), *v),
+        CalibrationColumnValues::ULong(v) => Series::new(name.into(), *v),
+        CalibrationColumnValues::Double(v) => Series::new(name.into(), *v),
+        CalibrationColumnValues::String(v) => Series::new(name.into(), *v),
+        CalibrationColumnValues::Bool(v) => Series::new(name.into(), *v),
+    }
+}
+
+fn nested_table_column(
+    path: &str,
+    series: &[CalibrationSeries],
+    runs: &[RunNumber],
+) -> PyResult<Column> {
+    let Some((_, first)) = series.iter().find_map(|series| series.items().next()) else {
+        return Ok(Column::full_null(path.into(), runs.len(), &DataType::Null));
+    };
+    let mut fields = Vec::new();
+    for name in first.payload().column_names() {
+        let lists: ListChunked = runs
+            .iter()
+            .map(|run| {
+                series
+                    .iter()
+                    .find_map(|series| series.get(*run))
+                    .and_then(|entry| entry.payload().column(name))
+                    .map(|values| payload_series(name, &values))
+            })
+            .collect();
+        fields.push(lists.with_name(name.into()).into_series());
+    }
+    StructChunked::from_series(path.into(), runs.len(), fields.iter())
+        .map(IntoColumn::into_column)
+        .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
+#[pymethods]
+impl PyCalibrationResults {
+    /// Exact table paths in projection order.
+    #[getter]
+    fn tables(&self) -> TypedTuple<String> {
+        TypedTuple(self.series.iter().map(|(path, _)| path.clone()).collect())
+    }
+
+    /// All evaluated runs in numeric order, including partial table misses.
+    #[getter]
+    fn runs(&self) -> TypedTuple<RunNumber> {
+        let runs = self
+            .series
+            .iter()
+            .flat_map(|(_, segments)| {
+                segments
+                    .iter()
+                    .flat_map(|series| series.report().evaluated_runs().iter().copied())
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        TypedTuple(runs.into_iter().collect())
+    }
+
+    fn __getitem__(&self, path: &str) -> PyResult<PyCalibrationTableResults> {
+        self.series
+            .iter()
+            .find(|(candidate, _)| candidate == path)
+            .map(|(_, series)| PyCalibrationTableResults(series.clone()))
+            .ok_or_else(|| PyKeyError::new_err(path.to_owned()))
+    }
+
+    /// Convert to one row per run with one collision-safe struct-of-lists column per table.
+    fn to_polars(&self) -> PyResult<PolarsDataFrame> {
+        let runs = self.runs().0;
+        let run_numbers = runs
+            .iter()
+            .map(|run| {
+                u32::try_from(*run).map_err(|_| {
+                    PyValueError::new_err(format!(
+                        "run number {run} cannot be represented as Polars UInt32"
+                    ))
+                })
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        let mut columns = vec![Column::new("run_number".into(), run_numbers)];
+        for (path, segments) in &self.series {
+            columns.push(nested_table_column(path, segments, &runs)?);
+        }
+        DataFrame::new(runs.len(), columns)
+            .map(|frame| PolarsDataFrame(PyDataFrame(frame)))
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    fn __len__(&self) -> usize {
+        self.runs().0.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CalibrationResults(runs={}, tables={:?})",
+            self.__len__(),
+            self.tables().0
+        )
+    }
+}
+
+/// One calibration table collected across one or more independently calibrated scopes.
+#[pyclass(name = "CalibrationTableResults", module = "gluex", frozen)]
+pub struct PyCalibrationTableResults(Vec<CalibrationSeries>);
+
+#[pymethods]
+impl PyCalibrationTableResults {
+    /// Runs with resolved assignments, sorted and deduplicated.
+    #[getter]
+    fn runs(&self) -> TypedTuple<RunNumber> {
+        TypedTuple(
+            self.0
+                .iter()
+                .flat_map(CalibrationSeries::items)
+                .map(|(run, _)| *run)
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+        )
+    }
+
+    /// Provenance for each independently calibrated scope.
+    #[getter]
+    fn contexts(&self) -> TypedTuple<PyCalibrationProvenance> {
+        TypedTuple(
+            self.0
+                .iter()
+                .map(|series| PyCalibrationProvenance(series.provenance().clone()))
+                .collect(),
+        )
+    }
+
+    /// One missing-data report for each entry in ``contexts``.
+    #[getter]
+    fn reports(&self) -> TypedTuple<PyCalibrationReport> {
+        TypedTuple(
+            self.0
+                .iter()
+                .map(|series| PyCalibrationReport(series.report().clone()))
+                .collect(),
+        )
+    }
+
+    /// Single-scope provenance; use ``contexts`` when several calibrated scopes were combined.
+    #[getter]
+    fn provenance(&self) -> PyResult<PyCalibrationProvenance> {
+        match self.0.as_slice() {
+            [series] => Ok(PyCalibrationProvenance(series.provenance().clone())),
+            _ => Err(PyValueError::new_err(
+                "this table contains multiple calibration contexts; inspect .contexts instead",
+            )),
+        }
+    }
+
+    /// Single-scope report; multi-context reports remain available on the individual contexts.
+    #[getter]
+    fn report(&self) -> PyResult<PyCalibrationReport> {
+        match self.0.as_slice() {
+            [series] => Ok(PyCalibrationReport(series.report().clone())),
+            _ => Err(PyValueError::new_err(
+                "this table contains multiple calibration contexts; inspect .reports instead",
+            )),
+        }
+    }
+
+    fn __getitem__(&self, run: RunNumber) -> PyResult<PyCalibrationEntry> {
+        self.0
+            .iter()
+            .find_map(|series| series.get(run))
+            .cloned()
+            .map(PyCalibrationEntry)
+            .ok_or_else(|| PyKeyError::new_err(run))
+    }
+
+    fn items(&self) -> TypedTuple<(RunNumber, PyCalibrationEntry)> {
+        let entries = self
+            .0
+            .iter()
+            .flat_map(CalibrationSeries::items)
+            .map(|(run, entry)| (*run, entry.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        TypedTuple(
+            entries
+                .into_iter()
+                .map(|(run, entry)| (run, PyCalibrationEntry(entry)))
+                .collect(),
+        )
+    }
+
+    /// Flatten every scope's payload rows into one run-sorted Polars DataFrame.
+    fn to_polars(&self) -> PyResult<PolarsDataFrame> {
+        let mut frames = self.0.iter().map(|series| {
+            PyCalibrationSeries(series.clone())
+                .to_polars()
+                .map(|frame| frame.0.0)
+        });
+        let Some(mut frame) = frames.next().transpose()? else {
+            return Ok(PolarsDataFrame(PyDataFrame(DataFrame::empty())));
+        };
+        for next in frames {
+            frame
+                .vstack_mut(&next?)
+                .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        }
+        frame
+            .sort(["run_number"], SortMultipleOptions::default())
+            .map(|frame| PolarsDataFrame(PyDataFrame(frame)))
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    fn __len__(&self) -> usize {
+        self.runs().0.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CalibrationTableResults(runs={}, contexts={})",
+            self.__len__(),
+            self.0.len()
+        )
     }
 }
 
@@ -186,32 +894,54 @@ impl PyCalibrationTable {
     }
     /// Build a lazy query from a Python run scope, with optional keyword selectors.
     #[pyo3(signature = (
-        run_scope: "int | Sequence[int] | range | RunPeriod | str | RunSelection | RunQuery | RunSet",
-        *,
+        *run_scopes: "int | Sequence[int] | range | RunPeriod | CalibratedRunPeriod | str | RunSelection | RunQuery | RunSet",
         variation=None,
         as_of=None,
-        reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | Mapping[RunPeriod | str, int | RESTVersionSelection] | None"=None,
+        reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | dict[RunPeriod | str, int | RESTVersionSelection] | None"=None,
         missing_policy: "Literal['report', 'strict', 'fallback']"="report",
         fallback_run=None
     ))]
     fn for_runs(
         &self,
-        run_scope: &Bound<'_, PyAny>,
+        run_scopes: &Bound<'_, PyTuple>,
         variation: Option<String>,
         as_of: Option<chrono::DateTime<chrono::Utc>>,
         reconstruction: Option<&Bound<'_, PyAny>>,
         missing_policy: &str,
         fallback_run: Option<RunNumber>,
     ) -> PyResult<PyCalibrationQuery> {
-        let period_reconstruction = run_scope
-            .extract::<PyRef<'_, super::core::PyCalibratedRunPeriod>>()
-            .ok()
-            .map(|period| {
-                ReconstructionSelection::periods([(
-                    period.0.period(),
-                    period.0.reconstruction().clone(),
-                )])
-            });
+        let mut period_contexts = std::collections::BTreeMap::new();
+        let mut configured = std::collections::BTreeMap::new();
+        for scope in run_scopes {
+            let context = if let Ok(period) =
+                scope.extract::<PyRef<'_, super::core::PyCalibratedRunPeriod>>()
+            {
+                Some((period.0.period(), Some(period.0.reconstruction().clone())))
+            } else if let Ok(period) = scope.extract::<PyRef<'_, super::core::PyRunPeriod>>() {
+                Some((period.0, None))
+            } else if let Ok(name) = scope.extract::<String>() {
+                name.parse::<crate::RunPeriod>()
+                    .ok()
+                    .map(|period| (period, None))
+            } else {
+                None
+            };
+            if let Some((period, reconstruction)) = context {
+                if let Some(previous) = period_contexts.insert(period, reconstruction.clone())
+                    && previous != reconstruction
+                {
+                    return Err(PyValueError::new_err(format!(
+                        "conflicting calibration contexts for {}",
+                        period.short_name()
+                    )));
+                }
+                if let Some(reconstruction) = reconstruction {
+                    configured.insert(period, reconstruction);
+                }
+            }
+        }
+        let period_reconstruction =
+            (!configured.is_empty()).then(|| ReconstructionSelection::periods(configured));
         if (reconstruction.is_some() || period_reconstruction.is_some())
             && (variation.is_some() || as_of.is_some())
         {
@@ -224,12 +954,16 @@ impl PyCalibrationTable {
                 "a configured RunPeriod already supplies reconstruction; do not repeat it",
             ));
         }
-        let mut query = if let Ok(runs) = run_scope.extract::<PyRunSet>() {
+        let mut query = if run_scopes.len() == 1
+            && let Ok(runs) = run_scopes.get_item(0)?.extract::<PyRunSet>()
+        {
             self.0.for_run_set(&runs.0)
-        } else if let Ok(query) = run_scope.extract::<PyRunQuery>() {
+        } else if run_scopes.len() == 1
+            && let Ok(query) = run_scopes.get_item(0)?.extract::<PyRunQuery>()
+        {
             self.0.for_query(&query.0)
         } else {
-            self.0.for_runs(coerce_run_scope(run_scope)?)
+            self.0.for_runs(coerce_run_scopes(run_scopes)?)
         }
         .map_err(error)?;
         if let Some(variation) = variation {
@@ -290,7 +1024,7 @@ impl PyReconstructionSelection {
         Self(ReconstructionSelection::latest())
     }
     #[staticmethod]
-    #[pyo3(signature = (*selections: "CalibratedRunPeriod | RESTVersionSelection | Mapping[RunPeriod | str, int | RESTVersionSelection]"))]
+    #[pyo3(signature = (*selections: "CalibratedRunPeriod | RESTVersionSelection | dict[RunPeriod | str, int | RESTVersionSelection]"))]
     fn periods(selections: &Bound<'_, PyTuple>) -> PyResult<Self> {
         if selections.len() == 1
             && let Ok(mapping) = selections.get_item(0)?.cast::<PyDict>()
@@ -538,6 +1272,46 @@ impl PyCalibrationStream {
 /// Immutable run-to-assignment association. Runs are numeric; RCDB is not consulted.
 #[pyclass(name = "CalibrationSeries", module = "gluex", frozen)]
 pub struct PyCalibrationSeries(CalibrationSeries);
+
+fn dataframe_column(series: &CalibrationSeries, name: &str, rows: usize) -> PyResult<Column> {
+    macro_rules! collect_values {
+        ($variant:ident, $ty:ty) => {{
+            let mut values = Vec::<$ty>::with_capacity(rows);
+            for (_, entry) in series.items() {
+                match entry.payload().column(name) {
+                    Some(CalibrationColumnValues::$variant(column)) => {
+                        values.extend_from_slice(column);
+                    }
+                    _ => {
+                        return Err(PyValueError::new_err(format!(
+                            "calibration column {name:?} has inconsistent types"
+                        )));
+                    }
+                }
+            }
+            Ok(Column::new(name.into(), values))
+        }};
+    }
+
+    let first = series
+        .items()
+        .next()
+        .expect("dataframe columns require a non-empty calibration series")
+        .1
+        .payload()
+        .column(name)
+        .ok_or_else(|| PyKeyError::new_err(name.to_owned()))?;
+    match first {
+        CalibrationColumnValues::Int(_) => collect_values!(Int, i32),
+        CalibrationColumnValues::UInt(_) => collect_values!(UInt, u32),
+        CalibrationColumnValues::Long(_) => collect_values!(Long, i64),
+        CalibrationColumnValues::ULong(_) => collect_values!(ULong, u64),
+        CalibrationColumnValues::Double(_) => collect_values!(Double, f64),
+        CalibrationColumnValues::String(_) => collect_values!(String, String),
+        CalibrationColumnValues::Bool(_) => collect_values!(Bool, bool),
+    }
+}
+
 #[pymethods]
 impl PyCalibrationSeries {
     #[getter]
@@ -564,6 +1338,39 @@ impl PyCalibrationSeries {
                 .map(|(r, e)| (*r, PyCalibrationEntry(e.clone())))
                 .collect(),
         )
+    }
+    /// Convert to a Polars DataFrame with one row per run and payload row.
+    fn to_polars(&self) -> PyResult<PolarsDataFrame> {
+        let rows = self
+            .0
+            .items()
+            .try_fold(0_usize, |total, (_, entry)| {
+                total.checked_add(entry.payload().n_rows())
+            })
+            .ok_or_else(|| PyValueError::new_err("calibration DataFrame is too large"))?;
+        let mut runs = Vec::<u32>::with_capacity(rows);
+        for (run, entry) in self.0.items() {
+            let run = u32::try_from(*run).map_err(|_| {
+                PyValueError::new_err(format!(
+                    "run number {run} cannot be represented as Polars UInt32"
+                ))
+            })?;
+            runs.extend(std::iter::repeat_n(run, entry.payload().n_rows()));
+        }
+        let mut columns = vec![Column::new("run_number".into(), runs)];
+        if let Some((_, first)) = self.0.items().next() {
+            for name in first.payload().column_names() {
+                if name == "run_number" {
+                    return Err(PyValueError::new_err(
+                        "calibration column name 'run_number' is reserved for DataFrame conversion",
+                    ));
+                }
+                columns.push(dataframe_column(&self.0, name, rows)?);
+            }
+        }
+        DataFrame::new(rows, columns)
+            .map(|frame| PolarsDataFrame(PyDataFrame(frame)))
+            .map_err(|error| PyValueError::new_err(error.to_string()))
     }
     #[getter]
     fn provenance(&self) -> PyCalibrationProvenance {

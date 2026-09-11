@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import gluex
+import polars as pl
 import pytest
 
 
@@ -72,8 +73,7 @@ def test_runs_facade_between_and_variadic_columns_are_unambiguous() -> None:
     result = query.columns('event_count', 'is_valid_run_end').collect()
     assert result.provenance.fields == ('event_count', 'is_valid_run_end')
     assert gx.runs.select(query).collect().numbers == (2, 3, 4)
-    with pytest.raises(TypeError):
-        gx.runs.select(2, 4)  # ty: ignore[too-many-positional-arguments]
+    assert gx.runs.select(2, 4).collect().numbers == (2, 4)
     with pytest.raises(TypeError):
         gx.runs(2)  # ty: ignore[call-non-callable]
     assert not hasattr(gluex.RunSelection, 'range')
@@ -86,6 +86,9 @@ def test_run_period_is_a_value_object_with_a_rest_selector() -> None:
     reconstruction = gluex.ReconstructionSelection.periods(configured)
 
     assert str(period) == 'S17'
+    assert not hasattr(period, 'rest_version')
+    assert not hasattr(period, 'variation')
+    assert not hasattr(period, 'calibration_time')
     assert isinstance(configured, gluex.CalibratedRunPeriod)
     assert configured.period == period
     assert configured.rest_version == 5
@@ -94,6 +97,26 @@ def test_run_period_is_a_value_object_with_a_rest_selector() -> None:
     assert reconstruction.resolve(period) == ('recon_2017_01_ver05', '2025-11-26T13:41:24+00:00')
     overridden = gluex.ReconstructionSelection.periods(period.rest(5, variation='custom'))
     assert overridden.resolve(period)[0] == 'custom'
+
+
+def test_calibrated_run_period_supports_immutable_variation_and_timestamp_selection() -> None:
+    period = gluex.RunPeriod('s17')
+    timestamp = datetime(2024, 6, 1, 12, 30, tzinfo=timezone.utc)
+
+    original = period.rest(5)
+    overridden = period.rest(5, variation='custom')
+    historical = period.at(timestamp, variation='historical')
+
+    assert original.variation == 'recon_2017_01_ver05'
+    assert overridden.variation == 'custom'
+    assert overridden.calibration_time == original.calibration_time
+    assert historical.rest_version is None
+    assert historical.variation == 'historical'
+    assert historical.calibration_time == timestamp
+    assert historical.period == period
+    with pytest.raises(TypeError):
+        period.rest(5, 'custom')  # ty: ignore[too-many-positional-arguments]
+    assert not hasattr(overridden, 'with_variation')
 
 
 def test_run_aliases_have_one_typed_discoverable_home() -> None:
@@ -179,6 +202,12 @@ def test_numeric_scope(selection: gluex.RunSelection, expected: tuple[int, ...])
     assert gluex.open().runs.select(selection).collect().numbers == expected
 
 
+def test_multiple_run_scopes_are_unioned(rcdb_path) -> None:
+    gx = gluex.connect(rcdb=rcdb_path, ccdb=gluex.DISABLED)
+    result = gx.runs.select(2, 'f18', [2, 3]).collect()
+    assert result.numbers == (2, 3, 50685, 50697)
+
+
 def test_missing_rcdb_remains_discoverable() -> None:
     gx = gluex.open(rcdb=gluex.DISABLED, ccdb=gluex.DISABLED)
     assert 'runs' in dir(gx)
@@ -226,6 +255,28 @@ def test_condition_projection(rcdb_path: Path) -> None:
         query.columns(2)
     with pytest.raises(AttributeError):
         result.runs = ()  # ty: ignore[invalid-assignment]
+
+
+def test_condition_results_convert_directly_to_polars(rcdb_path: Path) -> None:
+    gx = gluex.connect(rcdb=rcdb_path, ccdb=gluex.DISABLED)
+    frame = (
+        gx.runs.select([2, 3, 4])
+        .columns('event_count', 'is_valid_run_end', 'run_start_time', 'run_type')
+        .collect()
+        .to_polars()
+    )
+
+    assert frame.schema == {
+        'run_number': pl.UInt32,
+        'event_count': pl.Int64,
+        'is_valid_run_end': pl.Boolean,
+        'run_start_time': pl.Datetime('us', 'UTC'),
+        'run_type': pl.String,
+    }
+    assert frame['run_number'].to_list() == [2, 3, 4]
+    assert frame['event_count'].to_list() == [2, 1686, 5000]
+    assert frame['is_valid_run_end'].to_list() == [False, None, True]
+    assert frame['run_type'].to_list() == [None, None, None]
 
 
 @pytest.mark.parametrize('text', ['broken', 'garbage 2014 garbage', '2014'])

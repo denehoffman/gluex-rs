@@ -42,14 +42,16 @@ pub(super) fn resolve(
                 variation: query.provenance.variation.clone(),
                 timestamp: query.provenance.as_of,
             },
-            ReconstructionSelection::Periods(selections) => selections
-                .get(&period)
-                .ok_or_else(|| {
-                    CCDBError::InvalidPathError(format!(
-                        "missing reconstruction selection for {period:?}"
-                    ))
-                })?
-                .resolve(period)?,
+            ReconstructionSelection::Periods(selections) => {
+                if let Some(selection) = selections.get(&period) {
+                    selection.resolve(period)?
+                } else {
+                    RESTVersionContext {
+                        variation: query.provenance.variation.clone(),
+                        timestamp: query.provenance.as_of,
+                    }
+                }
+            }
         };
         assignments.extend(query.table.handle.resolve_assignments_with_options(
             &period_runs,
