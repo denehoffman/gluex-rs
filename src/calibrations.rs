@@ -18,7 +18,94 @@ pub enum ReconstructionSelection {
     /// Use the source-opening defaults explicitly for every run period.
     Latest,
     /// Resolve the supplied REST selection independently for each run period.
-    Periods(BTreeMap<RunPeriod, RESTVersionSelection>),
+    Periods(BTreeMap<RunPeriod, ReconstructionPeriod>),
+}
+
+/// One run period's REST selection with an optional explicit CCDB variation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ReconstructionPeriod {
+    rest: RESTVersionSelection,
+    variation: Option<String>,
+}
+
+/// A run period paired with a validated reconstruction calibration context.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CalibratedRunPeriod {
+    period: RunPeriod,
+    reconstruction: ReconstructionPeriod,
+}
+
+impl CalibratedRunPeriod {
+    /// Pair a run period with its validated reconstruction selection.
+    #[must_use]
+    pub const fn new(period: RunPeriod, reconstruction: ReconstructionPeriod) -> Self {
+        Self {
+            period,
+            reconstruction,
+        }
+    }
+
+    /// Numeric run period represented by this context.
+    #[must_use]
+    pub const fn period(&self) -> RunPeriod {
+        self.period
+    }
+
+    /// Reconstruction calibration selection associated with the period.
+    #[must_use]
+    pub const fn reconstruction(&self) -> &ReconstructionPeriod {
+        &self.reconstruction
+    }
+
+    /// Resolve the effective calibration timestamp and variation.
+    ///
+    /// # Errors
+    /// Returns an error if the REST metadata cannot be resolved.
+    pub fn resolve(&self) -> Result<RESTVersionContext, crate::GlueXCoreError> {
+        self.reconstruction.resolve(self.period)
+    }
+}
+
+impl ReconstructionPeriod {
+    /// Build a period selection using the variation recorded by the REST catalog.
+    #[must_use]
+    pub const fn new(rest: RESTVersionSelection) -> Self {
+        Self {
+            rest,
+            variation: None,
+        }
+    }
+
+    /// Override the REST catalog's CCDB variation explicitly.
+    #[must_use]
+    pub fn with_variation(mut self, variation: impl Into<String>) -> Self {
+        self.variation = Some(variation.into());
+        self
+    }
+
+    /// Resolve the REST timestamp and effective variation for a run period.
+    ///
+    /// # Errors
+    /// Returns an error when the REST version is not defined for the period.
+    pub fn resolve(&self, period: RunPeriod) -> Result<RESTVersionContext, crate::GlueXCoreError> {
+        let mut context = self.rest.resolve_context(period)?;
+        if let Some(variation) = &self.variation {
+            context.variation.clone_from(variation);
+        }
+        Ok(context)
+    }
+
+    /// Underlying REST version or timestamp selection.
+    #[must_use]
+    pub const fn rest(&self) -> RESTVersionSelection {
+        self.rest
+    }
+}
+
+impl From<RESTVersionSelection> for ReconstructionPeriod {
+    fn from(value: RESTVersionSelection) -> Self {
+        Self::new(value)
+    }
 }
 impl ReconstructionSelection {
     /// Explicitly request the latest calibration state captured when the source opened.
@@ -28,10 +115,16 @@ impl ReconstructionSelection {
     }
     /// Build an explicit per-period REST selection mapping.
     #[must_use]
-    pub fn periods(
-        selections: impl IntoIterator<Item = (RunPeriod, RESTVersionSelection)>,
-    ) -> Self {
-        Self::Periods(selections.into_iter().collect())
+    pub fn periods<T>(selections: impl IntoIterator<Item = (RunPeriod, T)>) -> Self
+    where
+        T: Into<ReconstructionPeriod>,
+    {
+        Self::Periods(
+            selections
+                .into_iter()
+                .map(|(period, selection)| (period, selection.into()))
+                .collect(),
+        )
     }
 }
 

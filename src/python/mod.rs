@@ -30,8 +30,13 @@ mod gluex {
     use super::ccdb::ccdb;
     #[pymodule_export]
     use super::core::{
-        PyCharge, PyDetectorSystem, PyHistogram, PyParticle, PyPolarization,
+        PyCalibratedRunPeriod, PyCharge, PyDetectorSystem, PyHistogram, PyParticle, PyPolarization,
         PyRESTVersionSelection, PyRunPeriod, coherent_peak, parse_timestamp,
+    };
+    #[pymodule_export]
+    use super::exceptions::{
+        CancellationError, ConfigurationError, DatabaseTimeoutError, DecodeError,
+        MissingCapabilityError, MissingDataError, QueryError,
     };
     #[pymodule_export]
     use super::generation::generation;
@@ -47,9 +52,9 @@ mod gluex {
     use super::runs::{
         PyConditionCatalog, PyConditionDefinition, PyConditionOmission, PyConditionProvenance,
         PyConditionQuery, PyConditionReport, PyConditionResults, PyConditionStream,
-        PyMissingDataConfig, PyRunAccounting, PyRunOmission, PyRunOmissionReason, PyRunPredicate,
-        PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet, PyRunStream, PyRuns,
-        PySourceIdentity, approved_production,
+        PyMissingDataConfig, PyRunAccounting, PyRunAliases, PyRunOmission, PyRunOmissionReason,
+        PyRunPredicate, PyRunProvenance, PyRunQuery, PyRunReport, PyRunSelection, PyRunSet,
+        PyRunStream, PyRuns, PySourceIdentity,
     };
 
     #[pymodule_export]
@@ -64,7 +69,7 @@ mod gluex {
     #[pymodule_export]
     use super::workflows::{
         PyLuminosityProvenance, PyLuminosityQuery, PyLuminosityReport, PyLuminosityResult,
-        PyWorkflows,
+        PyOperations, PyWorkflows,
     };
 
     #[pymodule_export]
@@ -76,7 +81,6 @@ mod gluex {
 
     #[pymodule_init]
     fn init(module: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
-        super::exceptions::register(module)?;
         let modules = module.py().import("sys")?.getattr("modules")?;
         for name in ["ccdb", "generation", "lumi", "rcdb"] {
             modules.set_item(format!("gluex.{name}"), module.getattr(name)?)?;

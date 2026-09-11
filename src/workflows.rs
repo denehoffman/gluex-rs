@@ -311,16 +311,17 @@ fn resolve_reconstruction(
     periods
         .into_iter()
         .map(|period| {
-            let requested = match selection {
+            let context = match selection {
                 ReconstructionSelection::Latest => {
                     RESTVersionSelection::from_timestamp(source_opened_at)
+                        .resolve_context(period)?
                 }
                 ReconstructionSelection::Periods(selections) => selections
                     .get(&period)
-                    .copied()
-                    .ok_or(WorkflowError::MissingReconstruction(period))?,
+                    .ok_or(WorkflowError::MissingReconstruction(period))?
+                    .resolve(period)?,
             };
-            Ok((period, requested.resolve_context(period)?))
+            Ok((period, context))
         })
         .collect()
 }

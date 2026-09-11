@@ -33,10 +33,15 @@ inclusive numeric bounds explicitly. `gx.runs.conditions` is the dict-like,
 inspectable condition catalog; neither facade discovery nor query construction
 retrieves run values.
 
+Run periods are immutable value objects, not Python enums. Construct one from a
+documented name such as `gluex.RunPeriod("s17")`. Each exposes `short_name`,
+`min_run`, and `max_run`; `period.rest(5)` binds a REST version to that period
+without repeating it.
+
 `RunSelection.runs(numbers)` sorts and deduplicates explicit numbers.
-`RunSelection.range(start, end)` uses **inclusive** bounds and never expands the
+`RunSelection.between(start, end)` uses **inclusive** bounds and never expands the
 range at construction. Reversed bounds and an empty number sequence resolve to an
-empty collection. `RunSelection.period(gluex.RunPeriod.RP2018_08)` selects the
+empty collection. `RunSelection.period(gluex.RunPeriod("f18"))` selects the
 period's numeric bounds. These constructors need no database. Building a Run
 Query requires RCDB, and a missing capability raises `RuntimeError` with
 configuration guidance.
@@ -134,7 +139,7 @@ selected = query.where(current > 10).collect()
 print(selected.numbers, selected.report.unknown_runs)
 
 # Explicit approval is a separate scientific choice.
-approved = query.where(gluex.approved_production(gluex.RunPeriod.RP2018_01))
+approved = query.where(gx.runs.aliases.approved_production(gluex.RunPeriod("s18")))
 print(approved.collect().numbers)
 ```
 
@@ -159,7 +164,8 @@ missing input. Unrecorded numeric requests are not predicate exclusions.
 `where` returns a new query; the original remains reusable. Repeated calls combine
 with AND. Provenance retains the explicit predicates, and inspection retrieves no
 run values. Predicate operands are bound parameters, including strings with SQL
-syntax. Named `approved_production(period)` predicates use the supported existing
+syntax. All named predicates live under the typed `gx.runs.aliases` namespace.
+Its `approved_production(period)` predicate uses the supported existing
 period-specific approval definitions; unsupported periods raise an error.
 
 Rust uses `definition.gt(10.0)?`, `eq(true)?`, and the other comparison methods,
@@ -300,17 +306,11 @@ evaluated and retains the numeric scope and predicates in calibration
 provenance:
 
 ```python
-runs = gx.runs(gluex.RunSelection.period(gluex.RunPeriod.RP2018_08))
-reconstruction = gluex.ReconstructionSelection.periods({
-    gluex.RunPeriod.RP2018_08:
-        gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
-})
-series = (
-    gx.calibrations['/TARGET/density']
-    .for_runs(runs)
-    .with_reconstruction(reconstruction)
-    .collect()
-)
+runs = gx.runs.select(gluex.RunPeriod("f18"))
+series = gx.calibrations['/TARGET/density'].for_runs(
+    runs,
+    reconstruction=gluex.RunPeriod("f18").rest(2),
+).collect()
 print(series.provenance.runs)
 print(series.provenance.run_report.unknown_runs)
 print(series.provenance.resolved_reconstruction)
@@ -323,6 +323,12 @@ selectors conflict with a reconstruction selector and fail instead of silently
 taking precedence. Numeric-only requests remain CCDB-only. Rust uses
 `table.for_query(&query)?`, `table.for_run_set(&runs)?`, and
 `ReconstructionSelection::{latest, periods}`.
+
+Python period mappings accept Run Period values or documented short names as
+keys, and concise REST version integers or explicit `RESTVersionSelection`
+values. Equivalent keys for the same period are rejected as duplicates.
+Calibration Payload columns are immutable tuples available as either
+`payload.column("density")` or `payload["density"]`.
 
 ## Missing Data Policies
 
@@ -351,11 +357,10 @@ are unchanged.
 ```python
 from datetime import datetime, timezone
 
-query = gx.calibrations["/TARGET/density"].for_runs(
-    gluex.RunSelection.runs([50685, 50697])
-)
-historical = query.with_variation("mc").as_of(
-    datetime(2019, 1, 1, tzinfo=timezone.utc)
+historical = gx.calibrations["/TARGET/density"].for_runs(
+    [50685, 50697],
+    variation="mc",
+    as_of=datetime(2019, 1, 1, tzinfo=timezone.utc),
 )
 series = historical.collect()
 print(series.provenance)
@@ -363,9 +368,14 @@ for run, entry in series.items():
     print(run, entry.assignment_id, entry.created, entry.variation, entry.run_range)
 ```
 
-Both transformations return new queries, preserve the original, and perform no
-assignment lookup. Python requires a timezone-aware datetime; Rust uses
+The keyword settings construct an immutable query and perform no assignment
+lookup. Python requires a timezone-aware datetime; Rust uses
 `query.with_variation("mc").as_of(timestamp)` with `chrono::DateTime<Utc>`.
+Python `for_runs` also accepts one integer, an integer sequence, a `range`, a
+Run Period or short name, a Run Selection, Run Query, or Run Set. Use
+`missing_policy="strict"`, or `missing_policy="fallback", fallback_run=...`, to choose a
+non-default Missing Data Policy. The fluent methods remain available for staged
+and reusable composition.
 Invalid variation names fail at collection, even for empty selections. Explicit
 cutoffs are inclusive and always interpreted in UTC; the source opening time is
 used only when no cutoff is supplied.
@@ -423,19 +433,33 @@ file is modified or replaced. Refresh creates no snapshot copies or monitoring.
 
 ## Canonical luminosity workflow
 
+Use the concise root entry point for the common workflow:
+
+```python
+reconstruction = gluex.RunPeriod("f18").rest(2)
+result = gx.luminosity(
+    runs,
+    reconstruction=reconstruction,
+    edges=[8.0, 8.5, 9.0],
+).compute()
+```
+
+The full `gx.workflows.luminosity(...)` path is equivalent and remains useful
+for discovering additional workflows. Derived quantities use the distinct
+`compute()` terminal; database queries continue to use `collect()`. The
+`gx.operations` namespace names the future home of experiment artifact
+operations without performing queries or exposing conversion features.
+
 Luminosity is evaluated from an already resolved `RunSet`; the workflow never
 adds an approval or production predicate. Reconstruction is mandatory and may
 be explicit per period or an explicit request for the latest captured defaults:
 
 ```python
-runs = gx.runs(gluex.RunSelection.runs([50685])).collect()
-reconstruction = gluex.ReconstructionSelection.periods({
-    gluex.RunPeriod.RP2018_08:
-        gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
-})
+runs = gx.runs.select(50685).collect()
+reconstruction = gluex.RunPeriod("f18").rest(2)
 result = gx.workflows.luminosity(
     runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0]
-).collect()
+).compute()
 print(result.histograms.tagged_luminosity.counts)  # inverse picobarns
 print(result.report.selected_runs, result.report.used_runs)
 print(result.provenance.runs, result.provenance.rcdb_source, result.provenance.ccdb_source)

@@ -11,13 +11,10 @@ Replace `gluex.lumi.Luminosity(...).fetch(edges, runs=..., rest_version=...)` wi
 ```python
 gx = gluex.open(rcdb="rcdb.sqlite", ccdb="ccdb.sqlite")
 runs = gx.runs.select(50685).collect()
-reconstruction = gluex.ReconstructionSelection.periods({
-    gluex.RunPeriod.RP2018_08:
-        gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2),
-})
-result = gx.workflows.luminosity(
-    runs, reconstruction=reconstruction, edges=[8.0, 8.5, 9.0]
-).collect()
+f18 = gluex.RunPeriod("f18")
+result = gx.luminosity(
+    runs, reconstruction=f18.rest(2), edges=[8.0, 8.5, 9.0]
+).compute()
 histograms = result.histograms
 ```
 
@@ -25,9 +22,24 @@ The behavioral changes are deliberate:
 
 - `gx.runs` is the discoverable run-domain facade; use `gx.runs.select(scope)`,
   `gx.runs.between(start, end)`, and `gx.runs.conditions`;
-- project conditions with `query.columns("name", ...)`; the callable runs facade,
-  root `gx.conditions`, and list-taking `query.select(...)` remain temporary
-  migration forms;
+- construct run-period value objects from familiar case-insensitive names, such
+  as `s17 = RunPeriod("s17")`, then use `s17.rest(5)` for reconstruction;
+- named predicates now have one preferred home under `gx.runs.aliases`; replace
+  root `gluex.approved_production(period)` with
+  `gx.runs.aliases.approved_production(period)`;
+- project conditions with `query.columns("name", ...)`; the former callable
+  runs facade, root `gx.conditions`, and list-taking `query.select(...)` forms
+  have been removed;
+
+- `gx.luminosity(...)` is the concise path for the canonical derived quantity;
+  `gx.workflows.luminosity(...)` remains the full discovery path;
+- use `.compute()` for derived workflows; the earlier `.collect()` terminal has
+  been removed so database retrieval and derived-quantity execution read differently;
+- `gx.operations` reserves the discoverable home for future experiment artifact
+  operations; it intentionally provides no conversion machinery yet;
+- replace inclusive `RunSelection.range(start, end)` with
+  `RunSelection.between(start, end)`; ordinary Python `range` inputs retain
+  Python's exclusive stop semantics;
 
 - the supplied `RunSet` is authoritative; no approved-production cut is hidden;
 - reconstruction is explicit and resolved per represented run period;
@@ -48,6 +60,77 @@ The behavioral changes are deliberate:
 Raw reads remain available through `gx.sources.rcdb.raw(...)` and
 `gx.sources.ccdb.raw(...)`. Run conditions and calibrations should use the typed
 catalog/query APIs for routine analysis.
+
+### RF factors, polarization conditions, and four-period luminosity
+
+The direct replacement for the common S17/S18/F18/S20 setup is:
+
+```python
+PERIODS = tuple(gluex.RunPeriod(name) for name in ("s17", "s18", "f18", "s20"))
+# Keep this analysis-owned choice explicit; these are examples, not defaults.
+REST_VERSIONS = {"S17": 5, "S18": 2, "F18": 2, "S20": 1}
+reconstruction = gluex.ReconstructionSelection.periods(
+    *(period.rest(REST_VERSIONS[period.short_name]) for period in PERIODS)
+)
+
+# This confirms the important non-default REST-v05 context before doing I/O.
+assert reconstruction.resolve("S17")[0] == "recon_2017_01_ver05"
+
+rf = gx.calibrations["/ANALYSIS/accidental_scaling_factor"]
+rf_rows = []
+for period in PERIODS:
+    rest = period.rest(REST_VERSIONS[period.short_name])
+    for run, entry in rf.for_runs(period, reconstruction=rest).collect().items():
+        rf_rows.append({
+            "run_number": run,
+            "hodoscope_hi": entry.payload["HODOSCOPE_HI_FACTOR"][0],
+            "hodoscope_lo": entry.payload["HODOSCOPE_LO_FACTOR"][0],
+            "microscope": entry.payload["MICROSCOPE_FACTOR"][0],
+            "microscope_energy_hi": entry.payload["MICROSCOPE_ENERGY_HI"][0],
+            "microscope_energy_lo": entry.payload["MICROSCOPE_ENERGY_LO"][0],
+        })
+
+polarization_rows = []
+for period in PERIODS:
+    selected = gx.runs.select(period).where(
+        gx.runs.aliases.approved_production(period)
+        & gx.runs.aliases.is_coherent_beam
+    )
+    values = selected.columns("polarization_angle").collect()
+    polarization_rows.extend(
+        {"run_period": period.short_name, "run_number": run,
+         "polarization_angle": values[run, "polarization_angle"]}
+        for run in values.runs
+        if values[run, "polarization_angle"] is not None
+    )
+
+runs = gx.runs.select(run_numbers).collect()
+result = gx.luminosity(
+    runs, reconstruction=reconstruction, edges=[8.0, 9.0]
+).coherent_peak().polarized().compute()
+value = float(result.histograms.tagged_luminosity.counts[0])
+error = float(result.histograms.tagged_luminosity.errors[0])
+```
+
+The reconstruction mapping is resolved per run period. In particular, S17 REST
+v05 supplies both its catalog timestamp and the `recon_2017_01_ver05` CCDB
+variation; callers must not separately guess or duplicate that variation.
+When a deliberate override is required, use
+`gluex.RunPeriod("s17").rest(5, variation="name")`; it retains the REST
+timestamp and replaces only the resolved CCDB variation.
+Calibration queries use numeric period bounds and therefore do not require RCDB.
+Polarization selection does require RCDB because approval, coherent-beam state,
+and `polarization_angle` are recorded conditions. The polarization-magnitude
+histograms in the original example are analysis input files rather than RCDB
+conditions; join those JSON bins to `polarization_rows` as before.
+
+Coherent-peak energy bounds are still represented by the project run-period
+table. Luminosity provenance records this as a validation gap because an
+authoritative database field has not yet been identified. REST metadata remains
+the deliberately maintained external catalog. Moving peak bounds behind a data
+source should happen only after identifying the authoritative RCDB/CCDB record;
+silently deriving them from unrelated endpoint constants would change the
+scientific meaning.
 
 ## Rust
 

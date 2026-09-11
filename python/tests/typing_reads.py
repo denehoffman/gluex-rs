@@ -12,8 +12,9 @@ def typed_luminosity(
     result: gluex.RunSet,
     reconstruction: gluex.ReconstructionSelection,
 ) -> None:
-    luminosity = gx.workflows.luminosity(result, reconstruction=reconstruction, edges=[8.0, 9.0]).collect()
+    luminosity = gx.luminosity(result, reconstruction=reconstruction, edges=[8.0, 9.0]).compute()
     assert_type(luminosity, gluex.LuminosityResult)
+    assert_type(gx.operations, gluex.Operations)
     assert_type(luminosity.provenance.runs, gluex.RunProvenance)
     assert_type(luminosity.provenance.rcdb_source, str)
     assert_type(luminosity.provenance.ccdb_source, str)
@@ -27,14 +28,24 @@ def typed_luminosity(
     )
 
 
+def typed_discovery(gx: gluex.GlueX) -> None:
+    period = gluex.RunPeriod('s17')
+    assert_type(period, gluex.RunPeriod)
+    assert_type(period.rest(5), gluex.CalibratedRunPeriod)
+    assert_type(period.rest(5, variation='recon'), gluex.CalibratedRunPeriod)
+    assert_type(gx.runs.aliases, gluex.RunAliases)
+    assert_type(gx.runs.aliases.approved_production('S17'), gluex.RunPredicate)
+    assert_type(gx.runs.aliases.is_coherent_beam, gluex.RunPredicate)
+
+
 def typed_reads(gx: gluex.GlueX) -> None:
-    catalog = gx.conditions
+    catalog = gx.runs.conditions
     assert_type(catalog, gluex.ConditionCatalog)
     assert_type(catalog.keys(), tuple[str, ...])
     assert_type(catalog.items(), tuple[tuple[str, gluex.ConditionDefinition], ...])
     assert_type(iter(catalog), Iterator[str])
     assert_type(catalog['event_count'].value_type, str)
-    query = gx.runs(gluex.RunSelection.range(2, 5))
+    query = gx.runs.select(gluex.RunSelection.between(2, 5))
     assert_type(query, gluex.RunQuery)
     assert_type(query.selection, gluex.RunSelection)
     assert_type(query.provenance, gluex.RunProvenance)
@@ -47,20 +58,27 @@ def typed_reads(gx: gluex.GlueX) -> None:
     assert_type(query.stream(chunk_size=2), gluex.RunStream)
     assert_type(query.first(), int | None)
     assert_type(query.count(), int)
-    projected = query.select(['event_count'])
+    projected = query.columns('event_count')
     assert_type(projected.stream(), gluex.ConditionStream)
     assert_type(projected.strict(), gluex.ConditionQuery)
     assert_type(projected.fill('event_count', value=0), gluex.ConditionQuery)
     table = gx.calibrations['/TARGET/density']
     calibration = table.for_runs(query)
+    assert_type(table.for_runs([50685], variation='default', missing_policy='strict'), gluex.CalibrationQuery)
     assert_type(calibration, gluex.CalibrationQuery)
     assert_type(calibration.stream(), gluex.CalibrationStream)
     assert_type(calibration.fallback_to(50685), gluex.CalibrationQuery)
-    reconstruction = gluex.ReconstructionSelection.periods(
-        {gluex.RunPeriod.RP2018_08: gluex.RESTVersionSelection.version(gluex.RunPeriod.RP2018_08, 2)}
-    )
+    reconstruction = gluex.ReconstructionSelection.periods({'F18': 2})
+    concise_reconstruction = gluex.ReconstructionSelection.periods(gluex.RunPeriod('f18').rest(2))
+    assert_type(concise_reconstruction, gluex.ReconstructionSelection)
+    assert_type(reconstruction.resolve(gluex.RunPeriod('f18')), tuple[str, str])
     assert_type(calibration.with_reconstruction(reconstruction), gluex.CalibrationQuery)
+    assert_type(table.for_runs(50685, reconstruction={'F18': 2}), gluex.CalibrationQuery)
     typed_luminosity(gx, result, reconstruction)
+    assert_type(
+        gx.luminosity(result, reconstruction=gluex.RunPeriod('f18').rest(2), edges=[8.0, 9.0]),
+        gluex.LuminosityQuery,
+    )
     for reader in (gx.sources.rcdb, gx.sources.ccdb):
         raw = reader.raw('SELECT ?, ?, ?, ?, ?', parameters=[2, 1.5, 'text', b'bytes', None])
         assert_type(raw, gluex.RawResults)
@@ -71,10 +89,16 @@ def typed_reads(gx: gluex.GlueX) -> None:
         assert_type(raw.rows[0]['column'], int | float | str | bytes | None)
         assert_type(raw.rows[0].values, tuple[int | float | str | bytes | None, ...])
 
-    gluex.RunSelection.range('2', 5)  # ty: ignore[invalid-argument-type]
+
+def invalid_reads(gx: gluex.GlueX, result: gluex.RunSet, table: gluex.CalibrationTable) -> None:
+    query = gx.runs.select(2)
+    calibration = table.for_runs(2)
+    gluex.RunSelection.between('2', 5)  # ty: ignore[invalid-argument-type]
     gx.sources.rcdb.raw('SELECT ?', [2])  # ty: ignore[too-many-positional-arguments]
     gx.sources.ccdb.raw('SELECT ?', parameters=[object()])  # ty: ignore[invalid-argument-type]
     result.numbers = ()  # ty: ignore[invalid-assignment]
-    table.for_runs([2])  # ty: ignore[invalid-argument-type]
+    table.for_runs([2], variation=2)  # ty: ignore[invalid-argument-type]
+    table.for_runs([2], missing_policy='guess')
+    gx.runs.select(object())  # ty: ignore[invalid-argument-type]
     query.stream(2)  # ty: ignore[too-many-positional-arguments]
     calibration.with_reconstruction(query)  # ty: ignore[invalid-argument-type]

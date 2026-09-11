@@ -25,7 +25,7 @@ def test_refresh_uses_captured_sources_and_is_atomic(rcdb_path, ccdb_path, monke
     shutil.copyfile(ccdb_path, copied)
     gx = gluex.open(rcdb=rcdb_path, ccdb=copied)
     old = gx.sources
-    query = gx.runs(gluex.RunSelection.runs([2])).select(['event_count'])
+    query = gx.runs.select(2).columns('event_count')
     monkeypatch.setenv('RCDB_CONNECTION', '/missing/rcdb.sqlite')
     monkeypatch.setenv('CCDB_CONNECTION', '/missing/ccdb.sqlite')
     gx.refresh()
@@ -39,5 +39,5 @@ def test_refresh_uses_captured_sources_and_is_atomic(rcdb_path, ccdb_path, monke
         hidden.rename(copied)
     assert gx.capabilities.rcdb
     assert gx.capabilities.ccdb
-    assert gx.runs(gluex.RunSelection.runs([2])).collect().numbers == (2,)
+    assert gx.runs.select(2).collect().numbers == (2,)
     assert old.rcdb.connection_path == str(rcdb_path.resolve())

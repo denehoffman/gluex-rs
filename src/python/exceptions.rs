@@ -97,20 +97,3 @@ fn execution_error(error: crate::ExecutionError, message: &str) -> PyErr {
         }
     }
 }
-
-pub(crate) fn register(module: &Bound<'_, pyo3::types::PyModule>) -> PyResult<()> {
-    let py = module.py();
-    module.add(
-        "MissingCapabilityError",
-        py.get_type::<MissingCapabilityError>(),
-    )?;
-    module.add("ConfigurationError", py.get_type::<ConfigurationError>())?;
-    module.add("QueryError", py.get_type::<QueryError>())?;
-    module.add("DecodeError", py.get_type::<DecodeError>())?;
-    module.add("MissingDataError", py.get_type::<MissingDataError>())?;
-    module.add("CancellationError", py.get_type::<CancellationError>())?;
-    module.add(
-        "DatabaseTimeoutError",
-        py.get_type::<DatabaseTimeoutError>(),
-    )
-}

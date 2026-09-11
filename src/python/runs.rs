@@ -1,12 +1,12 @@
 use super::{
-    core::PyRunPeriod,
+    core::{PyCalibratedRunPeriod, PyRunPeriod},
     tuple::{TypedIterator, TypedTuple},
 };
 use crate::{
     ConditionCatalog, ConditionDefinition, RunNumber, RunProvenance, RunQuery, RunSelection, RunSet,
 };
 use pyo3::{
-    exceptions::{PyIndexError, PyKeyError, PyTypeError, PyValueError},
+    exceptions::{PyIndexError, PyKeyError, PyStopIteration, PyTypeError, PyValueError},
     prelude::*,
     types::{PyAny, PyBool, PyTuple},
 };
@@ -15,12 +15,128 @@ use pyo3::{
 #[pyclass(name = "Runs", module = "gluex", frozen)]
 pub struct PyRuns(pub(crate) crate::GlueX);
 
-fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelection> {
+/// Named, composable scientific run cuts.
+#[pyclass(name = "RunAliases", module = "gluex", frozen)]
+pub struct PyRunAliases;
+
+fn run_predicate(expression: crate::rcdb::conditions::Expr) -> PyRunPredicate {
+    PyRunPredicate(crate::RunPredicate(expression))
+}
+
+#[pymethods]
+impl PyRunAliases {
+    #[getter]
+    fn is_production(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_production())
+    }
+
+    #[getter]
+    fn is_2018production(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_2018production())
+    }
+
+    #[getter]
+    fn is_primex_production(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_primex_production())
+    }
+
+    #[getter]
+    fn is_dirc_production(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_dirc_production())
+    }
+
+    #[getter]
+    fn is_src_production(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_src_production())
+    }
+
+    #[getter]
+    fn is_cpp_production(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_cpp_production())
+    }
+
+    #[getter]
+    fn is_production_long(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_production_long())
+    }
+
+    #[getter]
+    fn is_cosmic(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_cosmic())
+    }
+
+    #[getter]
+    fn is_empty_target(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_empty_target())
+    }
+
+    #[getter]
+    fn is_amorph_radiator(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_amorph_radiator())
+    }
+
+    #[getter]
+    fn is_coherent_beam(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_coherent_beam())
+    }
+
+    #[getter]
+    fn is_field_off(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_field_off())
+    }
+
+    #[getter]
+    fn is_field_on(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::is_field_on())
+    }
+
+    #[getter]
+    fn status_calibration(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::status_calibration())
+    }
+
+    #[getter]
+    fn status_approved_long(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::status_approved_long())
+    }
+
+    #[getter]
+    fn status_approved(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::status_approved())
+    }
+
+    #[getter]
+    fn status_unchecked(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::status_unchecked())
+    }
+
+    #[getter]
+    fn status_reject(&self) -> PyRunPredicate {
+        run_predicate(crate::rcdb::conditions::aliases::status_reject())
+    }
+
+    /// Return the explicit approved-production cut for one run period.
+    fn approved_production(&self, period: &Bound<'_, PyAny>) -> PyResult<PyRunPredicate> {
+        let period = super::core::parse_run_period_object(period)?;
+        crate::approved_production(period)
+            .map(PyRunPredicate)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    fn __repr__(&self) -> &'static str {
+        "RunAliases(approved_production, is_coherent_beam, is_production, field, target, and status aliases)"
+    }
+}
+
+pub(crate) fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelection> {
     if let Ok(selection) = scope.extract::<PyRunSelection>() {
         return Ok(selection.0);
     }
     if let Ok(period) = scope.extract::<PyRef<'_, PyRunPeriod>>() {
         return Ok(RunSelection::period(period.0));
+    }
+    if let Ok(period) = scope.extract::<PyRef<'_, PyCalibratedRunPeriod>>() {
+        return Ok(RunSelection::period(period.0.period()));
     }
     if let Ok(name) = scope.extract::<String>() {
         let period = name
@@ -59,6 +175,12 @@ fn coerce_run_scope(scope: &Bound<'_, PyAny>) -> PyResult<RunSelection> {
 
 #[pymethods]
 impl PyRuns {
+    /// Discover named scientific predicates in one typed namespace.
+    #[getter]
+    fn aliases(&self) -> PyRunAliases {
+        PyRunAliases
+    }
+
     /// Inspect condition definitions without issuing a run-value query.
     #[getter]
     pub(crate) fn conditions(&self) -> PyResult<PyConditionCatalog> {
@@ -69,6 +191,7 @@ impl PyRuns {
     }
 
     /// Build a lazy Run Query from a common Python run scope.
+    #[pyo3(signature = (scope: "int | Sequence[int] | range | RunPeriod | str | RunSelection | RunQuery"))]
     fn select(&self, scope: &Bound<'_, PyAny>) -> PyResult<PyRunQuery> {
         if let Ok(query) = scope.extract::<PyRef<'_, PyRunQuery>>() {
             return Ok(query.clone());
@@ -87,13 +210,8 @@ impl PyRuns {
             .map_err(|error| super::exceptions::map(&error))
     }
 
-    /// Compatibility call form; prefer `runs.select(scope)`.
-    fn __call__(&self, scope: &Bound<'_, PyAny>) -> PyResult<PyRunQuery> {
-        self.select(scope)
-    }
-
     fn __repr__(&self) -> &'static str {
-        "Runs(select=available, conditions=available)"
+        "Runs(select=available, conditions=available, aliases=available)"
     }
 }
 
@@ -128,7 +246,7 @@ impl PyRunSelection {
     }
     /// Select inclusive bounds without expanding the range. Reversed bounds are empty.
     #[staticmethod]
-    fn range(start: RunNumber, end: RunNumber) -> Self {
+    fn between(start: RunNumber, end: RunNumber) -> Self {
         Self(RunSelection::range(start, end))
     }
     /// Select a run period's numeric bounds without a scientific cut.
@@ -242,14 +360,6 @@ impl PyRunQuery {
                 .with_timeout(crate::python::execution::timeout(seconds)?),
         ))
     }
-    /// Project named conditions without reading values. Invalid names raise ValueError.
-    fn select(&self, fields: Vec<String>) -> PyResult<PyConditionQuery> {
-        self.0
-            .select(fields)
-            .map(PyConditionQuery)
-            .map_err(|e| PyValueError::new_err(e.to_string()))
-    }
-
     /// Project named condition columns without retrieving their values.
     #[pyo3(signature = (*fields))]
     fn columns(&self, fields: &Bound<'_, PyTuple>) -> PyResult<PyConditionQuery> {
@@ -307,8 +417,11 @@ impl PyRunStream {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyRunSet>> {
-        Ok(self.1.next(py, || self.0.next().transpose())?.map(PyRunSet))
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<PyRunSet> {
+        self.1
+            .next(py, || self.0.next().transpose())?
+            .map(PyRunSet)
+            .ok_or_else(|| PyStopIteration::new_err(()))
     }
 }
 
@@ -604,14 +717,6 @@ impl Operand {
     }
 }
 
-/// Explicit named approved-production cut for a supported period; never applied automatically.
-#[pyfunction]
-pub fn approved_production(period: &PyRunPeriod) -> PyResult<PyRunPredicate> {
-    crate::approved_production(period.0)
-        .map(PyRunPredicate)
-        .map_err(|e| PyValueError::new_err(e.to_string()))
-}
-
 /// Lazy condition projection; collect returns ConditionResults and releases the GIL.
 #[pyclass(name = "ConditionQuery", module = "gluex", frozen)]
 pub struct PyConditionQuery(crate::ConditionQuery);
@@ -679,11 +784,11 @@ impl PyConditionStream {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyConditionResults>> {
-        Ok(self
-            .1
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<PyConditionResults> {
+        self.1
             .next(py, || self.0.next().transpose())?
-            .map(PyConditionResults))
+            .map(PyConditionResults)
+            .ok_or_else(|| PyStopIteration::new_err(()))
     }
 }
 

@@ -6,8 +6,8 @@ import pytest
 
 def test_predicates_preserve_unknown_and_original_query(rcdb_path):
     gx = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED)
-    base = gx.runs(gluex.RunSelection.runs([2, 3, 4]))
-    valid = gx.conditions['is_valid_run_end']
+    base = gx.runs.select([2, 3, 4])
+    valid = gx.runs.conditions['is_valid_run_end']
     result = base.where(~(valid.eq(value=True))).collect()
     assert result.numbers == (2,)
     assert result.report.unknown_runs == (3,)
@@ -22,7 +22,7 @@ def test_predicates_preserve_unknown_and_original_query(rcdb_path):
     with pytest.raises(TypeError):
         bool(valid.eq(value=True))
     with pytest.raises(ValueError, match='event_count'):
-        _ = gx.conditions['event_count'] > 'wrong'
+        _ = gx.runs.conditions['event_count'] > 'wrong'
 
 
 @pytest.mark.parametrize(
@@ -41,9 +41,9 @@ def test_predicates_preserve_unknown_and_original_query(rcdb_path):
 )
 def test_three_valued_composition(rcdb_path, a, b, expected_and, expected_or):
     gx = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED)
-    d = gx.conditions
+    d = gx.runs.conditions
     states = [d['event_count'] > 0, d['event_count'] < 0, d['is_valid_run_end'].eq(value=True)]
-    base = gx.runs(gluex.RunSelection.runs([3]))
+    base = gx.runs.select(3)
     for predicate, expected in [(states[a] & states[b], expected_and), (states[a] | states[b], expected_or)]:
         result = base.where(predicate).collect()
         assert result.numbers == ((3,) if expected is True else ())
@@ -52,8 +52,8 @@ def test_three_valued_composition(rcdb_path, a, b, expected_and, expected_or):
 
 def test_operand_types_and_explicit_approval(rcdb_path):
     gx = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED)
-    d = gx.conditions
-    base = gx.runs(gluex.RunSelection.runs([2, 3, 4]))
+    d = gx.runs.conditions
+    base = gx.runs.select([2, 3, 4])
     assert base.where((d['event_count'] >= 1686) & (d['event_count'] <= 5000)).collect().numbers == (3, 4)
     assert base.where(d['event_count'].ne(2)).collect().numbers == (3, 4)
     assert base.where(
@@ -65,13 +65,13 @@ def test_operand_types_and_explicit_approval(rcdb_path):
         d['event_count'].eq(value=True)
     with pytest.raises(ValueError):
         _ = d['beam_current'] > float('nan')  # noqa: PLW0177
-    assert gx.runs(gluex.RunSelection.range(50000, 59999)).where(
-        gluex.approved_production(gluex.RunPeriod.RP2018_01)
+    assert gx.runs.between(50000, 59999).where(
+        gx.runs.aliases.approved_production(gluex.RunPeriod('s18'))
     ).collect().numbers == (50685, 50697)
 
 
 def test_equality_operators_direct_users_to_typed_methods(rcdb_path):
-    definition = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED).conditions['event_count']
+    definition = gluex.open(rcdb=rcdb_path, ccdb=gluex.DISABLED).runs.conditions['event_count']
     with pytest.raises(TypeError, match='eq'):
         _ = definition == 2
     with pytest.raises(TypeError, match='ne'):

@@ -145,6 +145,27 @@ impl PyGlueX {
     fn workflows(&self) -> super::workflows::PyWorkflows {
         super::workflows::PyWorkflows(self.0.workflows())
     }
+    /// Build the canonical luminosity workflow from explicit inputs.
+    #[pyo3(signature = (runs, *, reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | Mapping[RunPeriod | str, int | RESTVersionSelection]", edges))]
+    fn luminosity(
+        &self,
+        runs: &super::runs::PyRunSet,
+        reconstruction: &Bound<'_, PyAny>,
+        edges: Vec<f64>,
+    ) -> PyResult<super::workflows::PyLuminosityQuery> {
+        Ok(super::workflows::PyLuminosityQuery(
+            self.0.workflows().luminosity(
+                &runs.0,
+                super::calibrations::parse_reconstruction(reconstruction)?,
+                edges,
+            ),
+        ))
+    }
+    /// Discover the vocabulary reserved for future experiment operations.
+    #[getter]
+    fn operations(&self) -> super::workflows::PyOperations {
+        super::workflows::PyOperations
+    }
     /// Reopen captured paths and renew defaults for new queries. Releases the GIL.
     /// Existing handles/results keep their bindings. Environment is not re-read.
     /// Failure raises ValueError and leaves this session unchanged. Keep files unchanged
@@ -176,12 +197,6 @@ impl PyGlueX {
     #[getter]
     fn runs(&self) -> super::runs::PyRuns {
         super::runs::PyRuns(self.0.clone())
-    }
-
-    /// Immutable catalog of database-defined condition names and types. Requires RCDB.
-    #[getter]
-    fn conditions(&self) -> PyResult<super::runs::PyConditionCatalog> {
-        self.runs().conditions()
     }
 
     /// Inspect source availability without querying database contents.

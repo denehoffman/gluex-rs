@@ -110,6 +110,19 @@ impl PyRunPeriod {
     #[classattr]
     const RP2025_01: Self = Self(RunPeriod::RP2025_01);
 
+    /// Select a REST reconstruction for this period.
+    #[pyo3(signature = (version, *, variation=None))]
+    fn rest(&self, version: RESTVersion, variation: Option<String>) -> PyResult<PyCalibratedRunPeriod> {
+        RESTVersionSelection::try_new(self.0, version)
+            .map(crate::ReconstructionPeriod::new)
+            .map(|selection| match variation {
+                Some(variation) => selection.with_variation(variation),
+                None => selection,
+            })
+            .map(|selection| PyCalibratedRunPeriod(crate::CalibratedRunPeriod::new(self.0, selection)))
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
     #[getter]
     fn min_run(&self) -> RunNumber {
         self.0.min_run()
@@ -138,7 +151,52 @@ impl PyRunPeriod {
     }
 
     fn __repr__(&self) -> String {
-        format!("RunPeriod.{:?}", self.0)
+        format!("RunPeriod({:?})", self.0.short_name())
+    }
+}
+
+/// A run period paired with a validated REST calibration context.
+#[pyclass(name = "CalibratedRunPeriod", module = "gluex", frozen, eq, hash)]
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub struct PyCalibratedRunPeriod(pub(crate) crate::CalibratedRunPeriod);
+
+#[pymethods]
+impl PyCalibratedRunPeriod {
+    #[getter]
+    fn period(&self) -> PyRunPeriod {
+        PyRunPeriod(self.0.period())
+    }
+    #[getter]
+    fn rest_version(&self) -> Option<RESTVersion> {
+        match self.0.reconstruction().rest() {
+            RESTVersionSelection::Version(version) => Some(version),
+            RESTVersionSelection::Current | RESTVersionSelection::Timestamp(_) => None,
+        }
+    }
+    #[getter]
+    fn variation(&self) -> PyResult<String> {
+        self.0
+            .resolve()
+            .map(|context| context.variation)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+    #[getter]
+    fn calibration_time(&self) -> PyResult<DateTime<Utc>> {
+        self.0
+            .resolve()
+            .map(|context| context.timestamp)
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+    fn __str__(&self) -> &str {
+        self.0.period().short_name()
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "CalibratedRunPeriod({:?}, rest={:?}, variation={:?})",
+            self.0.period().short_name(),
+            self.rest_version(),
+            self.variation().ok()
+        )
     }
 }
 
@@ -150,26 +208,30 @@ impl PyRunPeriod {
     hash,
     skip_from_py_object
 )]
-#[derive(Copy, Clone, Eq, Hash, PartialEq)]
-pub struct PyRESTVersionSelection(pub(crate) RESTVersionSelection);
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub struct PyRESTVersionSelection(
+    pub(crate) RESTVersionSelection,
+    pub(crate) Option<RunPeriod>,
+    pub(crate) Option<String>,
+);
 
 #[pymethods]
 impl PyRESTVersionSelection {
     #[staticmethod]
     fn current() -> Self {
-        Self(RESTVersionSelection::Current)
+        Self(RESTVersionSelection::Current, None, None)
     }
 
     #[staticmethod]
     fn version(run_period: &PyRunPeriod, version: RESTVersion) -> PyResult<Self> {
         RESTVersionSelection::try_new(run_period.0, version)
-            .map(Self)
+            .map(|selection| Self(selection, Some(run_period.0), None))
             .map_err(|err| PyValueError::new_err(err.to_string()))
     }
 
     #[staticmethod]
     fn timestamp(timestamp: DateTime<Utc>) -> Self {
-        Self(RESTVersionSelection::from_timestamp(timestamp))
+        Self(RESTVersionSelection::from_timestamp(timestamp), None, None)
     }
 
     fn resolve_timestamp(&self, run_period: &PyRunPeriod) -> PyResult<DateTime<Utc>> {
@@ -699,6 +761,9 @@ pub fn coherent_peak(run: RunNumber) -> (f64, f64) {
 pub(crate) fn parse_run_period_object(object: &Bound<'_, PyAny>) -> PyResult<RunPeriod> {
     if let Ok(period) = object.extract::<PyRef<'_, PyRunPeriod>>() {
         return Ok(period.0);
+    }
+    if let Ok(period) = object.extract::<PyRef<'_, PyCalibratedRunPeriod>>() {
+        return Ok(period.0.period());
     }
     if let Ok(name) = object.extract::<String>() {
         return name

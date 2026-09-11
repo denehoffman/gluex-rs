@@ -49,7 +49,7 @@ pub(super) fn resolve(
                         "missing reconstruction selection for {period:?}"
                     ))
                 })?
-                .resolve_context(period)?,
+                .resolve(period)?,
         };
         assignments.extend(query.table.handle.resolve_assignments_with_options(
             &period_runs,

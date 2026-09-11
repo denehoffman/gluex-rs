@@ -1,7 +1,10 @@
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{
+    prelude::*,
+    types::{PyAny, PyDict},
+};
 
 use super::{
-    calibrations::PyReconstructionSelection,
+    calibrations::{PyReconstructionSelection, parse_reconstruction},
     execution::PythonExecution,
     lumi::lumi::PyFluxHistograms,
     runs::{PyRunProvenance, PyRunSet},
@@ -16,14 +19,18 @@ pub struct PyWorkflows(pub(crate) Workflows);
 #[pymethods]
 impl PyWorkflows {
     /// Build a lazy luminosity request from a resolved RunSet and explicit reconstruction.
-    #[pyo3(signature = (runs, *, reconstruction, edges))]
+    #[pyo3(signature = (runs, *, reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | Mapping[RunPeriod | str, int | RESTVersionSelection]", edges))]
     fn luminosity(
         &self,
         runs: &PyRunSet,
-        reconstruction: &PyReconstructionSelection,
+        reconstruction: &Bound<'_, PyAny>,
         edges: Vec<f64>,
-    ) -> PyLuminosityQuery {
-        PyLuminosityQuery(self.0.luminosity(&runs.0, reconstruction.0.clone(), edges))
+    ) -> PyResult<PyLuminosityQuery> {
+        Ok(PyLuminosityQuery(self.0.luminosity(
+            &runs.0,
+            parse_reconstruction(reconstruction)?,
+            edges,
+        )))
     }
 
     fn __repr__(&self) -> &'static str {
@@ -31,18 +38,32 @@ impl PyWorkflows {
     }
 }
 
+/// Future home of experiment-specific artifact operations.
+///
+/// This namespace is intentionally descriptive only; no conversion operation
+/// is implemented yet.
+#[pyclass(name = "Operations", module = "gluex", frozen)]
+pub struct PyOperations;
+
+#[pymethods]
+impl PyOperations {
+    fn __repr__(&self) -> &'static str {
+        "Operations(future experiment conversion home; no conversions available)"
+    }
+}
+
 /// Lazy canonical luminosity request; strict missing-data behavior is the default.
 #[pyclass(name = "LuminosityQuery", module = "gluex", frozen)]
-pub struct PyLuminosityQuery(LuminosityQuery);
+pub struct PyLuminosityQuery(pub(crate) LuminosityQuery);
 
 #[pymethods]
 impl PyLuminosityQuery {
-    #[pyo3(signature = (*, enabled))]
+    #[pyo3(signature = (*, enabled=true))]
     fn coherent_peak(&self, enabled: bool) -> Self {
         Self(self.0.with_coherent_peak(enabled))
     }
 
-    #[pyo3(signature = (*, enabled))]
+    #[pyo3(signature = (*, enabled=true))]
     fn polarized(&self, enabled: bool) -> Self {
         Self(self.0.with_polarized(enabled))
     }
@@ -66,8 +87,8 @@ impl PyLuminosityQuery {
         ))
     }
 
-    /// Evaluate while releasing the GIL and polling Python signals.
-    fn collect(&self, py: Python<'_>) -> PyResult<PyLuminosityResult> {
+    /// Compute the canonical derived quantity while releasing the GIL.
+    fn compute(&self, py: Python<'_>) -> PyResult<PyLuminosityResult> {
         PythonExecution::execute(py, &self.0, LuminosityQuery::collect).map(PyLuminosityResult)
     }
 
@@ -228,5 +249,8 @@ impl PyLuminosityProvenance {
             )?;
         }
         Ok(result.unbind())
+    }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
     }
 }
