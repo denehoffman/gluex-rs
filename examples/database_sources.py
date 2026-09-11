@@ -7,10 +7,10 @@ unset to explore the database-independent reference information.
 
 import gluex
 
-gx = gluex.open()
+gx = gluex.connect()
 print(gx)
 print(gx.capabilities)
-print('Fall 2018 starts at run', gluex.RunPeriod.RP2018_08.min_run)
+print('Fall 2018 starts at run', gluex.RunPeriod('f18').min_run)
 
 if gx.capabilities.rcdb:
     print('RCDB:', gx.sources.rcdb.connection_path)

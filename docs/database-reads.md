@@ -6,7 +6,7 @@ scope. Keep the file unchanged while the session or its queries are in use.
 ```python
 import gluex
 
-gx = gluex.open(rcdb='rcdb.sqlite', ccdb=gluex.DISABLED)
+gx = gluex.connect(rcdb='rcdb.sqlite', ccdb=gluex.DISABLED)
 conditions = gx.runs.conditions
 print(conditions.keys())
 print(conditions['event_count'].value_type)  # 'int'
@@ -35,8 +35,12 @@ retrieves run values.
 
 Run periods are immutable value objects, not Python enums. Construct one from a
 documented name such as `gluex.RunPeriod("s17")`. Each exposes `short_name`,
-`min_run`, and `max_run`; `period.rest(5)` binds a REST version to that period
-without repeating it.
+`min_run`, and `max_run`. `period.rest(5)` returns a distinct immutable
+`CalibratedRunPeriod`, which exposes `rest_version`, `variation`, and
+`calibration_time`. This keeps an unconfigured Run Period from masquerading as a
+valid reconstruction choice. Use `period.at(timestamp)` when selecting a
+calibration time directly. Both `rest` and `at` accept `variation` only as a
+keyword argument.
 
 `RunSelection.runs(numbers)` sorts and deduplicates explicit numbers.
 `RunSelection.between(start, end)` uses **inclusive** bounds and never expands the
@@ -177,19 +181,71 @@ are explicitly floating point. Time operands are `chrono::DateTime<Utc>`.
 ## CCDB-only calibration reads
 
 ```python
-gx = gluex.open(rcdb=gluex.DISABLED, ccdb="ccdb.sqlite")
+gx = gluex.connect(rcdb=gluex.DISABLED, ccdb="ccdb.sqlite")
 catalog = gx.calibrations
 print(catalog.keys())
 print(catalog.directories["/TARGET"].tables)
-table = catalog["/TARGET/density"]
+table = catalog["/TARGET/density"]  # Metadata discovery only.
 print(table.path, table.description, [(c.name, c.value_type) for c in table.columns])
-query = table.for_runs(gluex.RunSelection.runs([50685, 50697]))
-print(query.provenance)  # Captured source, table, scope, variation and time.
-series = query.collect()
+query = catalog.select([50685, 50697]).tables("/TARGET/density")
+result = query.collect()
+series = result["/TARGET/density"]
 for run, entry in series.items():
     print(run, entry.assignment_id, entry.constant_set_id, entry.payload.column("density"))
 print(series.report.missing_runs)
+
+# Flatten each run's payload rows directly into a native Polars DataFrame.
+frame = series.to_polars()          # Flat, one table.
+nested = result.to_polars()         # One row per run, one struct column per table.
 ```
+
+Run-taking interfaces accept one or more scopes. Multiple scopes are unioned,
+sorted and deduplicated:
+
+```python
+runs = gx.runs.select(2, range(10, 20), "f18")
+
+s17 = gluex.RunPeriod("s17")
+s18 = gluex.RunPeriod("s18")
+f18 = gluex.RunPeriod("f18")
+result = gx.calibrations.select(s17.rest(5), s18, f18.rest(2)).tables(
+    "/ANALYSIS/accidental_scaling_factor",
+    "/TARGET/density",
+).collect()
+```
+
+Each calibrated period retains its own REST timestamp and variation. A plain
+period uses the session's captured default timestamp and variation. Supplying
+the same period with conflicting contexts raises `ValueError`; overlapping
+numeric scopes otherwise deduplicate normally.
+
+Explicit run selections use the same familiar calibration verbs:
+
+```python
+from datetime import datetime, timezone
+
+timestamp = datetime(2024, 6, 1, tzinfo=timezone.utc)
+special = gluex.RunSelection.runs([30274, 30275]).at(
+    timestamp, variation="mc"
+)
+ordinary = gluex.RunPeriod("s17").rest(5).excluding(30274, 30275)
+result = gx.calibrations.select(ordinary, special).tables(
+    "/ANALYSIS/accidental_scaling_factor"
+).collect()
+```
+
+`RunSelection.rest(version, *, variation=None)` is also available when every
+selected run belongs to one Run Period. It rejects empty, all-runs, unknown-run,
+and cross-period selections rather than guessing which REST catalog entry to
+use. `at(timestamp, *, variation=None)` works for any bounded numeric selection.
+
+Overlap is checked before table I/O. Equal calibration contexts deduplicate. If
+one run would receive different timestamps or variations, selection raises a
+`ValueError` naming the first conflicting run and both contexts. The message
+also shows the likely override form: exclude the exceptional runs from the
+period and attach `.at(...)` to their own explicit selection. Global
+`variation=` or `as_of=` settings are rejected when any calibrated scope is
+present for the same reason.
 
 The catalog maps exact absolute table paths to definitions and iterates in lexical
 order. Directory definitions expose child names mapped to full paths, plus local
@@ -198,14 +254,16 @@ copies; editing them cannot change the catalog. Metadata and column discovery
 never retrieve assignments or constants. Unknown catalog paths and payload column
 names raise `KeyError` in Python; Rust catalog `get` returns `None`.
 
-`for_runs` consumes the same numeric Run Selection used for RCDB queries, but
+`gx.calibrations.select` consumes the same numeric Run Selection used for RCDB queries, but
 performs no recorded-membership check. A range stays compact until `collect()`;
 collection currently materializes the requested numbers and results. Use bounded
 numeric scopes for collection. Rust `RunSelection::All` is rejected because there
 is no implicit all-runs calibration request. Empty and reversed scopes collect
-empty results. Each query captures the `default` variation and its source's
-opening timestamp; inspect these through `query.provenance.variation` and
-`query.provenance.as_of`. Use `with_variation(name)` and `as_of(timestamp)` for explicit historical requests (see below).
+empty results. Plain scopes capture the `default` variation and the source's
+opening timestamp. Inspect the resolved context through each collected series'
+provenance. Put a uniform explicit `variation` or `as_of` on
+`gx.calibrations.select(...)`, or use `RunPeriod.rest(...)` and
+`RunPeriod.at(...)` for period-specific contexts.
 
 A Calibration Series contains resolved entries in ascending run order. Python
 `series.runs` is an immutable tuple of numeric runs, not an RCDB-resolved Run Set.
@@ -216,6 +274,24 @@ share decoded Rust storage. The series provenance identifies the source and quer
 inputs. Absent assignments appear in `report.missing_runs`; malformed payloads and
 execution failures raise errors. Collection releases the GIL. Queries and results
 remain usable after the original root is dropped, with source files kept unchanged.
+
+`ConditionResults.to_polars()` and `CalibrationSeries.to_polars()` perform their
+conversion in Rust and return native Polars DataFrames. Condition results have
+one row per run, `run_number` as `UInt32`, requested columns in request order,
+nullable database-native scalar types, and UTC timestamps as
+`Datetime("us", "UTC")`.
+
+`series.to_polars()` performs single-table flattening and returns a native Polars
+DataFrame. Its first column is `run_number` (`UInt32`), followed by the CCDB
+payload columns in database order and with their native scalar types. A table
+with multiple payload rows repeats the run number for each row. Missing runs do
+not create rows; their evidence remains in `series.report`. A payload column
+named `run_number` is rejected because that name is reserved by the conversion.
+
+`CalibrationResults.to_polars()` instead preserves a multi-table request as one
+row per evaluated run. Each exact table path is a struct column whose fields are
+lists of the table's native payload values. This avoids both cross-table name
+collisions and Cartesian products between tables with different row counts.
 
 Rust starts with `gx.calibrations()?`, then
 `catalog.get("/TARGET/density").unwrap().for_runs(selection)?.collect()?`.
@@ -307,20 +383,16 @@ provenance:
 
 ```python
 runs = gx.runs.select(gluex.RunPeriod("f18"))
-series = gx.calibrations['/TARGET/density'].for_runs(
-    runs,
-    reconstruction=gluex.RunPeriod("f18").rest(2),
-).collect()
+series = gx.calibrations.select(runs).tables("/TARGET/density").collect()["/TARGET/density"]
 print(series.provenance.runs)
 print(series.provenance.run_report.unknown_runs)
 print(series.provenance.resolved_reconstruction)
 ```
 
-Each requested period must have an entry. Use
-`ReconstructionSelection.latest()` to explicitly select the source-opening
-defaults for all represented periods. Direct `with_variation()` or `as_of()`
-selectors conflict with a reconstruction selector and fail instead of silently
-taking precedence. Numeric-only requests remain CCDB-only. Rust uses
+Calibrated period scopes select REST-specific contexts. Plain Run Queries use
+the source-opening defaults. The selector-first query has no later variation,
+time, or reconstruction mutators, so a calibrated scope cannot be overwritten.
+Numeric-only requests remain CCDB-only. Rust uses
 `table.for_query(&query)?`, `table.for_run_set(&runs)?`, and
 `ReconstructionSelection::{latest, periods}`.
 
@@ -357,25 +429,25 @@ are unchanged.
 ```python
 from datetime import datetime, timezone
 
-historical = gx.calibrations["/TARGET/density"].for_runs(
+historical = gx.calibrations.select(
     [50685, 50697],
     variation="mc",
     as_of=datetime(2019, 1, 1, tzinfo=timezone.utc),
-)
-series = historical.collect()
+).tables("/TARGET/density")
+series = historical.collect()["/TARGET/density"]
 print(series.provenance)
 for run, entry in series.items():
     print(run, entry.assignment_id, entry.created, entry.variation, entry.run_range)
 ```
 
-The keyword settings construct an immutable query and perform no assignment
-lookup. Python requires a timezone-aware datetime; Rust uses
-`query.with_variation("mc").as_of(timestamp)` with `chrono::DateTime<Utc>`.
-Python `for_runs` also accepts one integer, an integer sequence, a `range`, a
+The keyword settings belong to run selection, construct an immutable query, and
+perform no assignment lookup. Python requires a timezone-aware datetime. Python
+`select` accepts one integer, an integer sequence, a `range`, a
 Run Period or short name, a Run Selection, Run Query, or Run Set. Use
-`missing_policy="strict"`, or `missing_policy="fallback", fallback_run=...`, to choose a
-non-default Missing Data Policy. The fluent methods remain available for staged
-and reusable composition.
+`.strict()` or `.fallback_to(run)` to choose a non-default Missing Data Policy.
+For a period-specific historical request, prefer
+`period.at(timestamp, variation="mc")`. Direct keywords are rejected when a
+`CalibratedRunPeriod` is present.
 Invalid variation names fail at collection, even for empty selections. Explicit
 cutoffs are inclusive and always interpreted in UTC; the source opening time is
 used only when no cutoff is supplied.
@@ -406,16 +478,13 @@ the table and selectors. Genuine absent assignments remain in `missing_runs`.
 ## Refreshing captured sources
 
 ```python
-old_query = gx.calibrations["/TARGET/density"].for_runs(
-    gluex.RunSelection.runs([50685])
-)
-old_time = old_query.provenance.as_of
+old_query = gx.calibrations.select(50685).tables("/TARGET/density")
+old_result = old_query.collect()["/TARGET/density"]
+old_time = old_result.provenance.as_of
 gx.refresh()
-new_query = gx.calibrations["/TARGET/density"].for_runs(
-    gluex.RunSelection.runs([50685])
-)
-assert old_query.provenance.as_of == old_time
-print(new_query.provenance.as_of)
+new_result = gx.calibrations.select(50685).tables("/TARGET/density").collect()["/TARGET/density"]
+assert old_result.provenance.as_of == old_time
+print(new_result.provenance.as_of)
 ```
 
 `refresh()` reopens the captured source paths, rebuilds metadata caches, and
