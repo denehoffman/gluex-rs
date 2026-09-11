@@ -3,7 +3,7 @@
 use approx::assert_relative_eq;
 use gluex_rs::{
     GlueX, Histogram, RESTVersionSelection, ReconstructionSelection, RunPeriod, RunSelection,
-    SourceConfig, lumi::FluxHistograms, run_periods::coherent_peak,
+    SourceConfig, lumi::FluxHistograms,
 };
 use std::process::Command;
 
@@ -92,9 +92,8 @@ fn info_runs_matches_core_run_period_metadata() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("run metadata should be UTF-8");
-    let (peak_min, peak_max) = coherent_peak(run_period.min_run());
     let expected = format!(
-        "{run_period:?} ({})\n  runs: {}-{}\n  coherent peak: {peak_min:.1}-{peak_max:.1} GeV\n",
+        "{run_period:?} ({})\n  runs: {}-{}\n",
         run_period.short_name(),
         run_period.min_run(),
         run_period.max_run(),

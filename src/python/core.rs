@@ -1,7 +1,6 @@
 use crate::core::{
     Charge, DetectorSystem, GlueXCoreError, Histogram, Particle, Polarization, RESTVersion,
     RESTVersionSelection, RunNumber, RunPeriod, parsers::parse_timestamp as parse_timestamp_impl,
-    run_periods::coherent_peak as coherent_peak_impl,
 };
 use chrono::{DateTime, Utc};
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
@@ -109,6 +108,10 @@ impl PyRunPeriod {
     const RP2023_01: Self = Self(RunPeriod::RP2023_01);
     #[classattr]
     const RP2025_01: Self = Self(RunPeriod::RP2025_01);
+    #[classattr]
+    const RP2026_03: Self = Self(RunPeriod::RP2026_03);
+    #[classattr]
+    const RP2026_06: Self = Self(RunPeriod::RP2026_06);
 
     /// Select a REST reconstruction for this period.
     #[pyo3(signature = (version, *, variation=None))]
@@ -163,10 +166,6 @@ impl PyRunPeriod {
 
     fn contains(&self, run: RunNumber) -> bool {
         self.0.contains(run)
-    }
-
-    fn coherent_peak(&self) -> (f64, f64) {
-        coherent_peak_impl(self.0.min_run())
     }
 
     fn __str__(&self) -> &str {
@@ -794,11 +793,6 @@ impl PyParticle {
 #[pyfunction]
 pub fn parse_timestamp(input: &str) -> PyResult<DateTime<Utc>> {
     parse_timestamp_impl(input).map_err(|err| PyValueError::new_err(err.to_string()))
-}
-
-#[pyfunction]
-pub fn coherent_peak(run: RunNumber) -> (f64, f64) {
-    coherent_peak_impl(run)
 }
 
 pub(crate) fn parse_run_period_object(object: &Bound<'_, PyAny>) -> PyResult<RunPeriod> {

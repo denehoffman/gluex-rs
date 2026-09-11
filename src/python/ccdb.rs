@@ -471,6 +471,11 @@ pub(crate) mod ccdb {
 
     #[pymethods]
     impl PyCCDB {
+        /// Resolve the coherent-photon energy window for a run from CCDB.
+        fn coherent_peak(&self, run: RunNumber) -> PyResult<(f64, f64)> {
+            self.0.coherent_peak(run).map_err(py_ccdb_error)
+        }
+
         /// Execute one read-only SQLite statement with positional parameters; releases the GIL.
         /// Supports SELECT, CTEs and documented schema PRAGMAs. Unauthorized SQL,
         /// multiple statements, binding and decoding failures raise RuntimeError.

@@ -37,7 +37,7 @@ def test_root_luminosity_workflow_retains_run_and_procedure_evidence() -> None:
     assert result.provenance.procedure_status == 'canonical'
     assert any('pair production' in reference for reference in result.provenance.references)
     assert any('target length' in assumption for assumption in result.provenance.assumptions)
-    assert any('coherent-peak' in gap for gap in result.provenance.validation_gaps)
+    assert any('/PHOTON_BEAM/coherent_energy' in reference for reference in result.provenance.references)
     assert any('REST' in gap for gap in result.provenance.validation_gaps)
     assert any('72436' in exception for exception in result.provenance.exceptions)
     assert result.provenance.missing_policy == 'strict'

@@ -75,6 +75,16 @@ fn directory_and_table_metadata_can_be_discovered() -> CCDBResult<()> {
 }
 
 #[test]
+fn coherent_peak_is_resolved_by_table_path_and_run() -> CCDBResult<()> {
+    let (_fixture, db) = open_db();
+
+    // The fixture intentionally does not use production's constant type ID 339.
+    assert_eq!(db.coherent_peak(50_685)?, (8.2, 8.8));
+    assert_eq!(db.coherent_peak(140_000)?, (1.0, 1.2));
+    Ok(())
+}
+
+#[test]
 fn fetch_respects_runs_variations_and_timestamps() -> CCDBResult<()> {
     let (_fixture, db) = open_db();
     let before_first = parse_timestamp("2013-02-22 13:40:34")?;

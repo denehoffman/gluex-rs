@@ -35,6 +35,10 @@ pub enum RunPeriod {
     RP2023_01,
     /// ECAL Commissioning/GlueX Phase II
     RP2025_01,
+    /// GlueX low-energy running
+    RP2026_03,
+    /// GlueX Phase II/JEF
+    RP2026_06,
 }
 
 /// REST version selection for run-period queries.
@@ -178,6 +182,8 @@ impl RunPeriod {
             Self::RP2022_08 => "RunPeriod-2022-08",
             Self::RP2023_01 => "RunPeriod-2023-01",
             Self::RP2025_01 => "RunPeriod-2025-01",
+            Self::RP2026_03 => "RunPeriod-2026-03",
+            Self::RP2026_06 => "RunPeriod-2026-06",
         }
     }
 
@@ -195,6 +201,8 @@ impl RunPeriod {
             Self::RP2022_08 => 110000,
             Self::RP2023_01 => 120000,
             Self::RP2025_01 => 130000,
+            Self::RP2026_03 => 140000,
+            Self::RP2026_06 => 150000,
         }
     }
 
@@ -212,6 +220,8 @@ impl RunPeriod {
             Self::RP2022_08 => 119999,
             Self::RP2023_01 => 129999,
             Self::RP2025_01 => 139999,
+            Self::RP2026_03 => 149999,
+            Self::RP2026_06 => 159999,
         }
     }
 
@@ -229,6 +239,8 @@ impl RunPeriod {
             Self::RP2022_08 => "F22",
             Self::RP2023_01 => "S23",
             Self::RP2025_01 => "S25",
+            Self::RP2026_03 => "2026-03",
+            Self::RP2026_06 => "2026-06",
         }
     }
 
@@ -251,48 +263,33 @@ pub const GLUEX_PHASE_I: [RunPeriod; 3] = [
     RunPeriod::RP2018_08,
 ];
 
-pub const GLUEX_PHASE_II: [RunPeriod; 3] = [
+pub const GLUEX_PHASE_II: [RunPeriod; 4] = [
     RunPeriod::RP2019_11,
     RunPeriod::RP2023_01,
     RunPeriod::RP2025_01,
+    RunPeriod::RP2026_06,
 ];
-
-pub fn coherent_peak(run: RunNumber) -> (f64, f64) {
-    if run < 2760 {
-        (8.4, 9.0)
-    } else if run < 4001 {
-        (2.5, 3.0)
-    } else if run < 30000 {
-        (8.4, 9.0)
-    } else if run < 70000 {
-        (8.2, 8.8)
-    } else if run < 100000 {
-        (8.0, 8.6)
-    } else if run < 110000 {
-        (5.2, 5.7)
-    } else {
-        // NOTE: will need to update with later runs
-        (8.0, 8.6)
-    }
-}
 
 impl FromStr for RunPeriod {
     type Err = GlueXCoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "s16" | "runperiod-2016-02" => Ok(Self::RP2016_02),
-            "s17" | "runperiod-2017-01" => Ok(Self::RP2017_01),
-            "s18" | "runperiod-2018-01" => Ok(Self::RP2018_01),
-            "f18" | "runperiod-2018-08" => Ok(Self::RP2018_08),
-            "s19" | "runperiod-2019-01" => Ok(Self::RP2019_01),
-            "s20" | "runperiod-2019-11" => Ok(Self::RP2019_11),
-            "src" | "runperiod-2021-08" => Ok(Self::RP2021_08),
-            "cpp" | "npp" | "cpp/npp" | "runperiod-2021-11" => Ok(Self::RP2021_11),
-            "s22" | "runperiod-2022-05" => Ok(Self::RP2022_05),
-            "f22" | "runperiod-2022-08" => Ok(Self::RP2022_08),
-            "s23" | "runperiod-2023-01" => Ok(Self::RP2023_01),
-            "s25" | "runperiod-2025-01" => Ok(Self::RP2025_01),
+        let normalized = s.to_ascii_lowercase().replace('_', "-");
+        match normalized.as_str() {
+            "s16" | "2016-02" | "runperiod-2016-02" => Ok(Self::RP2016_02),
+            "s17" | "2017-01" | "runperiod-2017-01" => Ok(Self::RP2017_01),
+            "s18" | "2018-01" | "runperiod-2018-01" => Ok(Self::RP2018_01),
+            "f18" | "2018-08" | "runperiod-2018-08" => Ok(Self::RP2018_08),
+            "s19" | "2019-01" | "runperiod-2019-01" => Ok(Self::RP2019_01),
+            "s20" | "2019-11" | "runperiod-2019-11" => Ok(Self::RP2019_11),
+            "src" | "2021-08" | "runperiod-2021-08" => Ok(Self::RP2021_08),
+            "cpp" | "npp" | "cpp/npp" | "2021-11" | "runperiod-2021-11" => Ok(Self::RP2021_11),
+            "s22" | "2022-05" | "runperiod-2022-05" => Ok(Self::RP2022_05),
+            "f22" | "2022-08" | "runperiod-2022-08" => Ok(Self::RP2022_08),
+            "s23" | "2023-01" | "runperiod-2023-01" => Ok(Self::RP2023_01),
+            "s25" | "2025-01" | "runperiod-2025-01" => Ok(Self::RP2025_01),
+            "2026-03" | "runperiod-2026-03" => Ok(Self::RP2026_03),
+            "2026-06" | "runperiod-2026-06" => Ok(Self::RP2026_06),
             _ => Err(GlueXCoreError::RunPeriodParse(s.to_string())),
         }
     }
@@ -398,6 +395,21 @@ mod tests {
                 run_period.data_name().parse::<RunPeriod>().unwrap(),
                 run_period
             );
+        }
+    }
+
+    #[test]
+    fn run_period_parser_accepts_dates_and_underscore_variants() {
+        let cases = [
+            ("2018-08", RunPeriod::RP2018_08),
+            ("2018_08", RunPeriod::RP2018_08),
+            ("RunPeriod_2018_08", RunPeriod::RP2018_08),
+            ("runperiod_2025_01", RunPeriod::RP2025_01),
+            ("2026-03", RunPeriod::RP2026_03),
+            ("RunPeriod_2026_06", RunPeriod::RP2026_06),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(input.parse::<RunPeriod>().unwrap(), expected, "{input}");
         }
     }
 
