@@ -1,10 +1,11 @@
 """Static positive and negative probes for the installed database reading APIs."""
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import assert_type
 
 import gluex
+import polars as pl
 
 
 def typed_luminosity(
@@ -29,16 +30,18 @@ def typed_luminosity(
 
 
 def typed_discovery(gx: gluex.GlueX) -> None:
+    assert_type(gluex.connect(), gluex.GlueX)
     period = gluex.RunPeriod('s17')
     assert_type(period, gluex.RunPeriod)
     assert_type(period.rest(5), gluex.CalibratedRunPeriod)
     assert_type(period.rest(5, variation='recon'), gluex.CalibratedRunPeriod)
+    assert_type(period.at(datetime.now().astimezone()), gluex.CalibratedRunPeriod)
     assert_type(gx.runs.aliases, gluex.RunAliases)
     assert_type(gx.runs.aliases.approved_production('S17'), gluex.RunPredicate)
     assert_type(gx.runs.aliases.is_coherent_beam, gluex.RunPredicate)
 
 
-def typed_reads(gx: gluex.GlueX) -> None:
+def typed_reads(gx: gluex.GlueX) -> None:  # noqa: PLR0915
     catalog = gx.runs.conditions
     assert_type(catalog, gluex.ConditionCatalog)
     assert_type(catalog.keys(), tuple[str, ...])
@@ -47,6 +50,7 @@ def typed_reads(gx: gluex.GlueX) -> None:
     assert_type(catalog['event_count'].value_type, str)
     query = gx.runs.select(gluex.RunSelection.between(2, 5))
     assert_type(query, gluex.RunQuery)
+    assert_type(gx.runs.select(2, 'f18'), gluex.RunQuery)
     assert_type(query.selection, gluex.RunSelection)
     assert_type(query.provenance, gluex.RunProvenance)
     result = query.collect()
@@ -62,12 +66,29 @@ def typed_reads(gx: gluex.GlueX) -> None:
     assert_type(projected.stream(), gluex.ConditionStream)
     assert_type(projected.strict(), gluex.ConditionQuery)
     assert_type(projected.fill('event_count', value=0), gluex.ConditionQuery)
+    assert_type(projected.collect().to_polars(), pl.DataFrame)
     table = gx.calibrations['/TARGET/density']
     calibration = table.for_runs(query)
     assert_type(table.for_runs([50685], variation='default', missing_policy='strict'), gluex.CalibrationQuery)
     assert_type(calibration, gluex.CalibrationQuery)
+    assert_type(
+        table.for_runs(
+            gluex.RunPeriod('s17').rest(4),
+            gluex.RunPeriod('s18'),
+            gluex.RunPeriod('f18').rest(2),
+        ),
+        gluex.CalibrationQuery,
+    )
     assert_type(calibration.stream(), gluex.CalibrationStream)
     assert_type(calibration.fallback_to(50685), gluex.CalibrationQuery)
+    assert_type(calibration.collect().to_polars(), pl.DataFrame)
+    calibration_tables = gx.calibrations.select(2, 3).tables('/TARGET/density')
+    assert_type(calibration_tables, gluex.CalibrationTablesQuery)
+    assert_type(calibration_tables.collect(), gluex.CalibrationResults)
+    assert_type(calibration_tables.collect().to_polars(), pl.DataFrame)
+    calibrated_runs = gluex.RunSelection.runs([30274, 30275]).at(datetime.now(timezone.utc), variation='mc')
+    assert_type(calibrated_runs, gluex.CalibratedRunSelection)
+    assert_type(gluex.RunSelection.runs([30274]).rest(5), gluex.CalibratedRunSelection)
     reconstruction = gluex.ReconstructionSelection.periods({'F18': 2})
     concise_reconstruction = gluex.ReconstructionSelection.periods(gluex.RunPeriod('f18').rest(2))
     assert_type(concise_reconstruction, gluex.ReconstructionSelection)
@@ -100,5 +121,10 @@ def invalid_reads(gx: gluex.GlueX, result: gluex.RunSet, table: gluex.Calibratio
     table.for_runs([2], variation=2)  # ty: ignore[invalid-argument-type]
     table.for_runs([2], missing_policy='guess')
     gx.runs.select(object())  # ty: ignore[invalid-argument-type]
+    gx.luminosity(
+        result,
+        reconstruction=gluex.RunPeriod('f18'),  # ty: ignore[invalid-argument-type]
+        edges=[8.0, 9.0],
+    )
     query.stream(2)  # ty: ignore[too-many-positional-arguments]
     calibration.with_reconstruction(query)  # ty: ignore[invalid-argument-type]

@@ -19,7 +19,7 @@ pub struct PyWorkflows(pub(crate) Workflows);
 #[pymethods]
 impl PyWorkflows {
     /// Build a lazy luminosity request from a resolved RunSet and explicit reconstruction.
-    #[pyo3(signature = (runs, *, reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | Mapping[RunPeriod | str, int | RESTVersionSelection]", edges))]
+    #[pyo3(signature = (runs, *, reconstruction: "CalibratedRunPeriod | RESTVersionSelection | ReconstructionSelection | dict[RunPeriod | str, int | RESTVersionSelection]", edges))]
     fn luminosity(
         &self,
         runs: &PyRunSet,

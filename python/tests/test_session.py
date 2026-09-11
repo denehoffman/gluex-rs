@@ -11,6 +11,12 @@ import gluex
 import pytest
 
 
+def test_connect_is_the_canonical_session_constructor() -> None:
+    gx = gluex.connect(rcdb=gluex.DISABLED, ccdb=gluex.DISABLED)
+    assert not gx.capabilities.rcdb
+    assert not gx.capabilities.ccdb
+
+
 def test_disabled_sources_leave_reference_information_available() -> None:
     gx = gluex.open(rcdb=gluex.DISABLED, ccdb=gluex.DISABLED)
     assert not gx.capabilities.rcdb

@@ -1237,6 +1237,7 @@ impl ConditionReport {
 pub struct ConditionResults {
     runs: RunSet,
     columns: std::collections::BTreeMap<String, Vec<Option<ConditionValue>>>,
+    column_types: std::collections::BTreeMap<String, ConditionValueType>,
     provenance: ConditionProvenance,
     report: ConditionReport,
 }
@@ -1282,5 +1283,15 @@ impl ConditionResults {
             .get(name)
             .map(Vec::as_slice)
             .ok_or_else(|| crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()))?)
+    }
+    /// Return the database-defined type of a projected column.
+    ///
+    /// # Errors
+    /// Rejects names outside the result projection.
+    pub fn column_type(&self, name: &str) -> DatabaseResult<ConditionValueType> {
+        self.column_types
+            .get(name)
+            .copied()
+            .ok_or_else(|| crate::rcdb::RCDBError::ConditionTypeNotFound(name.into()).into())
     }
 }

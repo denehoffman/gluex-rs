@@ -25,6 +25,7 @@ dynamic = ["version"]
 dependencies = [
     "laddu>=0.21.3,<0.22",
     "numpy>=2",
+    "polars>=1.34",
 ]
 
 [project.scripts]

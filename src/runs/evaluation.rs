@@ -37,6 +37,7 @@ pub(super) fn evaluate_runs(
 
 pub(super) struct EvaluatedConditions {
     pub(super) columns: std::collections::BTreeMap<String, Vec<Option<ConditionValue>>>,
+    pub(super) column_types: std::collections::BTreeMap<String, super::ConditionValueType>,
     pub(super) missing_values: Vec<(RunNumber, String)>,
     pub(super) substitutions: Vec<(RunNumber, String)>,
 }
@@ -51,9 +52,11 @@ pub(super) fn collect_conditions(
         &query.query.execution,
     )?;
     let mut columns = std::collections::BTreeMap::new();
+    let mut column_types = std::collections::BTreeMap::new();
     let mut missing_values = Vec::new();
     let mut substitutions = Vec::new();
     for name in &query.fields {
+        column_types.insert(name.clone(), query.definition(name)?.value_type());
         let column = runs
             .numbers()
             .iter()
@@ -82,6 +85,7 @@ pub(super) fn collect_conditions(
     }
     Ok(EvaluatedConditions {
         columns,
+        column_types,
         missing_values,
         substitutions,
     })
