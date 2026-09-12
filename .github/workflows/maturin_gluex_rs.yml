@@ -85,15 +85,6 @@ jobs:
               - 3.14t
               - pypy3.11
           - runner: ubuntu-22.04
-            target: s390x
-            python_versions:
-              - "3.11"
-              - "3.12"
-              - "3.13"
-              - "3.14"
-              - 3.14t
-              - pypy3.11
-          - runner: ubuntu-22.04
             target: ppc64le
             python_versions:
               - "3.11"

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from yamloom import (
     Environment,
     Events,
@@ -16,9 +18,17 @@ from yamloom.actions.github.scm import Checkout
 from yamloom.actions.toolchains.python import SetupUV
 from yamloom.actions.toolchains.rust import SetupRust
 from yamloom.expressions import context
-from yamloom.workflows import MaturinBuildSuite
+from yamloom.workflows import DEFAULT_MATURIN_PLATFORMS, MaturinBuildSuite
 
 build_condition = context.github.ref.startswith('refs/tags/') | (context.github.event_name == 'workflow_dispatch')
+
+wheel_platforms = tuple(
+    replace(
+        platform,
+        targets=tuple(target for target in platform.targets if target.target != 's390x'),
+    )
+    for platform in DEFAULT_MATURIN_PLATFORMS
+)
 
 build_jobs = MaturinBuildSuite(
     python_profile='all',
@@ -28,6 +38,7 @@ build_jobs = MaturinBuildSuite(
     minimum_python='3.11',
     args=('--release', '--out', 'dist', '--generate-stubs'),
     manifest_path='Cargo.toml',
+    platforms=wheel_platforms,
 ).jobs()
 
 release_workflow = Workflow(
