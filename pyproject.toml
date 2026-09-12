@@ -23,7 +23,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "laddu>=0.21.3,<0.22",
+    "laddu>=0.23.0,<0.24",
     "numpy>=2",
     "polars>=1.34",
 ]
