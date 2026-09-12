@@ -441,7 +441,7 @@ impl GenerationConfig {
         };
         object.remove("$schema");
         let encoded = serde_json::to_vec(&value)?;
-        Ok(format!("{}", hex::encode(Sha256::digest(encoded))))
+        Ok(hex::encode(Sha256::digest(encoded)))
     }
 
     /// Compile this description to a validated Laddu channel.
