@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use approx::assert_relative_eq;
+use approx::{assert_abs_diff_eq, assert_relative_eq};
 use chrono::{Duration, Utc};
 use gluex_rs::{
     CancellationToken, GlueX, RESTVersionSelection, ReconstructionSelection, RunPeriod,
@@ -159,7 +159,7 @@ fn luminosity_uses_the_calibrated_endpoint_to_scale_tagger_energy() {
         result.histograms().tagged_flux.counts()[0],
         632_061_337.838_105_6
     );
-    assert_eq!(result.histograms().tagged_flux.counts()[1], 0.0);
+    assert_abs_diff_eq!(result.histograms().tagged_flux.counts()[1], 0.0);
     assert_relative_eq!(
         result.histograms().tagm_flux.counts()[0],
         43_863_901.505_601_33
@@ -229,8 +229,8 @@ fn fall_2019_override_changes_energy_bin_at_run_72436() {
         before.histograms().tagged_flux.counts()[0],
         632_061_337.838_105_6
     );
-    assert_eq!(before.histograms().tagged_flux.counts()[1], 0.0);
-    assert_eq!(boundary.histograms().tagged_flux.counts()[0], 0.0);
+    assert_abs_diff_eq!(before.histograms().tagged_flux.counts()[1], 0.0);
+    assert_abs_diff_eq!(boundary.histograms().tagged_flux.counts()[0], 0.0);
     assert!(boundary.histograms().tagged_flux.counts()[1] > 0.0);
 }
 
