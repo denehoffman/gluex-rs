@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.2.0](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.1.7...gluex-rs-v0.2.0) (2026-09-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* deepen run and calibration queries
+* resolve coherent peak from CCDB
+* **database:** unify calibrated run selection
+* **database:** complete unified API frontier
+* **database:** complete unified database API acceptance
+* **database:** replace the path-owning luminosity calculator and context with GlueX workflows.
+* **database:** add projections history and refresh
+* **database:** RunProvenance no longer implements PartialEq or Eq because it now retains explicit predicate expressions.
+
+### Features
+
+* Add independently configured GlueX database sessions ([5b2df1b](https://github.com/denehoffman/gluex-rs/commit/5b2df1b00ead7c6b795def45079fcfe85ce5d7c8))
+* Add read-only raw queries and recorded run selections ([f8658ff](https://github.com/denehoffman/gluex-rs/commit/f8658ff89344bdc91983a6c6fdcdc0bebdce2e85))
+* **database:** Add projections history and refresh ([6758324](https://github.com/denehoffman/gluex-rs/commit/675832453d7cf0166f5359b228467c2f06d66e71))
+* **database:** Add typed predicates and calibration queries ([3f4f07d](https://github.com/denehoffman/gluex-rs/commit/3f4f07d2e84f0ec1ec147b5554302dd7e7159885))
+* **database:** Add workload and execution foundations ([557c8f3](https://github.com/denehoffman/gluex-rs/commit/557c8f39c22a8e7232872ae89a2f7d56bcfeaace))
+* **database:** Complete execution and provenance frontier ([6307473](https://github.com/denehoffman/gluex-rs/commit/6307473f9e446bf86c71f3fc09fe75c621a9cea2))
+* **database:** Complete read execution APIs ([59e659b](https://github.com/denehoffman/gluex-rs/commit/59e659b121f5045fe4f6c2e251762d7e9e886e5d))
+* **database:** Complete unified API frontier ([ed06b75](https://github.com/denehoffman/gluex-rs/commit/ed06b75ae128377b90e37ad6259e5389045d4c45))
+* **database:** Complete unified query and luminosity workflows ([3973420](https://github.com/denehoffman/gluex-rs/commit/3973420581b2baa7c5e6da7587355223f744381e))
+* **database:** Unify calibrated run selection ([22b1c64](https://github.com/denehoffman/gluex-rs/commit/22b1c644d0dd43141886ae85ced7f9836ce2aae8))
+* Deepen run and calibration queries ([d9623a4](https://github.com/denehoffman/gluex-rs/commit/d9623a4b4e1213f65ca2532efbe6f46f4f094f83))
+* Improve REST metadata and Python imports ([69406f0](https://github.com/denehoffman/gluex-rs/commit/69406f02d9d76674d98e72b63393eddd7dad65e9))
+* **python:** Refine database query and stub APIs ([b49fb60](https://github.com/denehoffman/gluex-rs/commit/b49fb60e2dd22b231b736cbb9d72ae8941c014da))
+* Resolve coherent peak from CCDB ([b896191](https://github.com/denehoffman/gluex-rs/commit/b896191f33a5498eca5f91a3202f2d15aa650705))
+
+
+### Bug Fixes
+
+* **database:** Complete unified database API acceptance ([cafcea8](https://github.com/denehoffman/gluex-rs/commit/cafcea824ce6a571c07a6b6628c2c3160a4453ea))
+* **luminosity:** Apply calibrated endpoint scaling ([83a8284](https://github.com/denehoffman/gluex-rs/commit/83a828470ba9eeb29f558f73a24122fb31af4c7c))
+
 ## [0.1.7](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.1.0...gluex-rs-v0.1.7) (2026-08-19)
 
 
