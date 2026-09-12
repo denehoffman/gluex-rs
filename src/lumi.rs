@@ -706,12 +706,15 @@ fn flux_histograms_for_run(
     let delta_e = data
         .photon_endpoint_calibration
         .map_or(0.0, |calibration| data.photon_endpoint_energy - calibration);
+    let scaled_endpoint = data
+        .photon_endpoint_calibration
+        .unwrap_or(data.photon_endpoint_energy);
     for (tagged_flux, e_range) in data
         .tagm_tagged_flux
         .iter()
         .zip(&data.tagm_scaled_energy_range)
     {
-        let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1)).mul_add(0.5, delta_e);
+        let energy = (scaled_endpoint * (e_range.0 + e_range.1)).mul_add(0.5, delta_e);
         if coherent_peak {
             let (low, high) = data.coherent_energy.ok_or_else(|| {
                 invalid_schema(
@@ -741,7 +744,7 @@ fn flux_histograms_for_run(
         .iter()
         .zip(&data.tagh_scaled_energy_range)
     {
-        let energy = (data.photon_endpoint_energy * (e_range.0 + e_range.1)).mul_add(0.5, delta_e);
+        let energy = (scaled_endpoint * (e_range.0 + e_range.1)).mul_add(0.5, delta_e);
         if coherent_peak {
             let (low, high) = data.coherent_energy.ok_or_else(|| {
                 invalid_schema(
