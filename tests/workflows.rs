@@ -37,6 +37,13 @@ fn reconstruction() -> ReconstructionSelection {
     )])
 }
 
+fn fall_2019_reconstruction() -> ReconstructionSelection {
+    ReconstructionSelection::periods([(
+        RunPeriod::RP2019_11,
+        RESTVersionSelection::try_new(RunPeriod::RP2019_11, 1).unwrap(),
+    )])
+}
+
 #[test]
 fn root_workflow_uses_the_supplied_run_set_without_hidden_approval() {
     assert_relative_eq!(worked_fixture_tagged_flux(), TAGGED_FLUX);
@@ -115,6 +122,116 @@ fn root_workflow_uses_the_supplied_run_set_without_hidden_approval() {
     );
     let context = &result.provenance().resolved_reconstruction()[&RunPeriod::RP2018_08];
     assert_eq!(context.variation, "default");
+}
+
+#[test]
+fn luminosity_uses_the_calibrated_endpoint_to_scale_tagger_energy() {
+    let rcdb = fixtures::rcdb();
+    let ccdb = fixtures::ccdb();
+    rusqlite::Connection::open(ccdb.path())
+        .unwrap()
+        .execute_batch(
+            "INSERT INTO constantSets (id, vault, constantTypeId) VALUES (10009, '10.0', 662);
+             INSERT INTO assignments (id, created, variationId, runRangeId, constantSetId)
+             VALUES (10009, '2019-01-01 00:00:00', 1, 2, 10009);",
+        )
+        .unwrap();
+    let gx = GlueX::open(
+        SourceConfig::sqlite(rcdb.path()),
+        SourceConfig::sqlite(ccdb.path()),
+    )
+    .unwrap();
+    let runs = gx
+        .runs(RunSelection::runs([50_685]))
+        .unwrap()
+        .collect()
+        .unwrap();
+
+    let result = gx
+        .workflows()
+        .luminosity(&runs, reconstruction(), [9.0, 10.0, 11.0])
+        .collect()
+        .unwrap();
+
+    // Independent values from the established plot_flux_ccdb.py procedure for
+    // this fixture: TAGM E=9.28475716468 GeV and TAGH E=9.3435925 GeV.
+    assert_relative_eq!(
+        result.histograms().tagged_flux.counts()[0],
+        632_061_337.838_105_6
+    );
+    assert_eq!(result.histograms().tagged_flux.counts()[1], 0.0);
+    assert_relative_eq!(
+        result.histograms().tagm_flux.counts()[0],
+        43_863_901.505_601_33
+    );
+    assert_relative_eq!(
+        result.histograms().tagh_flux.counts()[0],
+        588_197_436.332_504_3
+    );
+}
+
+#[test]
+fn fall_2019_override_changes_energy_bin_at_run_72436() {
+    let rcdb = fixtures::rcdb();
+    let ccdb = fixtures::ccdb();
+    rusqlite::Connection::open(rcdb.path())
+        .unwrap()
+        .execute_batch(
+            "INSERT INTO runs (number) VALUES (72435), (72436);
+             INSERT INTO conditions
+                 (id, text_value, int_value, float_value, bool_value, run_number, condition_type_id)
+             VALUES
+                 (1001, 'Be 75um', 0, 0, 0, 72435, 33),
+                 (1002, 'Be 75um', 0, 0, 0, 72436, 33);",
+        )
+        .unwrap();
+    rusqlite::Connection::open(ccdb.path())
+        .unwrap()
+        .execute_batch(
+            "UPDATE runRanges SET runMax = 72436 WHERE id = 2;
+             INSERT INTO runRanges (id, name, runMin, runMax)
+             VALUES (4, '2019-11 override boundary', 72436, 72436);
+             INSERT INTO constantSets (id, vault, constantTypeId) VALUES
+                 (10009, '10.0', 662),
+                 (10010, '9.0', 662);
+             INSERT INTO assignments (id, created, variationId, runRangeId, constantSetId) VALUES
+                 (10009, '2019-01-01 00:00:00', 1, 2, 10009),
+                 (10010, '2021-04-23 00:00:00', 1, 4, 10010);",
+        )
+        .unwrap();
+    let gx = GlueX::open(
+        SourceConfig::sqlite(rcdb.path()),
+        SourceConfig::sqlite(ccdb.path()),
+    )
+    .unwrap();
+    let before = gx
+        .runs(RunSelection::runs([72_435]))
+        .unwrap()
+        .collect()
+        .unwrap();
+    let boundary = gx
+        .runs(RunSelection::runs([72_436]))
+        .unwrap()
+        .collect()
+        .unwrap();
+    let workflows = gx.workflows();
+
+    let before = workflows
+        .luminosity(&before, fall_2019_reconstruction(), [9.0, 9.5, 10.0])
+        .collect()
+        .unwrap();
+    let boundary = workflows
+        .luminosity(&boundary, fall_2019_reconstruction(), [9.0, 9.5, 10.0])
+        .collect()
+        .unwrap();
+
+    assert_relative_eq!(
+        before.histograms().tagged_flux.counts()[0],
+        632_061_337.838_105_6
+    );
+    assert_eq!(before.histograms().tagged_flux.counts()[1], 0.0);
+    assert_eq!(boundary.histograms().tagged_flux.counts()[0], 0.0);
+    assert!(boundary.histograms().tagged_flux.counts()[1] > 0.0);
 }
 
 #[test]
