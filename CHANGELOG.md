@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.2.0...gluex-rs-v0.2.1) (2026-09-12)
+
+
+### Features
+
+* Update all dependencies to latest versions ([5a8a3d4](https://github.com/denehoffman/gluex-rs/commit/5a8a3d4a75fc708f29e751ed9b2ed6265490aae3))
+
 ## [0.2.0](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.1.7...gluex-rs-v0.2.0) (2026-09-12)
 
 
