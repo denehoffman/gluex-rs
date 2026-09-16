@@ -82,15 +82,6 @@ pub use core::{
 /// Typed operands for Condition Predicate construction.
 pub use rcdb::conditions::ConditionOperand;
 
-/// Build the explicit named approved-production Condition Predicate for a run period.
-///
-/// # Errors
-/// Rejects periods without a documented approved-production definition.
-#[must_use]
-pub fn approved_production() -> RunPredicate {
-    RunPredicate(rcdb::conditions::aliases::approved_production())
-}
-
 /// Calibration catalogs and explicit numeric queries.
 pub mod calibrations;
 pub use calibrations::{

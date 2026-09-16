@@ -693,7 +693,7 @@ pub enum ConditionValueType {
 
 /// Composable, backend-neutral three-valued Condition Predicate.
 #[derive(Debug, Clone)]
-pub struct RunPredicate(pub(crate) crate::rcdb::conditions::Expr);
+pub struct RunPredicate(pub crate::rcdb::conditions::Expr);
 
 impl std::fmt::Display for RunPredicate {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

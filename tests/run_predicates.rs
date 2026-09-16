@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use gluex_rs::{GlueX, RunSelection, SourceConfig};
+use gluex_rs::{GlueX, RunPredicate, RunSelection, SourceConfig};
 
 #[path = "fixtures/rust.rs"]
 mod fixtures;
@@ -87,10 +87,12 @@ fn approval_is_explicit_and_definition_operands_are_parameterized() {
     let base = gx.runs(RunSelection::range(50000, 59999)).unwrap();
     assert_eq!(base.collect().unwrap().numbers(), &[50685, 50697]);
     assert_eq!(
-        base.where_predicate(gluex_rs::approved_production(),)
-            .collect()
-            .unwrap()
-            .numbers(),
+        base.where_predicate(RunPredicate(
+            gluex_rs::rcdb::conditions::aliases::approved_production()
+        ))
+        .collect()
+        .unwrap()
+        .numbers(),
         &[50685, 50697]
     );
     let d = gx.conditions().unwrap();

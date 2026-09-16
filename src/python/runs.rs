@@ -121,7 +121,7 @@ impl PyRunAliases {
     /// Match approved production using each run's numeric run period.
     #[getter]
     fn approved_production(&self) -> PyRunPredicate {
-        PyRunPredicate(crate::approved_production())
+        run_predicate(crate::rcdb::conditions::aliases::approved_production())
     }
 
     fn __repr__(&self) -> &'static str {
