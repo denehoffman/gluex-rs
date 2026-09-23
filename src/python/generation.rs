@@ -6,7 +6,7 @@ pub(crate) mod generation {
         GenerationRunOptions, GlueXHddmConfig, HddmSink, config::GenerationConfig, generate,
         species::gluex_particle_from_external_ids,
     };
-    use laddu::prelude::{Channel, CompiledModel, Dataset, ParquetSource, RealVec3, ScalarSource};
+    use laddu::prelude::{Channel, CompiledModel, RealVec3, ScalarSource};
     use pyo3::{
         exceptions::{PyRuntimeError, PyValueError},
         prelude::*,
@@ -406,24 +406,11 @@ pub(crate) mod generation {
         /// Write every event in a laddu dataset to `path`.
         #[pyo3(signature = (dataset: "laddu.Dataset", path))]
         fn write(&self, py: Python<'_>, dataset: &Bound<'_, PyAny>, path: PathBuf) -> PyResult<()> {
-            // Bridge through Parquet because laddu's Python Dataset does not expose its
-            // native Dataset to other extension modules.
-            let temp_dir = tempfile::tempdir().map_err(generation_error)?;
-            let parquet_path = temp_dir.path().join("events.parquet");
-            let laddu = py.import("laddu")?;
-            let parquet_sink = laddu
-                .getattr("ParquetSink")?
-                .call1((parquet_path.to_string_lossy().as_ref(),))?;
-            dataset.call_method1("write_to", (parquet_sink,))?;
-
+            let dataset = crate::python::laddu_bridge::from_python(py, dataset)?;
             let config = self.0.clone();
             py.detach(move || {
-                let source = ParquetSource::open(parquet_path.to_string_lossy())
-                    .map_err(generation_error)?;
-                let dataset = Dataset::new(source);
                 let mut sink = HddmSink::new(path, config).map_err(generation_error)?;
                 dataset.write_to(&mut sink).map_err(generation_error)?;
-                drop(temp_dir);
                 Ok(())
             })
         }

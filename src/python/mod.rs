@@ -5,6 +5,8 @@ mod dataframe;
 mod exceptions;
 mod execution;
 mod generation;
+mod io;
+mod laddu_bridge;
 mod lumi;
 mod raw;
 mod rcdb;
@@ -41,6 +43,8 @@ mod gluex {
     };
     #[pymodule_export]
     use super::generation::generation;
+    #[pymodule_export]
+    use super::io::io;
     #[pymodule_export]
     use super::lumi::lumi;
     #[pymodule_export]
@@ -87,7 +91,7 @@ mod gluex {
     #[pymodule_init]
     fn init(module: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
         let modules = module.py().import("sys")?.getattr("modules")?;
-        for name in ["ccdb", "generation", "lumi", "rcdb"] {
+        for name in ["ccdb", "generation", "io", "lumi", "rcdb"] {
             modules.set_item(format!("gluex.{name}"), module.getattr(name)?)?;
         }
         Ok(())

@@ -1483,6 +1483,7 @@ dependencies = [
  "lazy_static",
  "memchr",
  "numpy",
+ "oxyroot",
  "parking_lot",
  "polars",
  "pyo3",

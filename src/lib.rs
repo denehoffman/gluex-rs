@@ -31,6 +31,18 @@ pub mod execution;
 pub mod generation;
 pub use database::{DatabaseError, DatabaseResult};
 pub use execution::{CancellationToken, ExecutionError, ExecutionOptions};
+
+/// I/O for various ``GlueX`` file formats.
+#[allow(
+    clippy::complexity,
+    clippy::nursery,
+    clippy::pedantic,
+    clippy::perf,
+    clippy::style,
+    clippy::suspicious
+)]
+pub mod io;
+
 /// Photon-flux and tagged-luminosity calculations.
 pub mod lumi;
 /// Run Conditions Database access and predicate builders.
