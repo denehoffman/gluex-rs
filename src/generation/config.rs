@@ -42,7 +42,7 @@ pub enum GenerationConfigError {
         /// Human-readable explanation.
         message: String,
     },
-    /// Laddu rejected the compiled channel.
+    /// laddu rejected the compiled channel.
     #[error("compiled channel is invalid: {0}")]
     Laddu(String),
 }
@@ -75,11 +75,11 @@ pub struct GenerationConfig {
     pub target: TargetConfig,
     /// Two-to-two production vertex and its subsequent decay trees.
     pub production: ProductionConfig,
-    /// Optional serialized Laddu model used as the event intensity.
+    /// Optional serialized laddu model used as the event intensity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<serde_json::Value>")]
     pub model: Option<CompiledModel>,
-    /// Free model parameters in Laddu's parameter order.
+    /// Free model parameters in laddu's parameter order.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parameters: Option<Vec<f64>>,
     /// Additional generated scalar columns available to the model.
@@ -87,7 +87,7 @@ pub struct GenerationConfig {
     pub scalars: BTreeMap<String, ScalarSource>,
     /// Optional manual rejection-envelope override.
     ///
-    /// When omitted, Laddu computes a certified model-less phase-space bound.
+    /// When omitted, laddu computes a certified model-less phase-space bound.
     #[serde(default, skip_serializing_if = "GenerationSettings::is_default")]
     pub generation: GenerationSettings,
 }
@@ -234,7 +234,7 @@ pub enum TransferComponent {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ParticleNode {
-    /// Unique edge name used in diagnostics and Laddu expressions.
+    /// Unique edge name used in diagnostics and laddu expressions.
     pub name: String,
     /// `GlueX` enum name, common particle label, or PDG code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -287,7 +287,7 @@ pub struct DecayConfig {
 
 /// Rejection-envelope settings for unweighted generation.
 ///
-/// By default, Laddu computes a certified phase-space envelope. The manual
+/// By default, laddu computes a certified phase-space envelope. The manual
 /// maximum is retained as an expert override for unit-model generation.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -444,11 +444,11 @@ impl GenerationConfig {
         Ok(hex::encode(Sha256::digest(encoded)))
     }
 
-    /// Compile this description to a validated Laddu channel.
+    /// Compile this description to a validated laddu channel.
     ///
     /// # Errors
     ///
-    /// Returns an error if validation or Laddu channel construction fails.
+    /// Returns an error if validation or laddu channel construction fails.
     pub fn to_channel(&self) -> GenerationConfigResult<Channel> {
         self.validate()?;
         let mut channel = Channel::new(self.name.clone());
@@ -556,7 +556,7 @@ impl GenerationConfig {
         Ok(())
     }
 
-    /// Convert a supported Laddu channel into the canonical `GlueX` format.
+    /// Convert a supported laddu channel into the canonical `GlueX` format.
     ///
     /// Only the intentionally narrow standalone-generator subset is accepted:
     /// a photon beam and fixed proton target (identified by `GlueX` labels or,
@@ -878,7 +878,7 @@ fn transfer_component_from_laddu(component: &TComponent) -> TransferComponent {
             TransferComponent::Histogram { edges, weights }
         }
         TransferDistribution::Mixture { .. } => {
-            unreachable!("one Laddu component cannot itself be a mixture")
+            unreachable!("one laddu component cannot itself be a mixture")
         }
     }
 }

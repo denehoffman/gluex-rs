@@ -143,12 +143,10 @@ impl CalibrationCatalog {
         }
     }
     /// Full table paths in lexical order.
-    #[must_use]
     pub fn keys(&self) -> impl ExactSizeIterator<Item = &String> {
         self.tables.keys()
     }
     /// Full paths and table definitions in lexical order.
-    #[must_use]
     pub fn items(&self) -> impl ExactSizeIterator<Item = (&String, &CalibrationTable)> {
         self.tables.iter()
     }
@@ -1066,7 +1064,6 @@ impl CalibrationSeries {
         self.entries.get(&run)
     }
     /// Resolved runs and entries in ascending run order.
-    #[must_use]
     pub fn items(&self) -> impl ExactSizeIterator<Item = (&RunNumber, &CalibrationEntry)> {
         self.entries.iter()
     }

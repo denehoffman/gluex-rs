@@ -125,7 +125,7 @@ fn fetch_runs_with_filters() -> RCDBResult<()> {
             conditions::int_cond("event_count").gt(50),
         ]));
     let runs = db.fetch_runs(&ctx)?;
-    assert!(!runs.is_empty());
+    assert_ne!(runs.len(), 0);
     assert!(runs.iter().all(|run| (1000..=1100).contains(run)));
     Ok(())
 }
@@ -138,7 +138,7 @@ fn fetch_runs_with_alias() -> RCDBResult<()> {
         .with_run_range(10_000..=10_300)
         .filter(alias_expr);
     let runs = db.fetch_runs(&ctx)?;
-    assert!(!runs.is_empty());
+    assert_ne!(runs.len(), 0);
     Ok(())
 }
 

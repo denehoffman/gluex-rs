@@ -939,13 +939,11 @@ impl ConditionCatalog {
     }
 
     /// Iterate condition names in lexical order.
-    #[must_use]
     pub fn keys(&self) -> impl ExactSizeIterator<Item = &String> {
         self.0.keys()
     }
 
     /// Iterate names and definitions in lexical order.
-    #[must_use]
     pub fn items(&self) -> impl ExactSizeIterator<Item = (&String, &ConditionDefinition)> {
         self.0.iter()
     }

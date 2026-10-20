@@ -1,4 +1,4 @@
-"""Tests for streaming laddu 0.21.2 datasets to GlueX HDDM."""
+"""Tests for streaming laddu datasets to GlueX HDDM."""
 
 import json
 import subprocess
@@ -211,5 +211,7 @@ def test_generation_writer_consumes_laddu_dataset(tmp_path: Path) -> None:
     assert config.target == 'target'
 
     output = tmp_path / 'events.hddm'
-    generation.GlueXHddmWriter(config).write(_dataset(), output)
+    result = generation.GlueXHddmWriter(config).write(_dataset(), output, chunk_size=2)
+    assert result.events == len(_dataset())
+    assert result.paths == [output]
     assert output.stat().st_size > 0

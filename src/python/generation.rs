@@ -3,7 +3,7 @@ pub(crate) mod generation {
     use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
     use crate::generation::{
-        GenerationRunOptions, GlueXHddmConfig, HddmSink, config::GenerationConfig, generate,
+        GenerationRunOptions, GlueXHddmConfig, config::GenerationConfig, generate,
         species::gluex_particle_from_external_ids,
     };
     use laddu::prelude::{Channel, CompiledModel, RealVec3, ScalarSource};
@@ -106,7 +106,7 @@ pub(crate) mod generation {
 
     #[pymethods]
     impl PyGenerationConfig {
-        /// Build a manifest from a Laddu channel and optional model.
+        /// Build a manifest from a laddu channel and optional model.
         #[new]
         #[pyo3(signature = (
             channel: "laddu.Channel",
@@ -404,15 +404,25 @@ pub(crate) mod generation {
         }
 
         /// Write every event in a laddu dataset to `path`.
-        #[pyo3(signature = (dataset: "laddu.Dataset", path))]
-        fn write(&self, py: Python<'_>, dataset: &Bound<'_, PyAny>, path: PathBuf) -> PyResult<()> {
-            let dataset = crate::python::laddu_bridge::from_python(py, dataset)?;
-            let config = self.0.clone();
-            py.detach(move || {
-                let mut sink = HddmSink::new(path, config).map_err(generation_error)?;
-                dataset.write_to(&mut sink).map_err(generation_error)?;
-                Ok(())
-            })
+        #[pyo3(signature = (dataset: "laddu.Dataset", path, *, output="auto", chunk_size=None, execution=None))]
+        fn write(
+            &self,
+            py: Python<'_>,
+            dataset: &Bound<'_, PyAny>,
+            path: PathBuf,
+            output: &str,
+            chunk_size: Option<usize>,
+            execution: Option<crate::python::io::io::ExecutionInput>,
+        ) -> PyResult<crate::python::io::io::WriteResult> {
+            crate::python::io::io::write_hddm(
+                py,
+                dataset,
+                path,
+                self.0.clone(),
+                output,
+                chunk_size,
+                execution.as_ref().map(|value| value.0.bind(py)),
+            )
         }
     }
 }

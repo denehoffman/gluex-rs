@@ -88,7 +88,7 @@ fn schema_inspection_empty_results_and_parameter_errors_are_explicit() {
             &[RawValue::Integer(-1)],
         )
         .unwrap();
-    assert!(result.rows().is_empty());
+    assert_eq!(result.rows(), []);
     assert_eq!(result.columns()[0].name(), "run");
     assert_eq!(result.columns()[0].declared_type(), Some("INTEGER"));
     let columns = reader.raw("PRAGMA table_info(runs)", &[]).unwrap();

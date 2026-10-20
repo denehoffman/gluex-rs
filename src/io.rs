@@ -138,7 +138,7 @@ pub struct AmpToolsSource {
     tree: String,
     particles: usize,
     final_state_names: Vec<String>,
-    zlm_polarization: bool,
+    pol_in_beam: bool,
 }
 
 impl AmpToolsSource {
@@ -150,7 +150,7 @@ impl AmpToolsSource {
             tree: "kin".into(),
             particles: final_state_names.len(),
             final_state_names,
-            zlm_polarization: false,
+            pol_in_beam: false,
         }
     }
     /// Select a ROOT tree.
@@ -159,8 +159,8 @@ impl AmpToolsSource {
         self
     }
     /// Decode Zlm's polarization-vector convention in beam `px` and `py`.
-    pub fn with_zlm_polarization(mut self, enabled: bool) -> Self {
-        self.zlm_polarization = enabled;
+    pub fn with_pol_in_beam(mut self, enabled: bool) -> Self {
+        self.pol_in_beam = enabled;
         self
     }
     fn read(&self) -> LadduDataResult<Vec<OwnedEvent>> {
@@ -218,7 +218,7 @@ impl AmpToolsSource {
                 beam[2][row] as f64,
                 beam[3][row] as f64,
             );
-            let (beam_value, scalars) = if self.zlm_polarization {
+            let (beam_value, scalars) = if self.pol_in_beam {
                 let fraction = beam_value.px().hypot(beam_value.py());
                 if !fraction.is_finite() || fraction > 1.0 {
                     return Err(source_error(format!(
@@ -264,7 +264,7 @@ impl EventSource for AmpToolsSource {
         let weighted = tree.branch("Weight").is_some();
         Ok(Arc::new(Schema::new(
             names_for(&self.final_state_names),
-            if self.zlm_polarization {
+            if self.pol_in_beam {
                 vec!["polarization_fraction", "polarization_angle"]
             } else {
                 vec![]
@@ -897,7 +897,7 @@ mod tests {
     }
 
     #[test]
-    fn amptools_float_columns_decode_zlm_polarization() -> LadduDataResult<()> {
+    fn amptools_float_columns_decode_pol_in_beam() -> LadduDataResult<()> {
         let dir = tempfile::tempdir().map_err(sink_error)?;
         let path = dir.path().join("amptools.root");
         let mut file = RootFile::create(&path).map_err(sink_error)?;
@@ -923,7 +923,7 @@ mod tests {
         tree.write(&mut file).map_err(sink_error)?;
         file.close().map_err(sink_error)?;
         drop(file);
-        let source = AmpToolsSource::new(&path, 2).with_zlm_polarization(true);
+        let source = AmpToolsSource::new(&path, 2).with_pol_in_beam(true);
         let batch = source.batches(ReadPlan::default())?.next().unwrap()?;
         let event = batch.iter().next().unwrap();
         assert!((event.scalar(0) - 0.4).abs() < 1e-6);

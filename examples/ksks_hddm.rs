@@ -375,6 +375,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             envelope: EnvelopeMode::Strict { max_weight: 6.5e-5 },
             envelope_overflow: EnvelopeOverflow::default(),
             memory: MemoryBudget::Auto,
+            index: None,
         },
         Some(&evaluator),
         &mut sink,

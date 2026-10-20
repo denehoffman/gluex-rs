@@ -6,7 +6,6 @@ mod exceptions;
 mod execution;
 mod generation;
 mod io;
-mod laddu_bridge;
 mod lumi;
 mod raw;
 mod rcdb;

@@ -303,7 +303,7 @@ fn sparse_stream_emits_completion_when_the_final_database_page_is_filtered_out()
             .collect::<Vec<_>>(),
         [4]
     );
-    assert!(chunks.last().unwrap().numbers().is_empty());
+    assert_eq!(chunks.last().unwrap().numbers().len(), 0);
     assert!(chunks.last().unwrap().report().complete());
 }
 

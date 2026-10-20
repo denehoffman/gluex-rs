@@ -80,7 +80,7 @@ fn root_workflow_uses_the_supplied_run_set_without_hidden_approval() {
     );
     assert_eq!(result.report().selected_runs(), &[50_685]);
     assert_eq!(result.report().used_runs(), &[50_685]);
-    assert!(result.report().excluded_runs().is_empty());
+    assert_eq!(result.report().excluded_runs(), []);
     assert_eq!(
         result.provenance().procedure_version(),
         "gluex-luminosity-v1"

@@ -1,6 +1,6 @@
 # gluex-rs
 
-`gluex-rs` is a read-only toolkit for working with GlueX run metadata, calibration constants, photon flux, luminosity, and standalone event generation. It provides the same core model through Rust, Python, and the `gluex` command-line program.
+`gluex-rs` is a toolkit for working with GlueX run metadata, calibration constants, photon flux, luminosity, event files, and standalone event generation. It provides the same core model through Rust, Python, and the `gluex` command-line program.
 
 If you already know RCDB and CCDB, the central idea is straightforward: open both SQLite snapshots once, build lazy typed queries, and collect immutable results that retain their run selection, calibration time, variation, omissions, and source paths.
 
@@ -13,6 +13,7 @@ If you already know RCDB and CCDB, the central idea is straightforward: open bot
 - [Understand run periods and coherent-energy tables](docs/run-periods.md)
 - [Use the command line](docs/cli.md)
 - [Generate standalone HDDM events](docs/generation.md)
+- [Read and write AmpTools, FSRoot, and Pawian events](docs/format-io.md)
 
 ## Ten-line Python example
 

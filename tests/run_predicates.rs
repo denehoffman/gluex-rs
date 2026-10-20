@@ -70,13 +70,14 @@ fn composed_predicates_follow_the_three_valued_truth_table() {
         }
     }
     let present = d["is_valid_run_end"].is_present();
-    assert!(
+    assert_eq!(
         base.where_predicate(present)
             .collect()
             .unwrap()
             .report()
             .unknown_runs()
-            .is_empty()
+            .len(),
+        0
     );
 }
 
@@ -96,12 +97,13 @@ fn approval_is_explicit_and_definition_operands_are_parameterized() {
         &[50685, 50697]
     );
     let d = gx.conditions().unwrap();
-    assert!(
+    assert_eq!(
         base.where_predicate(d["daq_run"].eq("PHYSICS' OR 1=1 --").unwrap())
             .collect()
             .unwrap()
             .numbers()
-            .is_empty()
+            .len(),
+        0
     );
     assert!(d["beam_current"].gt(f64::NAN).is_err());
     assert!(d["is_valid_run_end"].gt(true).is_err());

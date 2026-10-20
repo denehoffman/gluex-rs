@@ -26,7 +26,7 @@ fn ccdb_only_catalog_and_numeric_series_retain_assignment_inputs() {
     assert_eq!(entry.assignment_id(), 230_266);
     assert_eq!(entry.constant_set_id(), 230_302);
     assert_eq!(entry.payload().named_double("x", 0), Some(1.0));
-    assert!(series.report().missing_runs().is_empty());
+    assert_eq!(series.report().missing_runs().len(), 0);
     let missing = catalog
         .get("/TARGET/density")
         .unwrap()
@@ -63,7 +63,7 @@ fn calibration_inspection_is_lazy_and_payload_errors_are_not_missing_assignments
         .for_runs(RunSelection::range(i64::MIN, i64::MAX))
         .unwrap();
     assert_eq!(query.provenance().table(), "/test/demo/mytable");
-    assert!(!format!("{query:?}").is_empty());
+    assert_ne!(format!("{query:?}"), "");
     assert!(
         table
             .for_runs(RunSelection::runs([2]))
@@ -246,7 +246,7 @@ fn assignment_oracles_cover_intervals_cutoffs_and_lower_level_equivalence() {
     assert_eq!(before.get(15).unwrap().assignment_id(), 300_000);
     assert_eq!(before.get(20).unwrap().assignment_id(), 300_000);
     assert_eq!(before.get(21).unwrap().assignment_id(), 300_000);
-    assert!(before.report().missing_runs().is_empty());
+    assert_eq!(before.report().missing_runs().len(), 0);
 }
 
 #[test]

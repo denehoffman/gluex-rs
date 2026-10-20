@@ -16,18 +16,18 @@
       "$ref": "#/$defs/BeamConfig"
     },
     "generation": {
-      "description": "Optional manual rejection-envelope override.\n\nWhen omitted, Laddu computes a certified model-less phase-space bound.",
+      "description": "Optional manual rejection-envelope override.\n\nWhen omitted, laddu computes a certified model-less phase-space bound.",
       "$ref": "#/$defs/GenerationSettings"
     },
     "model": {
-      "description": "Optional serialized Laddu model used as the event intensity."
+      "description": "Optional serialized laddu model used as the event intensity."
     },
     "name": {
       "description": "Human-readable channel name.",
       "type": "string"
     },
     "parameters": {
-      "description": "Free model parameters in Laddu's parameter order.",
+      "description": "Free model parameters in laddu's parameter order.",
       "type": [
         "array",
         "null"
@@ -114,7 +114,7 @@
       ]
     },
     "GenerationSettings": {
-      "description": "Rejection-envelope settings for unweighted generation.\n\nBy default, Laddu computes a certified phase-space envelope. The manual\nmaximum is retained as an expert override for unit-model generation.",
+      "description": "Rejection-envelope settings for unweighted generation.\n\nBy default, laddu computes a certified phase-space envelope. The manual\nmaximum is retained as an expert override for unit-model generation.",
       "type": "object",
       "properties": {
         "max_weight": {
@@ -219,7 +219,7 @@
           ]
         },
         "name": {
-          "description": "Unique edge name used in diagnostics and Laddu expressions.",
+          "description": "Unique edge name used in diagnostics and laddu expressions.",
           "type": "string"
         },
         "particle": {
