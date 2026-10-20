@@ -483,6 +483,7 @@ where
 }
 
 /// Execute the `gluex` command-line interface using process arguments.
+#[must_use = "return the CLI exit status to the operating system"]
 pub fn cli() -> ExitCode {
     ExitCode::from(exit_code_with_args(env::args_os()))
 }
