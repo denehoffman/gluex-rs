@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.2.1...gluex-rs-v0.3.0) (2026-10-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **io:** rename the AmpTools polarization option to pol_in_beam and update the laddu dependency to 0.28.
+
+### Features
+
+* **io:** Add AmpTools FSRoot and Pawian dataset I/O ([3c128fd](https://github.com/denehoffman/gluex-rs/commit/3c128fdbc4c733fa727758d8984d53ac380a23be))
+* **io:** Use laddu format adapters for external I/O ([81410fd](https://github.com/denehoffman/gluex-rs/commit/81410fd89b17ebe6033b2c7dacddee49cb898c08))
+
+
+### Bug Fixes
+
+* **io:** Read native AmpTools float arrays ([3f610fa](https://github.com/denehoffman/gluex-rs/commit/3f610fad22b09ca69a0f9c2e2155f2806e02150c))
+* Remove extra approved_production function that was only used for tests ([5644226](https://github.com/denehoffman/gluex-rs/commit/5644226bc620bd666adaa84a2ae2453c466c5b13))
+
 ## [0.2.1](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.2.0...gluex-rs-v0.2.1) (2026-09-12)
 
 
