@@ -185,18 +185,19 @@ impl AmpToolsSource {
             let branch = tree
                 .branch(name)
                 .ok_or_else(|| source_error(format!("missing ROOT branch {name}")))?;
-            if !(branch.item_type_name().contains("float")
-                || branch.item_type_name().contains("Float_t"))
-            {
-                return Err(source_error(format!(
-                    "ROOT branch {name} must contain Float_t, found {}",
-                    branch.item_type_name()
-                )));
+            match branch.item_type_name().as_str() {
+                "float[]" => branch
+                    .as_iter::<oxyroot::Slice<f32>>()
+                    .map_err(source_error)
+                    .map(|values| values.map(oxyroot::Slice::into_vec).collect::<Vec<_>>()),
+                "vector<float>" => branch
+                    .as_iter::<Vec<f32>>()
+                    .map_err(source_error)
+                    .map(|values| values.collect::<Vec<_>>()),
+                other => Err(source_error(format!(
+                    "ROOT branch {name} must contain Float_t, found {other}"
+                ))),
             }
-            branch
-                .as_iter::<Vec<f32>>()
-                .map_err(source_error)
-                .map(|values| values.collect::<Vec<_>>())
         })
         .into_iter()
         .collect::<LadduDataResult<Vec<_>>>()?;

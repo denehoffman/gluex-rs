@@ -1,9 +1,14 @@
 """Integration checks for experiment file readers and writers."""
 
+from pathlib import Path
+
 import gluex
 import laddu
 import numpy as np
 import pytest
+
+# ROOT 6.30 fixture with NumFinalState-indexed Float_t leaves, verified with AmpTools ROOTDataReader.
+AMPTOOLS_NATIVE = Path(__file__).resolve().parents[2] / "tests/fixtures/amptools_native_float_arrays.root"
 
 
 def sample_dataset():
@@ -58,6 +63,24 @@ def test_fsroot_dataset_round_trip(tmp_path):
     )
     assert data.p4_names() == ["beam", "target", *names]
     np.testing.assert_allclose(data.weights(), [1.5])
+
+
+def test_amptools_native_float_arrays():
+    data = gluex.io.read_amptools(AMPTOOLS_NATIVE, particles=3)
+    assert isinstance(data, laddu.Dataset)
+    assert data.p4_names() == ["beam", "target", "final_1", "final_2", "final_3"]
+    np.testing.assert_allclose(data.weights(), [1.25, 0.5])
+    with data.batches(chunk_size=2) as batches:
+        batch = next(iter(batches))
+        np.testing.assert_allclose(batch.p4s["beam"][0], [9.0, 0.3, 0.4, 9.0], rtol=1e-6)
+        np.testing.assert_allclose(batch.p4s["final_3"][:, 0], [3.0, 4.0])
+
+    polarized = gluex.io.read_amptools(AMPTOOLS_NATIVE, particles=3, pol_in_beam=True)
+    with polarized.batches(chunk_size=2) as batches:
+        batch = next(iter(batches))
+        np.testing.assert_allclose(batch.p4s["beam"][0], [9.0, 0.0, 0.0, 9.0])
+        np.testing.assert_allclose(batch.scalars["polarization_fraction"], [0.5, 0.5], rtol=1e-6)
+        np.testing.assert_allclose(batch.scalars["polarization_angle"], np.arctan2(0.4, 0.3), rtol=1e-6)
 
 
 def test_laddu_sinks_preserve_transformed_dataset(tmp_path):
