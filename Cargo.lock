@@ -1406,6 +1406,8 @@ dependencies = [
 [[package]]
 name = "ganesh"
 version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b3013d02db117fc9b079a5d3b5f3494d7a9c6a4a9b2bc377685d67ba42b198e"
 dependencies = [
  "ctrlc",
  "dyn-clone",
@@ -2046,7 +2048,9 @@ dependencies = [
 
 [[package]]
 name = "laddu"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6e00b6925d89128fb0ca826b2a2f8a5109eae452127d18cc09d9e5eb029c73d"
 dependencies = [
  "laddu-amplitudes",
  "laddu-autodiff",
@@ -2064,7 +2068,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-amplitudes"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5734d014b630201393f0b07d61fde8e31b78b7c7239f089e981a8a7d74aba23"
 dependencies = [
  "laddu-expr",
  "laddu-kernel",
@@ -2075,7 +2081,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-autodiff"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f932cfc0b3c6c5aef5634ad7dff49393927a81493c75c181a978724b4b1cb3a"
 dependencies = [
  "laddu-compile",
  "laddu-expr",
@@ -2087,7 +2095,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-cas-macros"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dda49ab5a1128e3009525b396683479190da9e5dc161e23904d5666354f59075"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2096,7 +2106,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-compile"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b68698e2d0f0d11bb75a39d702d40eae22c875bbe17042544853f9b0732984af"
 dependencies = [
  "egg",
  "good_lp",
@@ -2110,7 +2122,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-data"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80f467c322d31fb01f182255105b082ebac69da258b710de28da2b380abf05c8"
 dependencies = [
  "accurate",
  "arrow",
@@ -2130,7 +2144,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-expr"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "887d53506dd9feddae310e2530082655976fdd390d3a0c6197fe9dfe0ce72cef"
 dependencies = [
  "auto_ops",
  "fastrand",
@@ -2142,7 +2158,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-fit"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b2b289193b97cd427bc3bd91abb14406c24b8f8a66b3815a6bee56ea974591d"
 dependencies = [
  "ganesh",
  "laddu-expr",
@@ -2156,7 +2174,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-generation"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b7e09ce973a4075c8b274d57ca4f8ef27808ea93fbfea04d00d339715fde43b"
 dependencies = [
  "laddu-compile",
  "laddu-data",
@@ -2173,7 +2193,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-kernel"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e7bcbcd9c5e15dd8971529fcc46d1d52da97bb1f6c84347e8670d5a1e550f02"
 dependencies = [
  "laddu-expr",
  "num",
@@ -2183,7 +2205,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-likelihood"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ca2b4ae664dd9890516feae710aba4f808d2af8b3afea2e5e69bff36e1fb777"
 dependencies = [
  "auto_ops",
  "laddu-compile",
@@ -2198,7 +2222,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-memory"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21db9639c38b8319bee18c61b2d86f4b7d17e1d2807bcfd53fd07f11643a9715"
 dependencies = [
  "objc2-metal",
  "serde",
@@ -2209,7 +2235,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-physics"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9089f9647ab8657ef942eb45072bf8249eb04e2e8060a5e8a1aa342e7bbe2b8c"
 dependencies = [
  "approx",
  "auto_ops",
@@ -2228,7 +2256,9 @@ dependencies = [
 
 [[package]]
 name = "laddu-runtime"
-version = "0.30.0-rc.2"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfe822a7bb286283c9bb309f070132d3f6c43e5101b83a2b8b5e434a0941124f"
 dependencies = [
  "laddu-autodiff",
  "laddu-compile",
