@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.3.0...gluex-rs-v0.3.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* Remove release candidate laddu version ([0e79289](https://github.com/denehoffman/gluex-rs/commit/0e792891ac32249302fdcfb31a2d276e9222aaa3))
+
 ## [0.3.0](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.2.1...gluex-rs-v0.3.0) (2026-10-20)
 
 
