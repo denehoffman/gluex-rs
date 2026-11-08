@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.3.1...gluex-rs-v0.3.2) (2026-11-08)
+
+
+### Bug Fixes
+
+* **deps:** Adopt laddu 0.30.1 ([544f7a6](https://github.com/denehoffman/gluex-rs/commit/544f7a688acc27997edb11ece4fe9470548c1792))
+* **release:** Refresh Cargo.lock for 0.3.1 ([5cb8245](https://github.com/denehoffman/gluex-rs/commit/5cb82454b5643aea7caf50d048826172fb24cdd1))
+
 ## [0.3.1](https://github.com/denehoffman/gluex-rs/compare/gluex-rs-v0.3.0...gluex-rs-v0.3.1) (2026-11-08)
 
 
